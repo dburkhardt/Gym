@@ -87,7 +87,7 @@ class BixBench3Agent(SimpleResponsesAPIAgent):
     async def responses(
         self, request: Request, response: Response, body: NeMoGymResponseCreateParamsNonStreaming = Body()
     ) -> NeMoGymResponse:
-        raise HTTPException(status_code=400, detail="BixBench3 owns its Inspect episode; use /run")
+        raise NotImplementedError("BixBench3 owns its Inspect episode; use /run")
 
     async def run(self, body: BixBench3Request = Body(), request: Request = None) -> BixBench3Result:
         """Execute one staged case; only the host-side artifact grade is reward."""
