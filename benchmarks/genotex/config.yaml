@@ -1,0 +1,5 @@
+config_paths:
+- responses_api_agents/genotex/configs/genotex.yaml
+genotex_data_root: ${oc.env:GENOTEX_DATA_ROOT,'~/.cache/genotex'}
+genotex_work_root: ${oc.env:GENOTEX_WORK_ROOT,'~/.cache/genotex-runs'}
+genotex_grader_python: ${oc.env:GENOTEX_GRADER_PYTHON,python3}
