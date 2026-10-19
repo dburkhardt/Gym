@@ -23,6 +23,29 @@ import yaml
 UPSTREAM_REVISION = "d0e0bbb41222335b1b8878f533a58466a3a782dc"
 
 
+def run_fingerprint(settings_path: Path) -> str:
+    """Bind reuse to settings and the actual staged input/reference bytes."""
+    settings = json.loads(settings_path.read_text())
+    digest = hashlib.sha256(settings_path.read_bytes())
+    digest.update(UPSTREAM_REVISION.encode())
+    roots = [
+        Path(settings["run_root"]) / "dataset",
+        Path(settings["data_dir"]),
+        Path(settings["grading_specification"]).parent,
+    ]
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if path.is_symlink():
+                raise ValueError("Staged input and gold trees must not contain symlinks")
+            if path.is_file():
+                digest.update(str(path.relative_to(root)).encode())
+                digest.update(str(path.stat().st_size).encode())
+                with path.open("rb") as stream:
+                    while block := stream.read(1024 * 1024):
+                        digest.update(block)
+    return digest.hexdigest()
+
+
 def check_revision(checkout: Path) -> None:
     """Reject an unpinned or locally modified upstream harness."""
     actual = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
@@ -40,6 +63,72 @@ def check_gold_isolation(gold: Path, mounts: list[Path]) -> None:
         mount = mount.resolve(strict=True)
         if gold == mount or gold.is_relative_to(mount) or mount.is_relative_to(gold):
             raise ValueError(f"Gold overlaps a container mount: {mount}")
+
+
+REQUESTED_MODELS = frozenset(
+    {
+        "nvidia/nvidia/nemotron-3.5-super-vl",
+        "nvidia/nvidia/nemotron-3-ultra",
+    }
+)
+
+
+def generation_settings(settings: dict) -> tuple[int, int]:
+    """Require explicit context provenance instead of Inspect's unknown-model fallback."""
+    if settings["model"] not in REQUESTED_MODELS:
+        raise ValueError("Use one of the two requested Nemotron model IDs")
+    context = settings.get("model_context_length")
+    output = settings.get("max_output_tokens", 16384)
+    if isinstance(context, bool) or not isinstance(context, int):
+        raise ValueError("Set verified model_context_length and model_context_source")
+    if not isinstance(settings.get("model_context_source"), str) or not settings["model_context_source"].strip():
+        raise ValueError("Set verified model_context_length and model_context_source")
+    if isinstance(output, bool) or not isinstance(output, int) or output <= 0 or context <= output:
+        raise ValueError("Context length must exceed positive max_output_tokens")
+    return context, output
+
+
+def _artifact_path(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise ValueError("Artifact path must be a safe relative file path")
+    parts = path.parts[1:] if path.parts[0] == "outputs" else path.parts
+    if not parts:
+        raise ValueError("Artifact path must name a file")
+    return Path(*parts).as_posix()
+
+
+def validate_grading_contract(*, case: dict, specification: Path, mounts: list[Path]) -> None:
+    """Match the host grader to this case and keep every gold file host-only."""
+    spec = json.loads(specification.read_text())
+    if spec.get("paper_id") != case["task_id"]:
+        raise ValueError("Grading specification paper_id does not match task_id")
+    if case.get("doi") and spec.get("doi") != case["doi"]:
+        raise ValueError("Grading specification DOI does not match case")
+    expected = {item["artifact_id"]: _artifact_path(item["path"]) for item in case["expected_outputs"]}
+    if len(expected) != len(case["expected_outputs"]) or not expected:
+        raise ValueError("Case must declare distinct expected artifacts")
+    actual = {}
+    gold_root = specification.parent.resolve(strict=True)
+    check_gold_isolation(gold_root, mounts)
+    for artifact in spec["artifacts"]:
+        name = artifact["artifact_id"]
+        if name in actual:
+            raise ValueError("Duplicate grading artifact ID")
+        output = artifact.get("expected_output") or artifact.get("output_format")
+        actual[name] = _artifact_path(output["path"])
+        relative = Path(artifact["ground_truth"]["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Gold paths must stay inside the host-only specification tree")
+        candidate = gold_root / relative
+        if any(part.is_symlink() for part in [candidate, *candidate.parents] if part != gold_root.parent):
+            raise ValueError("Gold paths must not traverse symlinks")
+        resolved = candidate.resolve(strict=True)
+        if not resolved.is_relative_to(gold_root) or not resolved.is_file():
+            raise ValueError("Gold reference must be a file inside its specification tree")
+        check_gold_isolation(resolved, mounts)
+    if actual != expected:
+        raise ValueError("Grading artifact IDs or paths do not match expected outputs")
 
 
 def read_artifact_score(path: Path) -> float:
@@ -101,19 +190,42 @@ def execute(*, settings_path: Path) -> float:
     data = Path(settings["data_dir"]).resolve(strict=True)
     for name in ["workspace", "outputs", "broker_logs", "broker_cache", "inspect_logs"]:
         (root / name).mkdir(exist_ok=True)
-    check_gold_isolation(gold.parent, [data, root / "workspace", root / "outputs", root / "dataset"])
+    mounts = [
+        data,
+        root / "workspace",
+        root / "outputs",
+        root / "dataset",
+        root / "broker_logs",
+        root / "broker_cache",
+        root / "broker" / "policy.json",
+    ]
+    case = json.loads((root / "dataset" / "case.json").read_text())
+    validate_grading_contract(case=case, specification=gold, mounts=mounts)
+    context_length, max_output_tokens = generation_settings(settings)
     if (root / "grade.json").exists():
         raise FileExistsError("Existing graded run: use its result or choose a fresh run directory")
     if any((root / "outputs").iterdir()):
         raise FileExistsError("Outputs must be empty before a new rollout")
     receipt = root / "settings-sha256.txt"
-    receipt.write_text(hashlib.sha256(settings_path.read_bytes()).hexdigest() + "\n")
+    receipt.write_text(run_fingerprint(settings_path) + "\n")
     case = json.loads((root / "dataset" / "case.json").read_text())
     if case["task_id"] != settings["task_id"]:
         raise ValueError("Staged case does not match requested task")
+    for field in ("sandbox_image", "gateway_image"):
+        if "@sha256:" not in settings[field] and not settings[field].startswith("sha256:"):
+            raise ValueError(f"{field} must use an immutable image digest")
     # Keep the upstream service topology and mounts. Only direct the paid judge
     # through the operator's budget proxy; do not bypass its network gateway.
     compose = yaml.safe_load((checkout / "sandbox" / "compose.yaml").read_text())
+    label = {"gym.bixbench3.run": hashlib.sha256(str(root).encode()).hexdigest()[:24]}
+    for section in ("services", "networks"):
+        for name, entry in compose.get(section, {}).items():
+            if entry is None:
+                entry = compose[section][name] = {}
+            labels = entry.get("labels", {})
+            if isinstance(labels, list):
+                labels = dict(item.split("=", 1) if "=" in item else (item, "") for item in labels)
+            entry["labels"] = labels | label
     compose["services"]["network-gateway"]["environment"]["OPENAI_BASE_URL"] = settings["budget_proxy_url"]
     compose_path = root / "compose.yaml"
     compose_path.write_text(yaml.safe_dump(compose, sort_keys=False))
@@ -139,23 +251,38 @@ def execute(*, settings_path: Path) -> float:
     )
     if not (root / "broker" / "policy.json").is_file():
         raise FileNotFoundError("Stage the upstream network policy before execution")
-    program = (
-        "import os,sys; from inspect_ai import eval; from inspect_ai.model import get_model; "
-        "from bixbench3.inspect_harness.tasks import bixbench3_cases; "
-        "m=get_model('openai/'+sys.argv[1],base_url=sys.argv[2],api_key=os.environ['NEMOTRON_API_KEY']); "
-        "logs=eval(bixbench3_cases(dataset_path=sys.argv[3],case_ids=[sys.argv[4]]),"
-        "model=m,log_dir=sys.argv[5],max_tasks=1,max_samples=1,max_retries=2); "
-        "sys.exit(0 if len(logs)==1 and logs[0].status=='success' else 1)"
-    )
+    program = r"""
+import json, os, sys
+from pathlib import Path
+from inspect_ai import eval
+from inspect_ai.model import GenerateConfig, ModelInfo, get_model, set_model_info
+from bixbench3.inspect_harness.tasks import bixbench3_cases
+config = GenerateConfig(temperature=0, max_tokens=int(sys.argv[7]), max_retries=2)
+model = get_model('openai/'+sys.argv[1], base_url=sys.argv[2],
+                  api_key=os.environ['NEMOTRON_API_KEY'], responses_api=True, config=config)
+set_model_info(model.canonical_name(), ModelInfo(organization='NVIDIA',
+    model=sys.argv[1], context_length=int(sys.argv[6]), output_tokens=int(sys.argv[7]), reasoning=True))
+logs = eval(bixbench3_cases(dataset_path=sys.argv[3], case_ids=[sys.argv[4]]),
+            model=model, log_dir=sys.argv[5], max_tasks=1, max_samples=1,
+            log_model_api=True, temperature=0, max_tokens=int(sys.argv[7]), max_retries=2)
+summary = {'model': sys.argv[1], 'transport': 'responses', 'temperature': 0,
+           'context_length': int(sys.argv[6]), 'max_output_tokens': int(sys.argv[7]),
+           'logs': [{'status': log.status, 'location': str(log.location)} for log in logs],
+           'measurement': 'Inspect scores are output completeness, not artifact accuracy'}
+Path(sys.argv[5], 'execution-summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+sys.exit(0 if len(logs)==1 and logs[0].status=='success' else 1)
+"""
     command = [
         str(python),
         "-c",
         program,
         settings["model"],
         settings["solver_base_url"],
-        str(root / "dataset"),
+        str(root / "dataset" / "case.json"),
         settings["task_id"],
         str(root / "inspect_logs"),
+        str(context_length),
+        str(max_output_tokens),
     ]
     # Model credential wiring is verified by the adapter's real smoke test before
     # this execution path is treated as validated.
