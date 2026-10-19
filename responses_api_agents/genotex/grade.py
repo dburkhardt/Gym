@@ -43,7 +43,11 @@ def grade(upstream: Path, staging: Path, prediction: Path, reference: Path, trai
         )
     finally:
         os.chdir(previous)
-    expected = [p.relative_to(reference) for p in reference.rglob("*") if p.is_file()]
+    reference_files = [p.relative_to(reference) for p in reference.rglob("*") if p.is_file()]
+    # Reference bundles also ship implementation scripts. Only the documented
+    # JSON/CSV outputs participate in artifact completeness.
+    expected = [p for p in reference_files if p.suffix in (".json", ".csv") and "code" not in p.parts]
+    auxiliary = [str(p) for p in reference_files if p not in expected]
     missing = [str(p) for p in expected if not (prediction / p).is_file()]
     analysis = raw.get("analysis", {}).get("categorized", {}).get("Overall", {})
     f1 = analysis.get("f1")
@@ -53,6 +57,7 @@ def grade(upstream: Path, staging: Path, prediction: Path, reference: Path, trai
         "reward_metric": "upstream analysis F1 / 100; missing/undefined => 0 for Gym only",
         "raw_upstream": json_safe(raw),
         "expected_files": len(expected),
+        "auxiliary_reference_files": auxiliary,
         "missing_files": missing,
         "complete": not missing,
         "requested_pairs": 1,

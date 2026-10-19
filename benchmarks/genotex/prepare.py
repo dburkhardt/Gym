@@ -155,6 +155,7 @@ def prepare(root: Path | None = None) -> Path:
                 ]
             },
             "verifier_metadata": p,
+            "task_id": p["task_id"],
         }
         for p in selected
     ]

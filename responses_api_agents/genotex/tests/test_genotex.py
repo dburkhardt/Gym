@@ -138,3 +138,13 @@ def test_reference_isolation(tmp_path):
 def test_bad_trait_rejected(tmp_path):
     with pytest.raises(ValueError, match="Unsafe"):
         runtime.stage(tmp_path, tmp_path / "run", {"trait": "../escape", "condition": None, "traits": ["../escape"]})
+
+
+def test_reference_code_is_not_a_required_solver_artifact(fixture):
+    code = fixture[3] / "preprocess/Trait/code"
+    code.mkdir()
+    (code / "TCGA.py").write_text("pass")
+    result = grade_module.grade(*fixture, "Trait", None)
+    assert result["complete"]
+    assert result["expected_files"] == 5
+    assert result["auxiliary_reference_files"] == ["preprocess/Trait/code/TCGA.py"]
