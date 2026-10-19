@@ -112,3 +112,23 @@ def test_solver_uses_workspace_owner_and_resumes(tmp_path, monkeypatch):
     assert str(task) not in " ".join(docker)
     assert runtime.solve(task, tmp_path / "results", **kwargs) == run
     assert len(commands) == 1
+
+
+@pytest.mark.asyncio
+async def test_gym_run_response_contract(monkeypatch):
+    from types import SimpleNamespace
+
+    from responses_api_agents.promptbio_bench.app import PromptBioAgent, PromptBioRequest
+
+    agent = PromptBioAgent.model_construct(config=SimpleNamespace(model_name="test-model"))
+    monkeypatch.setattr(PromptBioAgent, "_evaluate", lambda self, task_id: (0.75, "/artifacts/test"))
+    body = PromptBioRequest.model_validate(
+        {"responses_create_params": {"input": "task"}, "verifier_metadata": {"task_id": "a-1-1"}}
+    )
+    result = await agent.run(None, body)
+    assert result.reward == 0.75
+    assert result.response.model == "test-model"
+    assert (
+        result.response.output[0].content[0].text
+        == '{"artifact_dir": "/artifacts/test", "scoring": "upstream avg_similarity"}'
+    )

@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from pydantic import Field, PrivateAttr
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
@@ -47,7 +47,7 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
     async def responses(
         self, request: Request, response: Response, body: NeMoGymResponseCreateParamsNonStreaming
     ) -> NeMoGymResponse:
-        raise HTTPException(400, "PromptBio requires /run with a task ID")
+        raise NotImplementedError("PromptBio requires /run with a task ID")
 
     def _evaluate(self, task_id: str) -> tuple[float, str]:
         cfg = self.config
