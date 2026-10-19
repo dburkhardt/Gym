@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+bixbench3_agent:
+  responses_api_agents:
+    bixbench3:
+      entrypoint: app.py
+      settings_root: /tmp/bixbench3-operator-settings
+      runtime_python: python3
+      timeout_seconds: 87600
+      datasets:
+        - name: bixbench3
+          type: benchmark
+          jsonl_fpath: benchmarks/bixbench3/data/benchmark.jsonl
+          prepare_script: benchmarks/bixbench3/prepare.py
+          prompt_config: null
+          num_repeats: 1
+bixbench3_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: bixbench3_agent

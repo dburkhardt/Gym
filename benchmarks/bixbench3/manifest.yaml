@@ -1,0 +1,27 @@
+name: bixbench3
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: external-agent-loop
+domain: agent
+description: BixBench3 native Inspect episodes with separate host-side artifact grading.
+modality: text
+licensing: CC-BY-SA-4.0
+authors:
+  - Edison Scientific (benchmark)
+  - NVIDIA NeMo Gym contributors (adapter)
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: null
+agent_server: bixbench3
+datasets:
+  - name: bixbench3
+    type: benchmark
+    jsonl_fpath: benchmarks/bixbench3/data/benchmark.jsonl
+    prepare_script: benchmarks/bixbench3/prepare.py
+    num_repeats: 1
+canonical_split: benchmark
+prompt_source: agent
+lifecycle: active
