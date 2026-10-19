@@ -157,3 +157,15 @@ async def test_cleanup_failure_is_reported(tmp_path, monkeypatch):
     container = runtime.Container(image="test", paths={}, cpus=1, memory_gb=1)
     with pytest.raises(RuntimeError, match="cleanup failed"):
         await container.stop()
+
+
+@pytest.mark.asyncio
+async def test_native_token_limit_is_a_task_failure_not_infrastructure(setup):
+    agent, body, client, container, scorer = setup
+    reply = response([])
+    reply.update(status="incomplete", incomplete_details={"reason": "max_output_tokens"})
+    client.post.return_value = reply
+    result = await agent.run(body)
+    assert result.failure_reason == "model_response_incomplete:max_output_tokens"
+    assert not result.mask_sample
+    scorer.assert_awaited_once()

@@ -106,6 +106,9 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                     trajectory.append({"step": step, "response": payload})
                     calls = [item for item in outputs if item.get("type") == "function_call"]
                     if not calls:
+                        if payload.get("status") == "incomplete":
+                            reason = (payload.get("incomplete_details") or {}).get("reason", "unknown")
+                            failure = f"model_response_incomplete:{reason}"
                         break
                     for call in calls:
                         try:
