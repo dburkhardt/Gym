@@ -160,6 +160,8 @@ def prepare(root: Path | None = None) -> Path:
     ]
     OUTPUT.write_text("".join(json.dumps(row) + "\n" for row in rows))
     (root / "tasks.jsonl").write_text(OUTPUT.read_text())
+    (root / "tasks-smoke.jsonl").write_text(json.dumps(rows[0]) + "\n")
+    (root / "tasks-remaining.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows[1:]))
     return OUTPUT
 
 

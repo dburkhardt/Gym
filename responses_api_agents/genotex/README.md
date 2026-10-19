@@ -83,8 +83,11 @@ gym env validate genotex
 # Supply the usual private Gym model-server configuration for each model.
 gym eval run --benchmark genotex --model-type openai_model \
   --split benchmark --limit 1 --num-repeats 1 --output /private/results/genotex-model-smoke.jsonl
-# Inspect one trajectory and grading.json before increasing --limit to 5.
-# Reuse the exact same output/cache and --resume to avoid completed-rollout duplication.
+# Inspect one trajectory and grading.json before expanding. For the remaining four,
+# override the configured dataset jsonl_fpath to $GENOTEX_DATA_ROOT/tasks-remaining.jsonl
+# and use a NEW output/cache with --limit 4. Do not increase --limit on a resumed
+# one-row cache: Gym reuses its original materialized inputs.
+# For an unchanged task set/model/config, reuse output/cache and --resume.
 ```
 
 Use a distinct output/cache per model and pinned configuration. Never reuse a prior model's
