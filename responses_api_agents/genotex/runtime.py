@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -96,6 +97,8 @@ class Container:
             "--detach",
             "--name",
             self.name,
+            "--user",
+            f"{os.getuid()}:{os.getgid()}",
             "--network",
             "none",
             "--cap-drop",
@@ -120,6 +123,12 @@ class Container:
         )
         if code:
             raise RuntimeError(f"Container startup failed: {output}")
+        check = await self.shell(
+            "touch /output/.write-check /work/.write-check && rm /output/.write-check /work/.write-check"
+        )
+        if check["exit_code"]:
+            await self.stop()
+            raise RuntimeError("Container output directory is not writable")
 
     async def inspect(self) -> dict:
         """Record the resolved image and isolation controls without environment secrets."""
@@ -151,7 +160,9 @@ class Container:
         return {"exit_code": code, "output": output[-20000:]}
 
     async def stop(self) -> None:
-        await command("docker", "rm", "--force", self.name, timeout=60)
+        code, output = await command("docker", "rm", "--force", self.name, timeout=60)
+        if code and "No such container" not in output:
+            raise RuntimeError(f"Container cleanup failed: {output}")
 
 
 async def score(*, data_root: Path, run_root: Path, paths: dict[str, Path], task: dict, python: str) -> dict:

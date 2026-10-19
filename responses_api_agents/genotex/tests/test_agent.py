@@ -117,3 +117,43 @@ def test_shell_tool_matches_gym_request_schema():
         input=[{"role": "user", "content": "task"}], tools=[app.SHELL_TOOL]
     )
     assert parsed.tools[0]["strict"] is True
+
+
+@pytest.mark.asyncio
+async def test_container_checks_writes_and_uses_host_uid(tmp_path, monkeypatch):
+    from responses_api_agents.genotex import runtime
+
+    calls = AsyncMock(return_value=(0, ""))
+    monkeypatch.setattr(runtime, "command", calls)
+    container = runtime.Container(
+        image="test", paths={"public": tmp_path, "prediction": tmp_path}, cpus=1, memory_gb=1
+    )
+    await container.start()
+    args = calls.call_args_list[0].args
+    assert args[args.index("--user") + 1] == f"{runtime.os.getuid()}:{runtime.os.getgid()}"
+    assert "/output/.write-check" in calls.call_args_list[1].args[-1]
+    assert "/work/.write-check" in calls.call_args_list[1].args[-1]
+
+
+@pytest.mark.asyncio
+async def test_unwritable_container_is_stopped_before_inference(tmp_path, monkeypatch):
+    from responses_api_agents.genotex import runtime
+
+    calls = AsyncMock(side_effect=[(0, ""), (1, "permission denied"), (0, "")])
+    monkeypatch.setattr(runtime, "command", calls)
+    container = runtime.Container(
+        image="test", paths={"public": tmp_path, "prediction": tmp_path}, cpus=1, memory_gb=1
+    )
+    with pytest.raises(RuntimeError, match="not writable"):
+        await container.start()
+    assert calls.call_args_list[-1].args[:3] == ("docker", "rm", "--force")
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_is_reported(tmp_path, monkeypatch):
+    from responses_api_agents.genotex import runtime
+
+    monkeypatch.setattr(runtime, "command", AsyncMock(return_value=(1, "daemon unavailable")))
+    container = runtime.Container(image="test", paths={}, cpus=1, memory_gb=1)
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        await container.stop()
