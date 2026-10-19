@@ -28,12 +28,20 @@ def run_fingerprint(settings_path: Path) -> str:
     settings = json.loads(settings_path.read_text())
     digest = hashlib.sha256(settings_path.read_bytes())
     digest.update(UPSTREAM_REVISION.encode())
+    digest.update(Path(__file__).read_bytes())
     roots = [
         Path(settings["run_root"]) / "dataset",
         Path(settings["data_dir"]),
         Path(settings["grading_specification"]).parent,
     ]
+    broker = Path(settings["run_root"]) / "broker"
+    if broker.exists():
+        roots.append(broker)
     for root in roots:
+        root = root.resolve(strict=True)
+        if not root.is_dir():
+            raise ValueError("Fingerprint roots must be directories")
+        digest.update(str(root).encode())
         for path in sorted(root.rglob("*")):
             if path.is_symlink():
                 raise ValueError("Staged input and gold trees must not contain symlinks")
@@ -183,7 +191,10 @@ def execute(*, settings_path: Path) -> float:
     """
     settings = json.loads(settings_path.read_text())
     checkout = Path(settings["upstream_checkout"]).resolve(strict=True)
-    python = Path(settings["upstream_python"]).resolve(strict=True)
+    # Preserve the venv interpreter symlink: resolving it selects base Python and loses site-packages.
+    python = Path(settings["upstream_python"]).expanduser().absolute()
+    if not python.is_file():
+        raise FileNotFoundError(f"Upstream Python interpreter does not exist: {python}")
     root = Path(settings["run_root"]).resolve(strict=True)
     gold = Path(settings["grading_specification"]).resolve(strict=True)
     check_revision(checkout)

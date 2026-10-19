@@ -166,9 +166,11 @@ def test_execute_constructs_isolated_native_inspect_contract(tmp_path, monkeypat
     )
     key = tmp_path / "dummy-key"
     key.write_text("not-a-real-key")
+    interpreter = tmp_path / "venv-python"
+    interpreter.symlink_to(sys.executable)
     settings = {
         "upstream_checkout": str(checkout),
-        "upstream_python": sys.executable,
+        "upstream_python": str(interpreter),
         "run_root": str(root),
         "grading_specification": str(gold),
         "data_dir": str(data),
@@ -192,6 +194,7 @@ def test_execute_constructs_isolated_native_inspect_contract(tmp_path, monkeypat
 
     def process(command, **kwargs):
         calls.append((command, kwargs))
+        assert command[0] == str(interpreter)
         compile(command[2], "<inspect-entrypoint>", "exec")
         assert "responses_api=True" in command[2]
         assert "temperature=0" in command[2]
