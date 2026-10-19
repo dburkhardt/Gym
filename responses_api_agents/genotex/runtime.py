@@ -14,6 +14,7 @@ from pathlib import Path
 SHELL_TOOL = {
     "type": "function",
     "name": "shell",
+    "strict": True,
     "description": "Execute bash in the isolated analysis container. Outputs are truncated to 20000 characters; use files for large results.",
     "parameters": {
         "type": "object",

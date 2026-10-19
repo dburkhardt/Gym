@@ -110,3 +110,10 @@ async def test_step_budget_scores_partial_outputs(setup):
     assert not result.mask_sample
     container.shell.assert_not_awaited()
     scorer.assert_awaited_once()
+
+
+def test_shell_tool_matches_gym_request_schema():
+    parsed = app.NeMoGymResponseCreateParamsNonStreaming(
+        input=[{"role": "user", "content": "task"}], tools=[app.SHELL_TOOL]
+    )
+    assert parsed.tools[0]["strict"] is True
