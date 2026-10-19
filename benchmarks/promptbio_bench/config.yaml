@@ -1,0 +1,34 @@
+promptbio_agent:
+  responses_api_agents:
+    promptbio_bench:
+      entrypoint: app.py
+      domain: agent
+      description: Containerized PromptBio tasks with pinned upstream artifact grading.
+      model_name: ${oc.env:PROMPTBIO_MODEL_NAME,null}
+      model_base_url: ${oc.env:PROMPTBIO_MODEL_BASE_URL,null}
+      model_key_file: ${oc.env:PROMPTBIO_MODEL_KEY_FILE,null}
+      sandbox_image: ${oc.env:PROMPTBIO_SANDBOX_IMAGE,null}
+      cache_dir: ${oc.env:PROMPTBIO_CACHE_DIR,null}
+      output_dir: ${oc.env:PROMPTBIO_OUTPUT_DIR,null}
+      scorer_dir: ${oc.env:PROMPTBIO_SCORER_DIR,null}
+      scorer_python: ${oc.env:PROMPTBIO_SCORER_PYTHON,null}
+      comparison_models: []
+      judge_model: gpt-5.4
+      judge_key_file: ${oc.env:PROMPTBIO_JUDGE_KEY_FILE,null}
+      budget_ledger: ${oc.env:PROMPTBIO_BUDGET_LEDGER,null}
+      budget_usd: 100
+      datasets:
+      - name: promptbio_bench
+        type: benchmark
+        jsonl_fpath: benchmarks/promptbio_bench/data/promptbio_benchmark.jsonl
+        prepare_script: benchmarks/promptbio_bench/prepare.py
+        prepare_dependencies: [huggingface-hub==0.36.0]
+        num_repeats: 1
+        license: Apache-2.0
+promptbio_environment:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: promptbio_agent

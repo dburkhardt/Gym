@@ -1,0 +1,57 @@
+{
+  "dataset_revision": "078420b69e25c41c99a79135724b6ae6a6c82b69",
+  "selection": "Fixed before broader model runs: local-input tasks <=20MB with text/table/sequence outputs supported by the CPU image and metered text-only grader. a-1-1 is the previously declared pipeline smoke. This is a feasibility-stratified subset, not representative sampling.",
+  "tasks": [
+    {
+      "id": "a-1-1",
+      "question": "I have a forward sequence, can you help me convert it to reverse complementary sequence? The sequence is: AATTGGGACCAACACTAGAATATCACCCTCCCTCTGGTCCTGAGGGAGAGGAATCCTCCTGGGTTTCCAGATCCTG",
+      "total_download_bytes": 1768
+    },
+    {
+      "id": "a-1-10",
+      "question": "Calculate the average coverage only over positions with non-zero coverage directly from the BAM file. Do not use any external BED file. Just use the aligned regions as captured bases.",
+      "total_download_bytes": 78323
+    },
+    {
+      "id": "a-13-1",
+      "question": "Design CRISPR gRNAs for human FOXP3 using 20nt guide sequences with NGG PAM. Search both forward and reverse strands. Apply basic quality filters: GC content 20-80%, exclude sequences with four or more consecutive identical nucleotides (e.g., TTTT).",
+      "total_download_bytes": 38941
+    },
+    {
+      "id": "a-15-1",
+      "question": "Compute Pearson correlations between all gene-methylation site pairs (all-vs-all) using DNA methylation beta values and gene expression values from the same samples. Apply Benjamini-Hochberg FDR correction globally across all pairs. Identify gene-methylation site pairs with significant negative correlations (FDR < 0.05).",
+      "total_download_bytes": 420972
+    },
+    {
+      "id": "a-6-1",
+      "question": "Perform trimming of 16s FASTQ reads based on the provided primer sequences.",
+      "total_download_bytes": 1175638
+    },
+    {
+      "id": "a-7-4",
+      "question": "Calculate the isoelectric point (pI) of each protein in the given FASTA file.",
+      "total_download_bytes": 4012
+    },
+    {
+      "id": "a-8-1",
+      "question": "Annotate LC-MS peaks by matching each query m/z against the provided HMDB database using a mass tolerance of +/-0.01 Da, and report up to 3 candidate metabolites per peak ranked by absolute ppm error.",
+      "total_download_bytes": 4407896
+    },
+    {
+      "id": "b-1-1",
+      "question": "Calculate the mean, median, standard deviation, and interquartile range (IQR) for all numeric columns in the provided dataset. Return the results in a tidy table.",
+      "total_download_bytes": 45241
+    },
+    {
+      "id": "b-4-1",
+      "question": "Identify significantly differentially expressed genes between treated and control groups using the Wilcoxon rank-sum test. Apply Benjamini-Hochberg correction and return genes with FDR < 0.05.",
+      "total_download_bytes": 184162
+    },
+    {
+      "id": "b-6-1",
+      "question": "Apply PCA to a gene expression dataset. Z-score standardize the features before applying PCA. Compute the proportion of variance explained by the first 10 principal components.",
+      "total_download_bytes": 69874
+    }
+  ],
+  "excluded": "Other234tasks not in overnight pilot. Network-required, image-output, large-input and specialized dependency tasks deferred; no benchmark removed from full244 declaration."
+}

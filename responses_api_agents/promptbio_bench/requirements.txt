@@ -1,0 +1,2 @@
+-e .
+huggingface-hub==0.36.0
