@@ -14,6 +14,7 @@
 # limitations under the License.
 import asyncio
 import json
+import logging
 import re
 import sys
 from asyncio import Semaphore
@@ -35,6 +36,7 @@ from nemo_gym.base_responses_api_agent import (
     SimpleResponsesAPIAgent,
 )
 from nemo_gym.config_types import ModelServerRef
+from nemo_gym.failure_kinds import AGENT_RUN_ERROR
 from nemo_gym.global_config import (
     get_first_server_config_dict,
     get_global_config_dict,
@@ -44,6 +46,9 @@ from nemo_gym.openai_utils import (
     NeMoGymResponseCreateParamsNonStreaming,
 )
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
+
+
+logger = logging.getLogger(__name__)
 
 
 class HarborDatasetSourceConfig(BaseModel):
@@ -268,6 +273,8 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 responses_create_params=responses_create_params,
             )
 
+            failure_reason = None
+            failure_metadata = {}
             try:
                 params = dict(
                     job_config_dict=job_config_dict,
@@ -309,7 +316,18 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 usage = HarborAgentUtils.extract_usage(trial_result, trajectory)
 
             except Exception as e:
-                print(f"Error running Harbor job: {e}")
+                logger.exception("Error running Harbor job for %s", instance_id)
+                failure_reason = f"{type(e).__name__}: {e}"
+                # A wrapper error can happen after model execution. Preserve the
+                # artifact location without claiming that no inference occurred.
+                failure_metadata = {
+                    "wrapper_error": {
+                        "exception_type": type(e).__name__,
+                        "exception_message": str(e),
+                        "job_dir": str(jobs_dir / job_name),
+                        "model_execution_status": "unknown",
+                    }
+                }
                 trial_result = None
                 trajectory = None
                 agent_error_flags = {}
@@ -336,7 +354,10 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 reward=reward,
                 response=response,
                 instance_id=instance_id,
-                metadata=trial_result if trial_result else {},
+                metadata=trial_result if trial_result else failure_metadata,
+                mask_sample=failure_reason is not None,
+                failure_kind=AGENT_RUN_ERROR if failure_reason is not None else None,
+                failure_reason=failure_reason,
                 context_length_exceeded_error=int(agent_error_flags.get("context_length_exceeded", False)),
                 memory_limit_exceeded_error=int(agent_error_flags.get("memory_limit_exceeded", False)),
                 agent_timeout_error=int(

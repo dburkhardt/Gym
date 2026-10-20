@@ -443,6 +443,26 @@ class TestApp:
         assert len(response.response.output) == 0
         assert response.responses_create_params.temperature == 0.3
         assert response.responses_create_params.input == []
+        assert response.mask_sample is True
+        assert response.failure_kind == "agent_run_error"
+        assert response.failure_reason == "Exception: Harbor job failed"
+        error = response.metadata["wrapper_error"]
+        assert error["exception_type"] == "Exception"
+        assert error["exception_message"] == "Harbor job failed"
+        assert error["model_execution_status"] == "unknown"
+        assert error["job_dir"]
+
+    async def test_run_valid_zero_reward_is_not_masked(self):
+        server = _make_server()
+        trial_result = {**DEFAULT_TRIAL_RESULT, "verifier_result": {"rewards": {"reward": 0.0}}}
+        with _harbor_run_mocks(trial_result=trial_result, trajectory=DEFAULT_TRAJECTORY):
+            response = await server.run(_make_run_request())
+        assert response.reward == 0.0
+        assert response.mask_sample is False
+        assert response.failure_kind is None
+        assert response.failure_reason is None
+        assert response.metadata == trial_result
+        assert response.response.usage.total_tokens > 0
 
     @pytest.mark.parametrize(
         "model_name, expected",
