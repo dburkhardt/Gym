@@ -31,11 +31,20 @@ REQUEST_TIMEOUT_S = 600
 
 
 def application(
-    *, endpoint: str, token: str, lineage: str, digest: str, namespace: str = "blade", allow_stream: bool = False
+    *,
+    endpoint: str,
+    token: str,
+    lineage: str,
+    digest: str,
+    namespace: str = "blade",
+    allow_stream: bool = False,
+    expected_model: str = MODEL,
 ) -> web.Application:
     """Expose only this trial's exact model endpoint and dispatch identities."""
     if "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
         raise ValueError("Bridge target must be a guarded Gym capture endpoint")
+    if not isinstance(expected_model, str) or not expected_model:
+        raise ValueError("Bridge requires explicit model identity")
     if not namespace.isidentifier():
         raise ValueError("Invalid bridge call namespace")
     app = web.Application(client_max_size=MAX_BODY)
@@ -54,7 +63,7 @@ def application(
         payload = await incoming.json()
         if (
             not isinstance(payload, dict)
-            or payload.get("model") != MODEL
+            or payload.get("model") != expected_model
             or (payload.get("stream") and not allow_stream)
         ):
             raise web.HTTPBadRequest()
@@ -101,6 +110,7 @@ async def bridge(
     digest: str,
     namespace: str = "blade",
     allow_stream: bool = False,
+    expected_model: str = MODEL,
 ):
     """Clean up only this owned socket after active forwarding handlers settle."""
     runner = web.AppRunner(
@@ -111,6 +121,7 @@ async def bridge(
             digest=digest,
             namespace=namespace,
             allow_stream=allow_stream,
+            expected_model=expected_model,
         ),
         shutdown_timeout=610,
     )

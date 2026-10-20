@@ -115,7 +115,12 @@ async def run_phase(
     with TemporaryDirectory(prefix="blade-uds-", dir="/tmp") as socket_dir:
         token = secrets.token_urlsafe(32)
         async with bridge(
-            Path(socket_dir) / "model.sock", endpoint=endpoint, token=token, lineage=lineage, digest=digest
+            Path(socket_dir) / "model.sock",
+            endpoint=endpoint,
+            token=token,
+            lineage=lineage,
+            digest=digest,
+            expected_model=MODEL,
         ):
             sandbox = AsyncSandbox(
                 {"docker": {"create": {"network": "none"}}},

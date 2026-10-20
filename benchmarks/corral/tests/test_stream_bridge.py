@@ -111,3 +111,47 @@ async def test_stream_body_timeout_releases_and_removes_socket(monkeypatch):
                         await asyncio.wait_for(result.read(), 2)
             assert released.is_set()
         assert not path.exists()
+
+
+@pytest.mark.asyncio
+async def test_configured_model_scope_not_global_default(monkeypatch):
+    calls = []
+
+    class Reply:
+        status = 200
+
+        async def read(self):
+            return b"{}"
+
+        def release(self):
+            pass
+
+    async def send(*args, **kwargs):
+        calls.append(kwargs["json"]["model"])
+        return Reply()
+
+    monkeypatch.setattr(model_bridge, "request", send)
+    with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+        path = Path(directory) / "model.sock"
+        async with model_bridge.bridge(
+            path,
+            endpoint="http://native/ng-rollout/task/v1",
+            token="secret",
+            lineage="lineage",
+            digest="digest",
+            namespace="fixture",
+            expected_model="offline-fixture",
+        ):
+            async with aiohttp.ClientSession(connector=aiohttp.UnixConnector(path=str(path))) as client:
+                for model, status in [("offline-fixture", 200), (model_bridge.MODEL, 400)]:
+                    async with client.post(
+                        "http://local/chat/completions",
+                        json={"model": model},
+                        headers={
+                            "Authorization": "Bearer secret",
+                            "x-nemo-gym-logical-call-id": "fixture:lineage:0",
+                            "x-nemo-gym-call-config-sha256": "digest",
+                        },
+                    ) as result:
+                        assert result.status == status
+        assert calls == ["offline-fixture"]
