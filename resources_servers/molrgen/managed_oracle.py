@@ -51,9 +51,14 @@ def _publish(path: Path, value: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _file_hash(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
 def _data_hash(root: Path) -> str:
     manifest = "".join(
-        f"{p.relative_to(root)} {hashlib.sha256(p.read_bytes()).hexdigest()}\n"
+        f"{p.relative_to(root)} {_file_hash(p)}\n"
         for p in sorted(root.rglob("*"))
         if p.is_file() and not p.name.startswith("._")
     )
