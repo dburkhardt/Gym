@@ -7,6 +7,8 @@ packet enables it. Operational solver completion is never a scientific reward.
 """
 import asyncio
 import json
+import os
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -84,11 +86,14 @@ class Agent(SimpleResponsesAPIAgent):
                     with (output/'native-judge.log').open('xb') as log:
                         process=await asyncio.create_subprocess_exec(*self.config.judge_command,
                             self.config.source_root,str(task_path),str(output/'evaluation'),self.config.endpoint,
-                            stdout=log,stderr=asyncio.subprocess.STDOUT)
+                            stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
                         try:
                             code=await asyncio.wait_for(process.wait(),timeout=self.config.timeout_s)
                         except BaseException:
-                            process.kill()
+                            try:
+                                os.killpg(process.pid,signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
                             await process.wait()
                             raise
                     if code:raise RuntimeError(f'native judge exited {code}; raw log preserved')
