@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Pinned creator scorers; annotations stay in verifier metadata, never model input."""
 import argparse
+import ast
+from types import SimpleNamespace
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +15,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -34,7 +37,17 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'sino_us_drugqa':
+    if kind == 'moleculariq':
+        import pyarrow.parquet as pq
+        source = Path(os.environ['MOLECULARIQ_PARQUET'])
+        data = pq.read_table(source).to_pylist()
+        tree = ast.parse((repo/'lm_eval/tasks/moleculariq/task_processor.py').read_text())
+        prompt = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SYSTEM_PROMPT' for t in n.targets))
+        for x in data:
+            rows.append({'uuid':x['uid'],'stratum':x['task_type'],
+                         'responses_create_params':{'input':[{'role':'system','content':prompt},{'role':'user','content':x['question']}]},
+                         'verifier_metadata':x})
+    elif kind == 'sino_us_drugqa':
         upstream = module(repo/'evaluation/common.py')
         data = upstream.load_release(str(repo/'data/release/all.jsonl'))
         for x in data:
@@ -85,6 +98,14 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'moleculariq':
+        from moleculariq_core import evaluate_answer
+        extractor = module(repo/'lm_eval/tasks/moleculariq/extractors.py').extract_moleculariq_answer
+        tree = ast.parse((repo/'lm_eval/tasks/moleculariq/task_processor.py').read_text())
+        fn = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='moleculariq_bencheval')
+        ns = {'Dict':dict,'Any':object,'evaluate_answer':evaluate_answer,'processor':SimpleNamespace(extraction_function=extractor)}
+        exec(compile(ast.Module(body=[fn],type_ignores=[]),'pinned_creator_scorer','exec'),ns)
+        return ns['moleculariq_bencheval'](meta,answer)
     if kind == 'sino_us_drugqa':
         upstream = module(repo/'evaluation/common.py')
         parsed = upstream.parse_selected_answer(answer)
