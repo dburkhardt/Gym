@@ -1,6 +1,6 @@
 # biomaze pilot
 
-Experimental: requires real smoke and independent review. Set `CAMPAIGN_SAMPLE_JSONL` to the audited sample20.jsonl in outputs/broad-eval-campaign/qa-sources/biomaze. References are confined to verifier_metadata. Use Nemotron 3.5 Super VL for policy_model; there is no model grader for the metrics in this adapter.
+Experimental: requires real smoke and independent review. Set `CAMPAIGN_SAMPLE_JSONL` to the audited sample20.jsonl in outputs/broad-eval-campaign/qa-sources/biomaze. References are confined to verifier_metadata. Use Nemotron 3.5 Super VL for policy_model; the TrueFalse path is deterministic. Openended uses the pinned creator conclusion rubric with the same exact Nemotron model as judge (temperature 0, 4096 tokens); configure judge_model_server and judge_prompt_file. These are separate protocols.
 
 ```sh
 CAMPAIGN_SAMPLE_JSONL=/absolute/path/sample20.jsonl python benchmarks/biomaze/prepare.py
