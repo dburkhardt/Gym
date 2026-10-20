@@ -606,6 +606,39 @@ class TestCLISetupCommandRunCommand:
         assert env["PYTHONPATH"] == "/my path"
 
 
+def test_selected_checkout_wins_over_stale_editable_component(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    selected, stale = tmp_path / "selected", tmp_path / "stale"
+    package = selected / "nemo_gym"
+    package.mkdir(parents=True)
+    for name in ("__init__.py", "package_info.py"):
+        (package / name).write_bytes((PARENT_DIR / "nemo_gym" / name).read_bytes())
+    (selected / "pyproject.toml").write_text("")
+    for root, value in ((selected, "selected"), (stale, "stale")):
+        component = root / "resources_servers" / "source_identity_probe"
+        component.mkdir(parents=True)
+        (component / "app.py").write_text(f"IDENTITY = {value!r}\n")
+    monkeypatch.delenv("NEMO_GYM_EXTRA_ROOTS", raising=False)
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(selected), str(stale))))
+    monkeypatch.chdir(tmp_path)
+    code = "import nemo_gym; from resources_servers.source_identity_probe.app import IDENTITY; print(IDENTITY)"
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+    observed = []
+    for root in (None, selected):
+        process = run_command(
+            command,
+            selected / "resources_servers" / "source_identity_probe",
+            project_root=root,
+            global_config_dict={"uv_cache_dir": str(tmp_path / "cache")},
+            stdout_target=subprocess.PIPE,
+            stderr_target=subprocess.PIPE,
+        )
+        stdout, stderr = process.communicate(timeout=20)
+        assert process.returncode == 0, stderr.decode()
+        observed.append(stdout.decode().strip())
+    # Reproduce the old failure first, then prove the configured launch fixes actual imports.
+    assert observed == ["stale", "selected"]
+
+
 class TestGetNemoGymInstallFlags:
     """Test _get_nemo_gym_install_flags helper function."""
 
