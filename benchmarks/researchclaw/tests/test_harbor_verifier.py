@@ -136,3 +136,35 @@ async def test_real_controller_is_reaped_on_cancellation(tmp_path, monkeypatch, 
             if process.returncode is None:
                 process.kill()
             await process.wait()
+
+
+@pytest.mark.asyncio
+async def test_changed_reference_refused_before_controller(tmp_path, monkeypatch):
+    verifier, _ = setup(tmp_path, monkeypatch)
+    (tmp_path / "source/tasks/Life_002/target_study/checklist.json").write_text("[]")
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("must not dispatch with changed scientific reference")
+
+    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", forbidden)
+    with pytest.raises(ValueError, match="reference mismatch"):
+        await verifier.verify()
+
+
+@pytest.mark.asyncio
+async def test_submitted_symlink_refused_before_controller(tmp_path, monkeypatch):
+    verifier, submitted = setup(tmp_path, monkeypatch)
+    secret = tmp_path / "judge-only-reference.txt"
+    secret.write_text("not available to submitted report")
+    (submitted / "report.txt").symlink_to(secret)
+
+    async def download(remote, destination):
+        shutil.copytree(submitted, destination, symlinks=True)
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("must not dispatch with submitted symlink")
+
+    monkeypatch.setattr(verifier.environment, "download_dir", download)
+    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", forbidden)
+    with pytest.raises(ValueError, match="symlinks"):
+        await verifier.verify()
