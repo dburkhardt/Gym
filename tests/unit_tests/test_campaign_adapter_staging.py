@@ -12,6 +12,8 @@ from nemo_gym import dataset_staging
 
 
 ADAPTERS = [
+    "reactbench",
+    "microvqa_plusplus_demo",
     "qcbench",
     "fukuyama",
     "smolinstruct",
