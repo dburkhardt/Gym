@@ -1,0 +1,17 @@
+moosechem_agent:
+  responses_api_agents:
+    moosechem_native:
+      entrypoint: app.py
+      domain: agent
+      description: Pinned creator MOOSE-Chem full150corpus pipeline, Nemotron all-role judge variant
+      native_python: ${oc.env:MOOSE_PYTHON}
+      upstream_repo: ${oc.env:MOOSE_SOURCE}
+      output_root: ${oc.env:MOOSE_OUTPUT}
+      frozen_tasks: ${oc.env:MOOSE_FROZEN_TASKS}
+moosechem_environment:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: moosechem_agent
