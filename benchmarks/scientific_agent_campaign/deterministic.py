@@ -214,7 +214,7 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
         return {'reward':float(pred==meta['answer']),'valid':pred is not None,'predicted':pred,'metric':'creator_TBS_parse; aggregate_accuracy_uses_parsed_only'}
     if kind == 'mollangbench':
         upstream=module(repo/'scripts/evaluate_results.py'); predicted=upstream.canonicalize_smiles(upstream.parse_smiles_from_output(answer)); target=upstream.canonicalize_smiles(meta['smiles'])
-        return {'reward':float(predicted is not None and predicted==target),'valid':predicted is not None,'metric':'creator_canonical_smiles_accuracy'}
+        return {'reward':float(predicted is not None and predicted==target),'valid':predicted is not None,'nonempty_validity':predicted is not None and predicted!='','metric':'creator_canonical_smiles_accuracy'}
     if kind == 'fukuyama':
         upstream=module(repo/'eval/eval_infer_pathway.py');pred=upstream.extract_pathway_from_response(answer)
         if not pred:return {'reward':0.0,'valid':False,'parse_error':True}
