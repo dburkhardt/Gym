@@ -15,7 +15,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -37,7 +37,13 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'moleculariq':
+    if kind == 'fgbench':
+        data = [json.loads(x) for x in Path(os.environ['FGBENCH_JSONL']).read_text().splitlines()]
+        for i,x in enumerate(data):
+            rows.append({'uuid':str(i),'stratum':x['type'].rsplit('_',1)[0],
+                         'responses_create_params':{'input':[{'role':'user','content':x['question']}]},
+                         'verifier_metadata':x})
+    elif kind == 'moleculariq':
         import pyarrow.parquet as pq
         source = Path(os.environ['MOLECULARIQ_PARQUET'])
         data = pq.read_table(source).to_pylist()
@@ -98,6 +104,16 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'fgbench':
+        upstream = module(repo/'result_ananlysis/analysis.py')
+        kind = upstream.task_name(meta)
+        gt = upstream.scalar(str(meta['answer'])); parsed = upstream.extract_answer(answer,'standard')
+        if kind.endswith('bool'):
+            return {'reward':float(gt==parsed),'metric':'creator_boolean_accuracy','valid':parsed is not None,'parsed':parsed}
+        valid = bool(parsed and gt and isinstance(parsed,(int,float)) and isinstance(gt,(int,float)))
+        squared = (gt-parsed)**2 if valid else None
+        # Gym transport requires scalar reward; aggregate ONLY raw squared_error over valid rows into creator RMSE.
+        return {'reward':-squared if valid else 0.0,'metric':'negative_squared_error_transport_NOT_accuracy','creator_squared_error':squared,'creator_valid':valid,'parsed':parsed,'target':gt}
     if kind == 'moleculariq':
         from moleculariq_core import evaluate_answer
         extractor = module(repo/'lm_eval/tasks/moleculariq/extractors.py').extract_moleculariq_answer
