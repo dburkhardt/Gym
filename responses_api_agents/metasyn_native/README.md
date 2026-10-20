@@ -1,0 +1,11 @@
+# MetaSyn native RAG pilot
+
+This draft Gym agent runs the creator BM25 top-200 RAG baseline and complete creator evaluator. It preserves the native report and all metrics; Gym's scalar is specifically `inclusion_f1`, not an overall quality score. Generator and judges use `nvidia/nvidia/nemotron-3.5-super-vl`. This is a Super-judge variant, not a reproduction of the paper's MA-retriever or judge model.
+
+The campaign inspected source commit `THUIR/MetaSyn@3ee040f31b9a476c4efe4012d909aac6e7cce8d6`, dataset `THUIR/MetaSyn@c8fa07d89c44093d623f9a213c6bf070f40ab960`, and all140,585 corpus rows. The similarity encoder is `sentence-transformers/paraphrase-multilingual-mpnet-base-v2@4328cf26390c98c5e3c738b4460a05b95f4911f5`; this is a native nongenerative metric resource. Python3.11 creator dependencies additionally require compatible PyArrow17.0.0 and HTTPX0.27.2. The serving process uses Gym's own Python environment.
+
+Set `METASYN_PYTHON` to that isolated native interpreter, `METASYN_RUNNER` to `native_runner.py`, and `METASYN_DATA` to prepared campaign data. Preparation currently lives in the campaign artifacts (`prepare_metasyn_rag.py`) and must supply `full-reference-rows-5.jsonl`, `rag/<id>/{prompt.txt,candidates.json}`, and `similarity-model.json`. Labels remain evaluator-only; the model receives only the source-generated RAG prompt. The campaign's localhost49380 SSH bridge keeps its credential on the existing worker and restricts every request to exact Super. This transport is an explicit campaign dependency, not a general deployment default.
+
+Start `gym env start --config responses_api_agents/metasyn_native/configs/metasyn.yaml`, then collect prepared `RunRequest` JSONL with `gym eval run --no-serve --agent metasyn_agent --input ... --output ... --concurrency1`. Each row includes `verifier_metadata.review_id` and its exact preserved native prompt. Subprocess failure is a runtime failure, not a model score.
+
+Validation:31 creator contract tests; five actual native Gym tasks completed with25 successful provider response receipts covering generator and judges. Full scientific audit and portable preparation packaging remain pending. This is draft integration, not a claim of readiness for upstream merge.

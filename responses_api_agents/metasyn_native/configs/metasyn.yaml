@@ -1,0 +1,18 @@
+metasyn_agent:
+  responses_api_agents:
+    metasyn_native:
+      entrypoint: app.py
+      domain: agent
+      description: Native MetaSyn BM25 top200 RAG and complete creator evaluator, Super judge variant
+      native_python: ${oc.env:METASYN_PYTHON}
+      runner_script: ${oc.env:METASYN_RUNNER}
+      materialized_root: ${oc.env:METASYN_DATA}
+      output_root: ${oc.env:METASYN_OUTPUT}
+      reference_file: ${oc.env:METASYN_REFERENCES}
+metasyn_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: metasyn_agent
