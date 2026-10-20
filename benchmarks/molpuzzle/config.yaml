@@ -10,6 +10,7 @@ molpuzzle_resources:
       datasets:
       - name: molpuzzle
         type: benchmark
+        required_model_capabilities: [vision]
         jsonl_fpath: benchmarks/molpuzzle/data/benchmark.jsonl
         prepare_script: benchmarks/molpuzzle/prepare.py
         num_repeats: 1
