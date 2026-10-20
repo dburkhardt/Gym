@@ -10,6 +10,7 @@ qcbench_resources:
       - name: qcbench
         type: benchmark
         jsonl_fpath: ${oc.env:CAMPAIGN_SAMPLE_JSONL}
+        prepare_script: benchmarks/scientific_agent_campaign/use_sample.py
         num_repeats: 1
 qcbench_agent:
   responses_api_agents:
