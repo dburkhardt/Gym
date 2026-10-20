@@ -165,3 +165,112 @@ def test_publication_fsyncs_parent(tmp_path, monkeypatch):
     monkeypatch.setattr(dataset_staging.os, "fsync", tracked)
     stage_file(source, destination)
     assert kinds == [stat.S_IFREG, stat.S_IFDIR]
+
+
+def test_failed_directory_fsync_is_retried_on_cache_hit(tmp_path, monkeypatch):
+    source, destination = tmp_path / "cached", tmp_path / "final"
+    source.write_bytes(b"data")
+    sync = dataset_staging._sync_parent
+    calls = []
+
+    def fail_once(path):
+        calls.append(path)
+        if len(calls) == 1:
+            raise OSError("directory fsync failed")
+        sync(path)
+
+    monkeypatch.setattr(dataset_staging, "_sync_parent", fail_once)
+    with pytest.raises(OSError, match="directory fsync failed"):
+        stage_file(source, destination)
+    assert destination.read_bytes() == b"data"
+    stage_file(source, destination)
+    assert calls == [destination, destination]
+
+
+def _killed_copy_worker(source, destination, ready):
+    import time
+
+    def blocked(incoming, staged, length):
+        staged.write(incoming.read(37))
+        staged.flush()
+        ready.set()
+        while True:
+            time.sleep(1)
+
+    dataset_staging.shutil.copyfileobj = blocked
+    stage_file(source, destination)
+
+
+def test_sigkill_copy_resumes_and_preserves_final(tmp_path, monkeypatch):
+    import multiprocessing
+
+    source, destination = tmp_path / "cached", tmp_path / "final"
+    source.write_bytes(b"new data" * 10000)
+    destination.write_bytes(b"old complete data")
+    context = multiprocessing.get_context("fork")
+    ready = context.Event()
+    child = context.Process(target=_killed_copy_worker, args=(source, destination, ready))
+    child.start()
+    try:
+        assert ready.wait(10), "child never reached a flushed partial copy"
+        child.kill()
+        child.join(10)
+        assert not child.is_alive()
+        assert child.exitcode == -9
+        assert destination.read_bytes() == b"old complete data"
+        offsets = []
+        copy = dataset_staging.shutil.copyfileobj
+
+        def resumed(incoming, staged, length):
+            offsets.append(incoming.tell())
+            copy(incoming, staged, length)
+
+        monkeypatch.setattr(dataset_staging.shutil, "copyfileobj", resumed)
+        stage_file(source, destination)
+        assert offsets == [37]
+        assert destination.read_bytes() == source.read_bytes()
+    finally:
+        if child.is_alive():
+            child.kill()
+            child.join(10)
+
+
+def _concurrent_copy_worker(source, destination, start, calls):
+    copy = dataset_staging.shutil.copyfileobj
+
+    def tracked(incoming, staged, length):
+        with calls.open("ab") as stream:
+            stream.write(b"copy\n")
+        copy(incoming, staged, length)
+
+    dataset_staging.shutil.copyfileobj = tracked
+    if not start.wait(10):
+        raise TimeoutError("parent did not release concurrent writers")
+    stage_file(source, destination)
+
+
+def test_multiprocess_writers_publish_once(tmp_path):
+    import multiprocessing
+
+    source, destination, calls = tmp_path / "cached", tmp_path / "final", tmp_path / "calls"
+    source.write_bytes(b"data" * 100000)
+    context = multiprocessing.get_context("fork")
+    start = context.Event()
+    children = [
+        context.Process(target=_concurrent_copy_worker, args=(source, destination, start, calls)) for _ in range(4)
+    ]
+    try:
+        for child in children:
+            child.start()
+        start.set()
+        for child in children:
+            child.join(10)
+            assert not child.is_alive()
+            assert child.exitcode == 0
+        assert calls.read_bytes() == b"copy\n"
+        assert destination.read_bytes() == source.read_bytes()
+    finally:
+        for child in children:
+            if child.is_alive():
+                child.kill()
+                child.join(10)

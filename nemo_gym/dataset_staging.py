@@ -33,6 +33,14 @@ def _regular_fd(path: Path, flags: int) -> int:
     return fd
 
 
+def _sync_parent(destination: Path) -> None:
+    directory_fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def stage_file(source: Path, destination: Path, *, expected_sha256: str | None = None) -> Path:
     """Atomically publish a cached file after checking its SHA-256 digest.
 
@@ -61,6 +69,8 @@ def stage_file(source: Path, destination: Path, *, expected_sha256: str | None =
         if destination.is_symlink():
             raise ValueError(f"Destination must not be a symlink: {destination}")
         if destination.exists() and _hash(destination) == digest:
+            # A prior publication may have failed after rename but before directory fsync.
+            _sync_parent(destination)
             return destination
         with source.open("rb") as incoming, os.fdopen(_regular_fd(partial, os.O_CREAT | os.O_RDWR), "rb+") as staged:
             while block := staged.read(_CHUNK_SIZE):
@@ -84,9 +94,5 @@ def stage_file(source: Path, destination: Path, *, expected_sha256: str | None =
             if destination.is_symlink():
                 raise ValueError(f"Destination became a symlink: {destination}")
             os.replace(partial, destination)
-            directory_fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            _sync_parent(destination)
     return destination
