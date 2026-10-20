@@ -37,6 +37,26 @@ duplicating it, so the benchmark split comes from the same tested path — inclu
 the manifest check that refuses to write a short corpus. `--limit` takes a
 positive integer and produces a smoke subset.
 
+### Frozen campaign sample (opt-in)
+
+Set `FUKUYAMA_FROZEN_SAMPLE=/absolute/path/to/fukuyama-5.jsonl` when invoking
+`prepare.py` to stage the existing frozen rows instead of acquiring the full B/C
+split. This can include set A and is a separately scoped acceptance sample, not
+the published B/C benchmark. `--limit` is rejected for frozen samples.
+
+Preparation preserves every source field and the exact solver prompt, exposes
+`uuid` as `task_id`, and adds native verifier aliases: `pathway` → `gt_pathway`,
+`uuid` → `case_id`, `stratum` → `case_set`, and `n_gt_steps=len(pathway)`.
+`lenient=True` matches the native preparation default and upstream subset
+matching. Conflicting existing native metadata, invalid checkpoint indices and
+duplicate identities fail before publication. The sibling `.source.json` binds
+the **original frozen source bytes** and final output SHA-256, with the metadata
+normalization named explicitly. Shared Gym staging handles publication.
+
+The default full B/C path and `num_repeats: 8` are unchanged. A frozen five-row
+run with this config therefore produces 40 rollouts, not five; any single-draw
+acceptance run must explicitly record its separate repeat override.
+
 ## Running
 
 ```bash
