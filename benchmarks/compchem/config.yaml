@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      entrypoint: app.py
+      domain: agent
+      description: CompChemBench pinned native creator tasks; raw verifier results
+        require scientific qualification.
+      concurrency: 1
+      harbor_datasets:
+        compchem:
+          local_dataset_path: benchmarks/compchem/data/tasks
+          workdir: /app
+      harbor_agent_name: null
+      harbor_agent_import_path: responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym
+      harbor_agent_kwargs:
+        interleaved_thinking: true
+        enable_summarize: false
+        collect_rollout_details: true
+        trajectory_config:
+          raw_content: true
+        model_info:
+          max_input_tokens: 49152
+          max_output_tokens: 49152
+          input_cost_per_token: 0.0
+          output_cost_per_token: 0.0
+        parser_name: json
+        responses_create_params:
+          input: []
+          temperature: 0.0
+          max_output_tokens: 16384
+      harbor_environment_type: docker
+      harbor_environment_import_path: null
+      harbor_environment_kwargs: {}
+      harbor_no_delete: false
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      harbor_agent_override_timeout: null
+      harbor_agent_max_timeout: null
+      harbor_verifier_override_timeout: null
+      harbor_verifier_max_timeout: null
+      harbor_timeout_multiplier: null
+      harbor_jobs_dir: responses_api_agents/harbor_agent/jobs
+      datasets:
+      - name: compchem
+        type: benchmark
+        jsonl_fpath: benchmarks/compchem/data/benchmark.jsonl
+        prepare_script: benchmarks/compchem/prepare.py
+        num_repeats: 1
+harbor_agent_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: harbor_agent
