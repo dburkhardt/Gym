@@ -173,6 +173,10 @@ async def run_harbor_job(job_config_dict: dict) -> str:
     from harbor.job import Job
     from harbor.models.job.config import JobConfig
 
+    if job_config_dict.get("source_jobs"):
+        from responses_api_agents.harbor_agent.regrade_compat import install_regrade_compat
+
+        install_regrade_compat()
     config = JobConfig(**job_config_dict)
     job = await Job.create(config)
     # The reviewed Harbor pin resolves/cache-downloads tasks in create(). Inspect
