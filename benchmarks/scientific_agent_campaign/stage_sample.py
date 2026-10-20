@@ -48,7 +48,9 @@ def prepare_sample(
         raise ValueError("Duplicate frozen sample IDs")
     output = ("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n").encode()
     output_hash = hashlib.sha256(output).hexdigest()
-    destination = destination.resolve()
+    # Resolve the trusted parent without following the final publication path.
+    # stage_file must see and reject a destination symlink itself.
+    destination = destination.parent.resolve() / destination.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     receipt = {"source_sha256": source_hash, "output_sha256": output_hash, "task_ids": ids, "rows": len(rows)}
     with tempfile.TemporaryDirectory(prefix="gym-frozen-sample-") as temporary:

@@ -57,3 +57,19 @@ def test_explicit_metadata_identity_preserves_source(tmp_path):
     staged = json.loads(output.read_text())
     assert staged.pop("task_id") == "246210390723"
     assert staged == row
+
+
+def test_destination_symlink_cannot_redirect_publication(tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(
+        json.dumps({"uuid": "u", "responses_create_params": {"input": "question"}, "verifier_metadata": {}}) + "\n"
+    )
+    unrelated = tmp_path / "unrelated.jsonl"
+    unrelated.write_text("preserve unrelated artifact")
+    destination = tmp_path / "output.jsonl"
+    destination.symlink_to(unrelated)
+    with pytest.raises(ValueError, match="symlink"):
+        prepare_sample(destination, source=source)
+    assert destination.is_symlink()
+    assert unrelated.read_text() == "preserve unrelated artifact"
+    assert not destination.with_suffix(".source.json").exists()
