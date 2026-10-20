@@ -16,10 +16,12 @@ from nemo_gym.base_resources_server import (
     SimpleResourcesServer,
 )
 from nemo_gym.server_utils import request
+from resources_servers.molrgen.managed_oracle import ManagedOracleConfig, managed_oracle
 
 
 class Config(BaseResourcesServerConfig):
-    creator_url: str
+    creator_url: str | None = None
+    managed_oracle: ManagedOracleConfig | None = None
     creator_timeout_seconds: float = 300.0
     docking_oracle: str = "pyscreener-vina"
     REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
@@ -35,13 +37,23 @@ class Response(BaseVerifyResponse, Request):
 
 class Verifier:
     async def verify(self, body: Request) -> Response:
+        if getattr(self.config, "managed_oracle", None) is not None:
+            async with managed_oracle(self.config.managed_oracle) as (endpoint, artifacts):
+                result = await self._verify(body, endpoint)
+                result.diagnostics["oracle_artifacts"] = str(artifacts)
+                return result
+        if not self.config.creator_url:
+            raise ValueError("Configure managed_oracle or creator_url")
+        return await self._verify(body, self.config.creator_url)
+
+    async def _verify(self, body: Request, creator_url: str) -> Response:
         payload = {"query": [body.response.output_text or ""], "metadata": [body.verifier_metadata["metadata"]]}
         try:
             # Docking is expensive and may continue after a dropped connection.
             # One physical request; reconcile the creator before any new attempt.
             received = await request(
                 "POST",
-                self.config.creator_url.rstrip("/") + "/get_reward",
+                creator_url.rstrip("/") + "/get_reward",
                 json=payload,
                 timeout=ClientTimeout(total=self.config.creator_timeout_seconds),
                 _max_num_tries=1,

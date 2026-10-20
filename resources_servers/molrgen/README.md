@@ -9,3 +9,32 @@ The CPU PyScreener/Vina route is a creator-supported **oracle variant**, not equ
 Per-completion reward is not the paper's diversity-aware top-k result. Repeated generation, fingerprint clustering and creator aggregate replay remain separate required steps for that metric. Preserve all molecular properties, reward scaling, docking exhaustiveness and target settings. Empty/failed scoring must remain visible; explicit creator errors are masked and recorded with zero only as serialization placeholder. Do not silently omit failed attempts from reported denominators.
 
 The creator's published Docker image `fransou/molgendata:latest` could not be pulled (access denied/not found). A CPU build from the pinned source is being staged separately; dependency and runtime validation remain open. No model or docking runs are claimed by this commit.
+
+## Managed CPU oracle
+
+Set `managed_oracle` instead of `creator_url` to run a separate task-owned Docker
+sandbox for each verification. Required fields are `source_dir`, `source_sha256`,
+`data_dir`, and `artifact_dir`. The source digest is SHA-256 of the sorted lines
+`relative_python_path sha256_of_file\n`, excluding Apple `._` files. The preserved
+campaign instrumented source digest is
+`8df235f5ed9187868d3dccbc8ccbffb8f66e3e8447af4a2a964488e1c54758aa`.
+
+The image is pinned by immutable ID in `managed_oracle.py`. Each invocation uses
+2 CPUs, 3 GiB RAM, 256 MiB shared memory, a dynamically published localhost port,
+and Gym ownership labels. Keep evaluation concurrency at one on an 8 GiB worker.
+Source and data mounts are read-only. Provision the creator dataset separately;
+this wrapper does not download or certify all receptor files. CPU Vina1.1.2,
+boxed parsing, property reward, rescaling, and exhaustiveness 8 match the preserved
+native CPU service. This is not the published AutoDock-GPU protocol.
+
+The artifact directory retains the service script, source hash, serialized sandbox
+handle, native receipts, raw oracle values, logs, and docking scratch files.
+Success, HTTP timeout, and cancellation all stop the exact owned sandbox, including
+Ray/Vina children. A 900-second Docker TTL bounds orphan lifetime after controller
+crash; cleanup errors propagate and must be reconciled before retrying. The HTTP
+request is never automatically resent. A failed oracle is masked, not scored as a
+scientific zero. Per-completion reward is still not the diversity-aware top-k metric.
+
+`gym eval plan --benchmark molrgen` now stages frozen sample rows via the shared
+campaign preparation interface, preserving prompts and metadata and recording the
+source hash. Supply `CAMPAIGN_SAMPLE_JSONL` and optionally `CAMPAIGN_SAMPLE_SHA256`.
