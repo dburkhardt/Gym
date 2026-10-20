@@ -393,6 +393,37 @@ class TestBenchmarkConfigName:
 
 
 class TestBenchmarkConfigStrictParsing:
+    @pytest.mark.parametrize("strict", [True, False])
+    def test_config_inspection_does_not_probe_ports(self, monkeypatch, strict) -> None:
+        from nemo_gym.benchmarks import BenchmarkConfig
+
+        def reject_probe(**kwargs):
+            raise AssertionError("Read-only benchmark inspection must not probe ports")
+
+        monkeypatch.setattr(nemo_gym.global_config, "_find_open_port_using_range", reject_probe)
+        config = OmegaConf.create(
+            {
+                "example_agent": {
+                    "responses_api_agents": {
+                        "simple_agent": {
+                            "datasets": [
+                                {
+                                    "name": "example",
+                                    "type": "benchmark",
+                                    "jsonl_fpath": "data/example.jsonl",
+                                    "num_repeats": 1,
+                                    "prepare_script": "prepare.py",
+                                }
+                            ]
+                        }
+                    }
+                },
+            }
+        )
+        benchmark = BenchmarkConfig.from_initial_config_dict(Path("example.yaml"), config, strict=strict)
+        assert benchmark.name == "example"
+        assert benchmark.agent_name == "example_agent"
+
     def test_strict_is_the_default_and_does_not_tolerate_unresolved_values(self) -> None:
         # The tolerance is listing-only: `from_initial_config_dict` defaults to strict, so other workflows
         # still get a hard error on an unresolved `${...}` rather than a silent placeholder.

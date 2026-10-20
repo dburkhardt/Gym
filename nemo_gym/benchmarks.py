@@ -69,8 +69,13 @@ class BenchmarkConfig(BaseModel):
         # `strict=True` (default): unset `???`/`${...}` values are errors, as non-listing workflows expect.
         # `strict=False`: listing-only tolerance for those runtime-only values (see the helper's docstring).
         if strict:
-            global_config_dict = GlobalConfigDictParser().parse_no_environment(
-                initial_global_config_dict=initial_config_dict
+            global_config_dict = GlobalConfigDictParser().parse(
+                GlobalConfigDictParserConfig(
+                    initial_global_config_dict=initial_config_dict,
+                    skip_load_from_cli=True,
+                    skip_load_from_dotenv=True,
+                    offline=True,
+                )
             )
         else:
             global_config_dict = _parse_no_environment_tolerating_unset_values(initial_config_dict)
