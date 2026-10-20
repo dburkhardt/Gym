@@ -54,10 +54,20 @@ async def database_clone(*, snapshot: Path, expected_sha256: str, socket_dir: Pa
         )
         if restore.return_code != 0:
             raise RuntimeError(f"Corral clone restore failed: {restore.stderr}")
-        sql = """CREATE ROLE corral_task LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
+        sql = """DO $$ BEGIN
+IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog','information_schema')) THEN
+RAISE EXCEPTION 'Unexpected creator SECURITY DEFINER function'; END IF;
+IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname NOT LIKE 'pg_%'
+AND nspname NOT IN ('public','information_schema')) THEN
+RAISE EXCEPTION 'Unexpected creator custom schema'; END IF;
+END $$;
+CREATE ROLE corral_task LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 REVOKE ALL ON DATABASE reactions_production_db FROM PUBLIC;
 GRANT CONNECT ON DATABASE reactions_production_db TO corral_task;
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO corral_task;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO corral_task;
 ALTER ROLE corral_task SET default_transaction_read_only = on;
@@ -66,11 +76,21 @@ ALTER ROLE corral_task SET default_transaction_read_only = on;
             "set -e; runuser -u postgres -- psql -h /db-socket -v ON_ERROR_STOP=1 -d reactions_production_db <<'SQL'\n"
             + sql
             + "SQL\n"
-            + "printf 'local all postgres peer\\nlocal reactions_production_db corral_task trust\\nlocal all all reject\\n' > /tmp/owned-pg/pg_hba.conf\n"
+            + "printf 'local all postgres reject\\nlocal reactions_production_db corral_task trust\\nlocal all all reject\\n' > /tmp/owned-pg/pg_hba.conf\n"
             + "runuser -u postgres -- /usr/lib/postgresql/17/bin/pg_ctl -D /tmp/owned-pg reload",
             timeout_s=30,
             preserve_background_services=True,
         )
         if auth.return_code != 0:
             raise RuntimeError(f"Corral restricted role setup failed: {auth.stderr}")
+        # Reload acknowledgement is asynchronous; never expose the socket while
+        # a peer-authenticated administrator connection still succeeds.
+        boundary = await sandbox.exec(
+            "sleep 1; if runuser -u postgres -- psql -h /db-socket -U postgres -d reactions_production_db -c 'SELECT 1'; then exit 91; fi; "
+            "psql -h /db-socket -U corral_task -d reactions_production_db -v ON_ERROR_STOP=1 -Atc 'SELECT count(*) FROM reactions'",
+            timeout_s=15,
+            preserve_background_services=True,
+        )
+        if boundary.return_code != 0 or (boundary.stdout or "").strip() != "427683":
+            raise RuntimeError("Corral restricted socket boundary or snapshot cardinality check failed")
         yield sandbox

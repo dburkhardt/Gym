@@ -54,3 +54,36 @@ async def test_restore_failure_settles_owned_cleanup(tmp_path, monkeypatch):
             pytest.fail("yielded")
     assert cleanup == [True]
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_socket_published_only_after_admin_rejection_and_cardinality(tmp_path, monkeypatch):
+    snapshot = tmp_path / "snapshot"
+    snapshot.write_bytes(b"fixture")
+    commands = []
+
+    class Fake:
+        def __init__(self, *args):
+            pass
+
+        async def exec(self, command, **kwargs):
+            commands.append(command)
+            return SimpleNamespace(return_code=0, stderr="", stdout="427683\n" if len(commands) == 4 else "")
+
+    @asynccontextmanager
+    async def owned(*args):
+        yield
+
+    monkeypatch.setattr(database, "AsyncSandbox", Fake)
+    monkeypatch.setattr(database, "_owned_sandbox", owned)
+    async with database.database_clone(
+        snapshot=snapshot,
+        expected_sha256=hashlib.sha256(b"fixture").hexdigest(),
+        socket_dir=tmp_path / "socket",
+        receipt=tmp_path / "receipt",
+    ):
+        assert len(commands) == 4
+        assert "local all postgres reject" in commands[2]
+        assert "REVOKE ALL ON ALL TABLES" in commands[2]
+        assert "Unexpected creator SECURITY DEFINER" in commands[2]
+        assert "then exit 91" in commands[3]
