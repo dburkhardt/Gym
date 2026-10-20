@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier delegating to pinned creator scoring in isolated processes."""
 
-import asyncio
 import hashlib
 import json
 import os
@@ -20,8 +19,8 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
-from nemo_gym.sandbox.providers.base import SandboxSpec
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
+from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
 
 class Config(BaseResourcesServerConfig):
@@ -48,9 +47,8 @@ async def run_score(*, benchmark: str, upstream_repo: Path, task: dict, answer: 
     resource server require an external process supervisor.
     """
     provider = LocalProvider(concurrency=2)
-    handle = await provider.create(SandboxSpec())
-    workspace = handle.raw["workspace"]
-    try:
+    async with scoring_workspace(provider) as handle:
+        workspace = handle.raw["workspace"]
         request_path = workspace / "request.json"
         result_path = workspace / "result.json"
         request_path.write_text(
@@ -75,35 +73,6 @@ async def run_score(*, benchmark: str, upstream_repo: Path, task: dict, answer: 
         if not isinstance(details, dict):
             raise TypeError("Creator scorer returned a non-object result")
         return details
-    finally:
-        original = sys.exception()
-        cleanup = asyncio.create_task(provider.close(handle))
-        interrupted = None
-        while True:
-            try:
-                await asyncio.shield(cleanup)
-                break
-            except asyncio.CancelledError as exc:
-                interrupted = exc
-                if cleanup.done():
-                    break
-            except Exception as exc:
-                if original is None:
-                    raise
-                original.add_note(f"Creator scorer workspace cleanup failed: {exc}")
-                break
-        # A cancellation can arrive at the same instant cleanup finishes.
-        # Retrieve its exception even when shield raised cancellation first.
-        if cleanup.done() and not cleanup.cancelled():
-            failure = cleanup.exception()
-            if failure is not None and original is None:
-                raise failure
-            if failure is not None and original is not None:
-                note = f"Creator scorer workspace cleanup failed: {failure}"
-                if note not in getattr(original, "__notes__", []):
-                    original.add_note(note)
-        if interrupted is not None and original is None:
-            raise interrupted
 
 
 class CreatorResourcesServer(SimpleResourcesServer):

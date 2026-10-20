@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
+import json
+import os
+import shlex
+import sys
+from pathlib import Path
 from typing import ClassVar
 
 from nemo_gym.base_resources_server import (
@@ -11,8 +16,8 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
-import json
-import asyncio
+from nemo_gym.sandbox.providers.local.provider import LocalProvider
+from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
 
 class Config(BaseResourcesServerConfig):
@@ -29,30 +34,35 @@ class Response(BaseVerifyResponse, Request):
 
 class Verifier:
     async def verify(self, body: Request) -> Response:
-        import asyncio
-
         try:
-            import json
-            import sys
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "resources_servers.ether0_benchmark.score_worker",
-                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            payload = json.dumps({"text": body.response.output_text or "", **body.verifier_metadata})
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(payload.encode()), timeout=120)
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
-                raise RuntimeError("Creator scorer subprocess exceeded 120 seconds")
-            if process.returncode:
-                raise RuntimeError(f"Creator scorer subprocess exited {process.returncode}: " + stderr.decode(errors="replace")[-2000:])
-            records = [line[len(b"ETHER0_RESULT_JSON:"):] for line in stdout.splitlines()
-                       if line.startswith(b"ETHER0_RESULT_JSON:")]
-            if len(records) != 1:
-                raise ValueError("Creator worker must return exactly one framed JSON record")
-            result = json.loads(records[0])
+            provider = LocalProvider(concurrency=2)
+            async with scoring_workspace(provider) as handle:
+                request = handle.raw["workspace"] / "request.json"
+                request.write_text(json.dumps({"text": body.response.output_text or "", **body.verifier_metadata}))
+                source_root = Path(__file__).resolve().parents[2]
+                worker = Path(__file__).with_name("score_worker.py")
+                command = shlex.join([sys.executable, str(worker.resolve())]) + " < " + shlex.quote(str(request))
+                runtime = await provider.exec(
+                    handle,
+                    command,
+                    timeout_s=120,
+                    env={
+                        "PYTHONPATH": os.pathsep.join([str(source_root), *sys.path]),
+                        "NEMO_GYM_EXTRA_ROOTS": str(source_root),
+                    },
+                )
+                if runtime.error_type == "timeout":
+                    raise RuntimeError("Creator scorer subprocess exceeded 120 seconds")
+                if runtime.return_code:
+                    raise RuntimeError(f"Creator scorer subprocess exited {runtime.return_code}: {runtime.stderr}")
+                records = [
+                    line.removeprefix("ETHER0_RESULT_JSON:")
+                    for line in (runtime.stdout or "").splitlines()
+                    if line.startswith("ETHER0_RESULT_JSON:")
+                ]
+                if len(records) != 1:
+                    raise ValueError("Creator worker must return exactly one framed JSON record")
+                result = json.loads(records[0])
         except (RuntimeError, OSError, ValueError) as exc:
             return Response(
                 **body.model_dump(),
