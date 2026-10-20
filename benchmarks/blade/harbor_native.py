@@ -16,7 +16,9 @@ from harbor.models.agent.context import AgentContext
 from harbor.models.verifier.result import VerifierResult
 from harbor.verifier.base import BaseVerifier
 
+from benchmarks.blade.prepare import TOKENIZER_FILENAME, TOKENIZER_SHA256
 from benchmarks.blade.scoped_bridge import bridge
+from nemo_gym.dataset_staging import stage_file
 from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
@@ -76,6 +78,9 @@ async def run_phase(
     ):
         raise ValueError("Native BLADE requires guarded Gym model service")
     validate_staged(root)
+    tokenizer = root / "runtime/tiktoken" / TOKENIZER_FILENAME
+    if not tokenizer.is_file() or hashlib.sha256(tokenizer.read_bytes()).hexdigest() != TOKENIZER_SHA256:
+        raise ValueError("Pinned BLADE tokenizer asset missing or changed; rerun native prepare")
     output.mkdir(parents=True, exist_ok=False)
     lineage = uuid.uuid4().hex
     controller = Path(__file__).parent.resolve()
@@ -103,15 +108,24 @@ async def run_phase(
         f"{controller}/llm-config.yaml:/controller/llm-config.yaml:ro",
         f"{controller}/frozen_sources.json:/controller/frozen_sources.json:ro",
         f"{output.resolve()}:/output",
+        f"{tokenizer.parent.resolve()}:/tokenizer:ro",
     ]
     if phase == "scorer":
         if submitted is None or not submitted.is_dir() or any(p.is_symlink() for p in submitted.rglob("*")):
             raise ValueError("Native submitted solver artifact directory missing or contains symlinks")
         volumes += [f"{submitted.resolve()}:/submitted:ro"]
-        for name in ("annotations.csv", "mcq_dataset.json"):
-            path = root / "references/blade_bench/datasets" / dataset / name
+        # The native scorer writes annotations.pkl alongside the dataset. Give it
+        # a private dataset view with existing mountpoints, never the solver view.
+        dataset_view = output / "scorer-dataset"
+        for name in ("data.csv", "info.json", "annotations.csv", "mcq_dataset.json"):
+            role = "solver" if name in ("data.csv", "info.json") else "references"
+            path = root / role / "blade_bench/datasets" / dataset / name
             if path.exists():
-                volumes.append(f"{path.resolve()}:/opt/blade/blade_bench/datasets/{dataset}/{name}:ro")
+                stage_file(path, dataset_view / name, expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        volumes.append(f"{dataset_view.resolve()}:/opt/blade/blade_bench/datasets/{dataset}")
+        for path in dataset_view.iterdir():
+            if not path.name.startswith("."):
+                volumes.append(f"{path.resolve()}:/opt/blade/blade_bench/datasets/{dataset}/{path.name}:ro")
     with TemporaryDirectory(prefix="blade-uds-", dir="/tmp") as socket_dir:
         token = secrets.token_urlsafe(32)
         async with bridge(
@@ -133,6 +147,7 @@ async def run_phase(
                     metadata={"workload": "gym-blade-" + phase, "run": lineage},
                     env={
                         "PYTHONPATH": "/opt/blade",
+                        "TIKTOKEN_CACHE_DIR": "/tokenizer",
                         "OPENAI_API_KEY": "gym-internal-placeholder",
                         "LLM_CONFIG_PATH": "/controller/llm-config.yaml",
                         "BLADE_ENDPOINT": "http://gym-internal/ng-rollout/task/v1",
@@ -186,6 +201,9 @@ class BladeNativeAgent(BaseAgent):
         )
         if not (result / "multirun_analyses.json").is_file():
             raise RuntimeError("Native BLADE analysis output missing")
+        analyses = json.loads((result / "multirun_analyses.json").read_text()).get("analyses", {})
+        if not analyses or any(not isinstance(value, dict) for value in analyses.values()):
+            raise RuntimeError("Native BLADE returned failure status instead of an analysis; no scientific score")
         await environment.upload_dir(result, "/workspace/solver")
 
 

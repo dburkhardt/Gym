@@ -124,6 +124,12 @@ async def test_phase_sandbox_scope_has_no_ip_network_or_solver_references(tmp_pa
         pytest.skip("Pinned BLADE source unavailable")
     root = tmp_path / "staged"
     stage(source, root)
+    from benchmarks.blade.prepare import stage_tokenizer
+
+    tokenizer = Path("../../outputs/broad-eval-campaign/foundation/blade-native/tokenizer/cl100k_base.tiktoken")
+    if not tokenizer.exists():
+        pytest.skip("Pinned tokenizer fixture unavailable")
+    stage_tokenizer(tokenizer, root)
     monkeypatch.setattr(harbor_native, "get_global_config_dict", lambda: {"provider_dispatch_guard": True})
     instances = []
 
@@ -161,7 +167,7 @@ async def test_phase_sandbox_scope_has_no_ip_network_or_solver_references(tmp_pa
         volumes = instance.spec.provider_options["volumes"]
         assert not any("/var/run/docker" in volume for volume in volumes)
         assert not any(volume.endswith(":/controller:ro") for volume in volumes)
-        references = [volume for volume in volumes if "/references/" in volume]
+        references = [volume for volume in volumes if "annotations.csv" in volume]
         assert bool(references) == (phase == "scorer")
         assert not any("annotations.csv" in volume for volume in volumes) if phase == "solver" else True
         assert any(volume.endswith(":/model-socket:ro") for volume in volumes)

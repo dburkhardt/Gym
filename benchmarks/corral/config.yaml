@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+provider_dispatch_guard: true
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      entrypoint: app.py
+      domain: agent
+      description: Pinned Corral native persistent-state solver and separate creator scorer
+      concurrency: 1
+      harbor_datasets:
+        corral:
+          local_dataset_path: benchmarks/corral/data/tasks
+          workdir: /workspace
+      harbor_agent_name: null
+      harbor_agent_import_path: benchmarks.corral.harbor_native:CorralNativeAgent
+      harbor_agent_kwargs:
+        database_snapshot: ${oc.env:CORRAL_DATABASE_SNAPSHOT}
+      harbor_verifier_import_path: benchmarks.corral.harbor_native:CorralNativeVerifier
+      harbor_verifier_kwargs:
+        database_snapshot: ${oc.env:CORRAL_DATABASE_SNAPSHOT}
+      harbor_environment_type: docker
+      harbor_environment_import_path: null
+      harbor_environment_kwargs:
+        extra_docker_compose:
+        - responses_api_agents/harbor_agent/configs/egress-sidecar-limits.yaml
+      harbor_no_delete: false
+      harbor_jobs_dir: responses_api_agents/harbor_agent/jobs
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      datasets:
+      - name: corral
+        type: benchmark
+        jsonl_fpath: benchmarks/corral/data/benchmark.jsonl
+        prepare_script: benchmarks/corral/prepare.py
+        num_repeats: 1
+harbor_agent_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: harbor_agent

@@ -14,6 +14,16 @@ from nemo_gym.dataset_staging import stage_file
 PUBLIC_DATA = {"data.csv", "info.json"}
 
 
+TOKENIZER_URL = "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
+TOKENIZER_SHA256 = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
+TOKENIZER_FILENAME = hashlib.sha1(TOKENIZER_URL.encode()).hexdigest()
+
+
+def stage_tokenizer(source: Path, destination: Path) -> Path:
+    """Pin the creator's tokenizer asset for network-disabled native execution."""
+    return stage_file(source, destination / "runtime/tiktoken" / TOKENIZER_FILENAME, expected_sha256=TOKENIZER_SHA256)
+
+
 def stage(source: Path, destination: Path) -> Path:
     """Stage the existing three-task selection; never invent a scalar scientific reward."""
     source, destination = source.resolve(), destination.resolve()
@@ -121,7 +131,19 @@ def stage(source: Path, destination: Path) -> Path:
 
 def prepare() -> Path:
     """Native preparation entrypoint; source is the pinned public BLADE checkout."""
-    return stage(Path(os.environ["BLADE_SOURCE"]), Path(__file__).with_name("data"))
+    destination = Path(__file__).with_name("data")
+    result = stage(Path(os.environ["BLADE_SOURCE"]), destination)
+    if os.environ.get("BLADE_TOKENIZER_ASSET"):
+        stage_tokenizer(Path(os.environ["BLADE_TOKENIZER_ASSET"]), destination)
+    else:
+        import urllib.request
+
+        with TemporaryDirectory() as directory:
+            asset = Path(directory) / "cl100k_base.tiktoken"
+            with urllib.request.urlopen(TOKENIZER_URL, timeout=30) as response:
+                asset.write_bytes(response.read(4 * 1024 * 1024))
+            stage_tokenizer(asset, destination)
+    return result
 
 
 if __name__ == "__main__":
