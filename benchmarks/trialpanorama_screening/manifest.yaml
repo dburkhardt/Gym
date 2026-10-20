@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: trialpanorama_screening
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: custom-gym-verifier
+domain: knowledge
+description: trialpanorama_screening experimental pilot
+modality: text
+licensing: Apache-2.0
+authors:
+- dburkhardt
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: trialpanorama_screening
+agent_server: simple_agent
+model_server: policy_model
+datasets:
+- name: trialpanorama_screening
+  type: benchmark
+  jsonl_fpath: resources_servers/trialpanorama_screening/data/benchmark.jsonl
+  prepare_script: benchmarks/trialpanorama_screening/prepare.py
+  num_repeats: 1
+canonical_split: evaluation
+prompt_source: prepared
+lifecycle: active

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+trialpanorama_screening:
+  resources_servers:
+    trialpanorama_screening:
+      entrypoint: app.py
+      domain: knowledge
+      verified: false
+trialpanorama_screening_simple_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      max_steps: 1
+      resources_server:
+        type: resources_servers
+        name: trialpanorama_screening
+      model_server:
+        type: responses_api_models
+        name: policy_model
+trialpanorama_screening_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: trialpanorama_screening_simple_agent
