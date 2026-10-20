@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+moljson_resources:
+  resources_servers:
+    campaign_creator_scoring:
+      entrypoint: app.py
+      domain: knowledge
+      verified: false
+      benchmark: moljson
+      upstream_repo: ${oc.env:CAMPAIGN_UPSTREAM_REPO}
+      datasets:
+      - name: moljson
+        type: benchmark
+        jsonl_fpath: benchmarks/moljson/data/benchmark.jsonl
+        prepare_script: benchmarks/moljson/prepare.py
+        num_repeats: 1
+moljson_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      max_steps: 1
+      resources_server:
+        type: resources_servers
+        name: moljson_resources
+      model_server:
+        type: responses_api_models
+        name: policy_model
+moljson_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: moljson_agent

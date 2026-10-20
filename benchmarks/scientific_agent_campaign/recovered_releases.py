@@ -6,7 +6,15 @@ def genome_source(repo):
     tree=ast.parse((repo/'run.py').read_text());prompt=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SIMPLE_SYSTEM_PROMPT' for t in n.targets));method=next(m for n in tree.body if isinstance(n,ast.ClassDef) for m in n.body if isinstance(m,ast.FunctionDef) and m.name=='extract_final_option');ns={'re':re};exec(compile(ast.Module(body=[method],type_ignores=[]),'creator_genomeqa','exec'),ns);return prompt,ns['extract_final_option']
 def prepare_rows(kind,repo):
     rows=[]
-    if kind=='hiscibench':
+    if kind=='moljson':
+        import gzip
+        tree=ast.parse((repo/'submission_scripts/submit_openai_tasks.py').read_text());node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='schema_for_format')
+        ns={'Any':object};exec(compile(ast.Module(body=[node],type_ignores=[]),'creator_schema','exec'),ns)
+        name,schema=ns['schema_for_format']('integer',{})
+        for line in gzip.open(repo/'questions/shortest_path_questions.jsonl.gz','rt'):
+            r=json.loads(line)
+            rows.append({'uuid':r['uuid'],'stratum':r['input_format'],'responses_create_params':{'input':[{'role':'user','content':r['prompt']}],'text':{'format':{'type':'json_schema','name':name,'strict':True,'schema':schema}}},'verifier_metadata':{'answer':r['answer']}})
+    elif kind=='hiscibench':
         import yaml
         template=yaml.safe_load((repo/'code/L1/config/prompt/zero-shot.yaml').read_text())['prompt_format'][0]
         for r in map(json.loads,(repo/'data/L1/ori_data/SuperGPQA-all.jsonl').read_text().splitlines()):
@@ -28,6 +36,14 @@ def prepare_rows(kind,repo):
     return rows
 
 def score_release(kind,repo,meta,answer):
+    if kind=='moljson':
+        from typing import Any,Optional
+        tree=ast.parse((repo/'evaluation_scripts/utils/answer_checking.py').read_text())
+        methods=[m for n in tree.body if isinstance(n,ast.ClassDef) for m in n.body if isinstance(m,ast.FunctionDef) and m.name in ['_parse_output_text_as_json','_extract_integer_answer']]
+        klass=ast.ClassDef(name='CreatorParser',bases=[],keywords=[],body=methods,decorator_list=[]);ast.fix_missing_locations(klass)
+        ns={'json':json,'Any':Any,'Optional':Optional};exec(compile(ast.Module(body=[klass],type_ignores=[]),'creator_parser','exec'),ns)
+        pred=ns['CreatorParser']()._extract_integer_answer(answer)
+        return {'reward':float(pred is not None and pred==int(meta['answer'])),'predicted':pred,'metric':'creator_integer_accuracy'}
     if kind=='hiscibench':
         import timeout_decorator
         nodes=[n for n in ast.parse((repo/'code/L1/eval/eval.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name in ['safe_regex_search','extract_option_labels','extract_option_content']]

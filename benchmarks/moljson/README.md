@@ -1,0 +1,1 @@
+MolJSON creator companion release c010264fa0fba0c6da52ea770a30d6085fbaf52d. Shortest-path questions only, preserving all representation strata and exact creator structured-output schema. Exact source integer parser; references grader-only. Not translation or constrained-generation suite. Equivalent representation questions are correlated; not independent molecules.
