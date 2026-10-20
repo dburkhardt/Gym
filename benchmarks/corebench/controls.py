@@ -19,11 +19,15 @@ def stage_control(native_tasks: Path, destination: Path, *, correct: bool, task_
         raise ValueError("Refuse to overwrite control task history")
     shutil.copytree(source, destination, symlinks=True)
     answers = json.loads((source / "tests/answers.json").read_text())
-    report = {
-        key: statistics.mean(values) if all(type(v) in (int, float) for v in values) else values[0]
-        for key in answers[0]
-        for values in [[answer[key] for answer in answers]]
-    } if correct else {key: "deliberately incorrect control" for key in answers[0]}
+    report = (
+        {
+            key: statistics.mean(values) if all(type(v) in (int, float) for v in values) else values[0]
+            for key in answers[0]
+            for values in [[answer[key] for answer in answers]]
+        }
+        if correct
+        else {key: "deliberately incorrect control" for key in answers[0]}
+    )
     solution = destination / "solution"
     solution.mkdir()
     payload = shlex.quote(json.dumps(report))
