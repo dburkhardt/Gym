@@ -1,0 +1,26 @@
+{
+  "dataset_revision": "5527b0b8c9fa1fea207678238bf40140a5dca5a2",
+  "creator_code_revision": "0f80a67d47a56fcd08ab3f1f586159d264616e2f",
+  "tasks": {
+    "s43588-024-00733-1": {
+      "archive_sha256": "ea1d0fadf30d6303221642f2eacba4f0b08839aaa93b83f068fc3b81400997cb",
+      "archive_bytes": 4615489110
+    },
+    "s41551-024-01257-9": {
+      "archive_sha256": "ea6a98d5d278b8be2e1009ff2ba36895b70910df645dd3b51edb269f348e3621",
+      "archive_bytes": 7320253540
+    },
+    "s42256-023-00611-x": {
+      "archive_sha256": "c8b156382530985c155ad630e429eca8bf9981531060f3dd0408fd00ca167ff1",
+      "archive_bytes": 536737
+    },
+    "s41587-025-02688-8": {
+      "archive_sha256": "a64ff7107be8632a1e933daf441f40a10966b201f009ac020b02830d77813ee9",
+      "archive_bytes": 110368023
+    },
+    "s42256-024-00916-5": {
+      "archive_sha256": "8c1d68ae4daafb24bb0873afbf0396498c8dda8a9793cc487df6921a52f3bc26",
+      "archive_bytes": 1599085651
+    }
+  }
+}

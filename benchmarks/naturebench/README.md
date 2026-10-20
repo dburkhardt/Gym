@@ -1,36 +1,79 @@
-# NatureBench runtime preparation — in progress
+# NatureBench native Gym integration
 
-This integration uses the creator's Harbor packages and separate evaluator and
-validity-judge containers. It is not yet an executed benchmark integration.
+`config.yaml` registers the preserved NatureBench Harbor task selection through
+Gym. It uses the shared guarded `Terminus2NemoGym`, the creator's timed-agent and
+Docker extension, and native separate-verifier execution. No bespoke scheduler
+or external launcher is required. Live acceptance is still pending.
 
-The downloaded schema 1.4 tasks validate with Harbor 0.24.0. The creator's
-timed-agent extension excludes evaluation time from its four-hour solve budget;
-the task's twelve-hour agent timeout is a wall-clock safety limit, not the solve
-budget. Preserve these distinct clocks.
+## Prepare and plan
 
-`prepare_runtime.patch_judge` transforms a **copied** released `judge_readme.py`
-into the explicit Nemotron judge variant. It preserves the scientific evaluator,
-judge prompt, and verdict parser. It routes the exact allowed model to Responses,
-requires an explicitly configured endpoint through `CAMPAIGN_JUDGE_BASE_URL`,
-and rejects mismatched-model or incomplete responses. Other models and providers
-are rejected. The original creator dispatch otherwise treats every non-GPT model
-as an Anthropic model.
+Set `NATUREBENCH_FROZEN_SAMPLE` to the preserved `pilot-5.jsonl` and run:
 
-Do not modify the immutable downloaded tasks, expose reference labels to the
-solver, or treat schema validation as evidence of scientific execution. Pin the
-source and image digests, preserve the full solver trajectory and judge receipts,
-and label the Nemotron judge replacement as a protocol variant.
+```sh
+gym eval plan --config benchmarks/naturebench/config.yaml --out naturebench-plan.json
+```
 
-The creator's `reward_from_verdict` retains a numeric improvement when
-`is_valid` is `None`; only an explicit invalid verdict changes it to -1.
-Keep that native reward, but report unresolved judging separately and never
-count it as a validated result. Local controls cover correct clustering labels,
-equivalent cluster-ID renaming, wrong predictions, empty arrays, invalid
-shapes, noninteger labels, and negative labels.
+Preparation preserves every original row field and adds a stable `task_id` alias
+from `instance_id`; `.source.json` binds original and staged checksums. This
+planning operation does not prove task archives, images or GPUs are available.
+Set `NATUREBENCH_SAMPLE_SHA256` to require a particular source checksum.
 
-The campaign transport binds loopback and the worker's private Docker bridge
-on port 18885 and forwards to the existing worker tunnel on 18883. It accepts
-only the exact Nemotron model and nonstream requests, adds a fixed NatureBench
-accounting header, checks the returned model, and never retries uncertain calls.
-Both chat and Responses live routing controls returned the required model;
-this does not establish task execution or scoring correctness.
+To materialize the exact frozen-five task packages, additionally set
+`NATUREBENCH_ARCHIVES_DIR` to the directory containing their `.tar.gz` files.
+`frozen_sources.json` pins release archive checksums at dataset revision
+`5527b0b8c9fa1fea207678238bf40140a5dca5a2`. Extraction rejects links, traversal,
+unsupported entries and duplicate names. Each task is published into a fresh
+directory after checksum validation; existing task state is never overwritten.
+Receipts preserve original and prepared file hashes. Only the judge provider
+routing is patched; scientific evaluators, prompts, data and task configuration
+are preserved. Remove the archives environment variable for subsequent planning
+of already-materialized tasks, rather than overwriting their directories.
+
+The frozen five require four low-tier GPUs (creator RTX 3090/4090 contract) and
+one high-tier GPU. Prior CPU calibration trials are outside this selection and
+must not be substituted or counted as frozen-five results. Explicit CPU/RAM
+resource contracts and immutable image identities still require admission.
+
+## Protocol and guarded roles
+
+Creator extension source is pinned at
+`0f80a67d47a56fcd08ab3f1f586159d264616e2f` with its MIT license retained.
+The effective solve budget remains **14,400 seconds**, excluding evaluation
+service time. The task's **43,200-second** agent timeout remains a distinct wall
+clock safety limit. The maintained wrapper additionally settles child tasks on
+cancellation and distinguishes timer transport failure from budget exhaustion.
+
+Solver settings preserve the campaign's no-summarization, interleaved-thinking,
+49,152 input / 16,384 output context declarations, 16,384 output request budget,
+and 1,200-second model transport timeout. The shared agent supplies durable
+logical-call identities. Arbitrary full shell/session restart is not claimed.
+
+The separate `NatureBenchVerifier` delegates execution/scoring to Harbor's
+native verifier. Its dynamically allocated, bearer-authenticated local bridge
+forwards the creator Responses request to the rollout-qualified Gym model route,
+with a durable fresh scorer lineage and configuration digest covering task and
+all verifier file bytes. Different judge payloads within one verification fail
+closed. Existing verifier directories cannot silently restart; regrade uses a
+new native scorer record. Set `NATUREBENCH_BRIDGE_HOST` to a verified host address
+reachable from the separate verifier container (typically its Docker bridge).
+The default loopback is suitable for local controls, not container acceptance.
+
+Every benchmark LLM role must use `nvidia/nvidia/nemotron-3.5-super-vl`. The judge
+replacement is an explicit protocol variant: creator prompt, verdict parser and
+scientific evaluator remain intact. Native `reward_from_verdict` can retain a
+numeric improvement when validity is unknown. Preserve that raw reward but
+report unresolved validity separately; it is not a validated scientific result.
+
+## Verification boundary
+
+Focused controls cover source preservation and duplicate rejection, immutable
+archive staging, timer-error cancellation settlement, judge authentication,
+rollout/call binding, changed-request rejection and endpoint cleanup using a
+local fake provider. The actual shared timed-agent constructor and native Gym
+five-task plan have been exercised. No real task-container/judge acceptance or
+GPU execution has been performed for this maintained integration.
+
+`agent.py` and `transport.py` are retained historical campaign implementations;
+the native config does not use them or their fixed-port proxy. Before live use,
+validate creator task assets and native multi-service lifecycle on an admitted
+GPU worker, verify pinned images and CPU/RAM, and test capture/scorer cleanup.
