@@ -6,3 +6,5 @@ datasets
 
 nltk
 Levenshtein
+
+timeout-decorator==0.5.0

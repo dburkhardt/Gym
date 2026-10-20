@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'genomeqa':'7ccc230e734fc11a365fd1963b593b5fd11e834d','omebench':'48632ca037cbb7d6e09a22132257c55ee6008edb','smolinstruct':'43ab5fccd14514ddf756534d18a6917e7e11d0ae','lpm24':'8e747238e90734bf8774712ecc010ee24efcd346','molinstructions':'d08a15f88e0c1b5e6d1e08330f570983885ddee1','molpuzzle':'4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2','s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'hiscibench':'022fd997164f7dcb9a82c1c1809adf540973950c','genomeqa':'7ccc230e734fc11a365fd1963b593b5fd11e834d','omebench':'48632ca037cbb7d6e09a22132257c55ee6008edb','smolinstruct':'43ab5fccd14514ddf756534d18a6917e7e11d0ae','lpm24':'8e747238e90734bf8774712ecc010ee24efcd346','molinstructions':'d08a15f88e0c1b5e6d1e08330f570983885ddee1','molpuzzle':'4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2','s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -32,6 +32,12 @@ def module(path: Path):
 
 
 def validate_repo(kind: str, repo: Path) -> None:
+    if kind=='hiscibench':
+        import hashlib
+        assert hashlib.sha256((repo/'source-manifest.json').read_bytes()).hexdigest()=='5e78ad47da2156882be9b2c1d5e2ae563adf3f6ae851948afcbba4af462d8fe0'
+        manifest=json.loads((repo/'source-manifest.json').read_text());assert manifest['revision']==PINS[kind]
+        for name,digest in manifest['sha256'].items():assert hashlib.sha256((repo/name).read_bytes()).hexdigest()==digest
+        return
     pin = subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()
     if pin != PINS[kind]:
         raise ValueError(f'Expected {PINS[kind]}, got {pin}')
@@ -40,7 +46,7 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind in ['genomeqa','omebench']:
+    if kind in ['genomeqa','omebench','hiscibench']:
         from benchmarks.scientific_agent_campaign.recovered_releases import prepare_rows
         rows=prepare_rows(kind,repo)
     elif kind == 'smolinstruct':
@@ -171,7 +177,7 @@ def prepare(kind: str, repo: Path, output: Path) -> dict:
     record = {'benchmark':kind,'pin':PINS[kind],'population':len(rows),
               'sample20':[x['uuid'] for x in selected[:20]],'heldout30':[x['uuid'] for x in selected[20:]],
               'qualification': 'GeneHop requires retrieval harness and only disease-location has automatic upstream scoring; prepared QA is NOT full GeneGPT protocol' if kind=='genehop' else 'Creator deterministic scoring; QCBench numeric metric differs from xVerify metric; ChemIQ OPSIN requires network'}
-    record['qualification'] = {'genomeqa':'All5200 public binary/mcq records, exact creator system/user prompts and option parser; original option permutations preserved.', 'omebench':'oMeGold196 only; exact default prompt and creator oMeS metrics, S_total primary reward not weighted composite.','fukuyama': 'Text pathway inference; creator lenient checkpoint exact-match;319 public mechanisms.', 'mollangbench': 'Generation/edit SMILES test subset400; recognition and image-input tasks excluded.', 'suprabench': 'TBS base2064 only; creator accuracy excludes unparsed outputs; report parsed-only plus all-attempt.', 's2tomg': 'MolCustom AtomNum5000 only; creator JSON correction and17-element constraints; disconnected structures can pass.', 'molpuzzle': 'Repaired image-transport variant; Stage2 H-NMR2592 eligible of2808;216 missing source images excluded; Yes/No balanced pilot.', 'molinstructions': 'Held-out biotext1001MCQ+100TF; original Alpaca template and accuracy; empty MCQ explicitly failed instead of upstream crash.', 'lpm24': 'Molgen21805; explicit chat-instruction variant; creator InChI exact-match only, not full shared-task metric suite.', 'smolinstruct': 'Official test formula conversion i2f+s2f2993 each; exact templates/core tags/extraction and element-match.'}.get(kind,record['qualification'])
+    record['qualification'] = {'hiscibench':'L1 Biology200 borrowed SuperGPQA questions only; exact creator zero-shot prompt/parser; overlap, not novel coverage.','genomeqa':'All5200 public binary/mcq records, exact creator system/user prompts and option parser; original option permutations preserved.', 'omebench':'oMeGold196 only; exact default prompt and creator oMeS metrics, S_total primary reward not weighted composite.','fukuyama': 'Text pathway inference; creator lenient checkpoint exact-match;319 public mechanisms.', 'mollangbench': 'Generation/edit SMILES test subset400; recognition and image-input tasks excluded.', 'suprabench': 'TBS base2064 only; creator accuracy excludes unparsed outputs; report parsed-only plus all-attempt.', 's2tomg': 'MolCustom AtomNum5000 only; creator JSON correction and17-element constraints; disconnected structures can pass.', 'molpuzzle': 'Repaired image-transport variant; Stage2 H-NMR2592 eligible of2808;216 missing source images excluded; Yes/No balanced pilot.', 'molinstructions': 'Held-out biotext1001MCQ+100TF; original Alpaca template and accuracy; empty MCQ explicitly failed instead of upstream crash.', 'lpm24': 'Molgen21805; explicit chat-instruction variant; creator InChI exact-match only, not full shared-task metric suite.', 'smolinstruct': 'Official test formula conversion i2f+s2f2993 each; exact templates/core tags/extraction and element-match.'}.get(kind,record['qualification'])
     (output/'manifest.json').write_text(json.dumps(record,indent=2))
     return record
 
@@ -180,7 +186,7 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
-    if kind in ['genomeqa','omebench']:
+    if kind in ['genomeqa','omebench','hiscibench']:
         from benchmarks.scientific_agent_campaign.recovered_releases import score_release
         return score_release(kind,repo,meta,answer)
     if kind == 'smolinstruct':

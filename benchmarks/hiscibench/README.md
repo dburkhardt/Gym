@@ -1,0 +1,7 @@
+# HiSciBench L1 Biology subset
+
+Creator HF **model** repository ScienceOne-AI/HiSciBench, revision022fd997164f7dcb9a82c1c1809adf540973950c. The earlier release-unresolved status was corrected by locating this model-namespace repo. Its26,098,758,920-byte data.zip supports byte ranges. Only ZIP directory and small L1 files were extracted; CRC verified by Python zipfile. Source-manifest records SHA256 of used data/code and its own digest is pinned in adapter validation.
+
+Scope:200 Biology questions from creator L1 SuperGPQA-all.jsonl (1200 total). This is borrowed SuperGPQA content and must be overlap-tagged, not counted as novel question coverage. No claim to HiSciBench L2–L5 or whole8735-task performance. Exact zero-shot prompt, option layout and source regex label/content parser preserved, with original timeout decorator in grader process. Gold option letter remains in verifier metadata. Nested5/20/50;20gold+empty controls. Sample pilot uses campaign16384 output budget versus creator default4096, and campaigntemperature0.1; report these runtime differences.
+
+Downloaded source bundle: work/hiscibench-upstream with source-manifest.json. Archive acquisition script and directory listing: outputs/broad-eval-campaign/recovered-releases/. No creator model response files are used in model input or scoring. Shared resource environment requires timeout-decorator0.5.0; install missing dependency only, without upgrading shared packages.

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+hiscibench_resources:
+  resources_servers:
+    campaign_creator_scoring:
+      entrypoint: app.py
+      domain: knowledge
+      verified: false
+      benchmark: hiscibench
+      upstream_repo: ${oc.env:CAMPAIGN_UPSTREAM_REPO}
+      datasets:
+      - name: hiscibench
+        type: benchmark
+        jsonl_fpath: benchmarks/hiscibench/data/benchmark.jsonl
+        prepare_script: benchmarks/hiscibench/prepare.py
+        num_repeats: 1
+hiscibench_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      max_steps: 1
+      resources_server:
+        type: resources_servers
+        name: hiscibench_resources
+      model_server:
+        type: responses_api_models
+        name: policy_model
+hiscibench_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: hiscibench_agent
