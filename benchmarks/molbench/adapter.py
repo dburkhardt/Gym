@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Pinned creator tool-free MolBench ms-3 baseline; not MolClaw agent."""
-import hashlib,importlib.util,json
+import hashlib,importlib.util,json,tempfile,random
 from pathlib import Path
 
 def load(path,name):
@@ -15,6 +15,16 @@ def modules(repo):
 
 def score(repo,meta,answer):
  loaders,metrics=modules(repo)
+ if meta.get('stratum') in ('ms-1','ms-2'):
+  kind=meta['stratum'];loader=loaders.RdkitBenchLoader() if kind=='ms-1' else loaders.ACNetCuratedLoader();subtask='rdkit_bench' if kind=='ms-1' else 'qa'
+  parsed=loader.parse_agent_result({'action_history':[{'finish':answer}]},subtask)
+  entry=loader.build_pred_entry(meta['sample'],parsed,answer,subtask)
+  with tempfile.TemporaryDirectory(prefix='molbench-score-') as temporary:
+   directory=Path(temporary);predictions=directory/'preds';predictions.mkdir();path=predictions/(subtask+'.json');path.write_text(json.dumps([entry]))
+   evaluator=metrics.RdkitBenchEval() if kind=='ms-1' else metrics.ACNetCuratedEval()
+   aggregate=evaluator.run(str(predictions),str(directory/'results'),str(repo))
+   native=json.loads(path.read_text())[0]['metrics']
+  return {'reward':native['acc' if kind=='ms-1' else 'score'],'metric':'creator_exact_match','creator_metrics':native,'creator_aggregate':aggregate,'parsed':parsed,'source_condition':'tool-free '+kind+' baseline; native exact-string scoring and validity preserved'}
  parsed=loaders.MolbenchVsLoader().parse_agent_result({'action_history':[{'finish':answer}]},'molbench_vs')
  entry=loaders.MolbenchVsLoader().build_pred_entry(meta['sample'],parsed,answer,'molbench_vs')
  result=metrics._compute_molbench_vs_metrics(entry)
@@ -38,3 +48,19 @@ def prepare_rows(repo,frozen):
   assert messages==row['messages']
   result.append({'uuid':row['id'],'stratum':'ms-3','responses_create_params':{'input':messages},'verifier_metadata':{'sample':sample}})
  return result
+
+
+def prepare_screening_rows(repo,kind,seed=20261020):
+ """Native released ms1/ms2 loaders and baseline prompt; one fixed permutation."""
+ assert kind in ('ms-1','ms-2')
+ repo=Path(repo);loaders,_=modules(repo);templates=load(repo/'molclaw_run/templates/template.py','molbench_creator_template')
+ loader=loaders.RdkitBenchLoader() if kind=='ms-1' else loaders.ACNetCuratedLoader();subtask='rdkit_bench' if kind=='ms-1' else 'qa'
+ samples=loader.load_data(str(repo/'molbench/data'/('molbench-'+kind)/('molbench-'+kind+'.csv')),subtask)
+ rows=[]
+ for i,sample in enumerate(samples):
+  query=loader.get_query(sample,subtask)
+  hint=templates.RDKIT_ANSWER_HINT if kind=='ms-1' else templates.ANSWER_OUTPUT_HINT
+  messages=[{'role':'system','content':templates.SYSTEM_PROMPT_MINIMAL},{'role':'user','content':query+'\n\n'+hint}]
+  rows.append({'uuid':kind+'-'+str(i),'stratum':kind,'responses_create_params':{'input':messages},'verifier_metadata':{'stratum':kind,'sample':sample}})
+ random.Random(seed).shuffle(rows)
+ return rows
