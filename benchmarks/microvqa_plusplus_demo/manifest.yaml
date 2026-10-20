@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: microvqa_plusplus_demo
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: custom-gym-verifier
+domain: knowledge
+description: microvqa_plusplus_demo experimental pilot
+modality: multimodal
+licensing: unknown
+authors:
+- dburkhardt
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: microvqa_plusplus_demo
+agent_server: simple_agent
+model_server: policy_model
+datasets:
+- name: microvqa_plusplus_demo
+  type: benchmark
+  jsonl_fpath: resources_servers/microvqa_plusplus_demo/data/benchmark.jsonl
+  prepare_script: benchmarks/microvqa_plusplus_demo/prepare.py
+  num_repeats: 1
+canonical_split: demo_train
+prompt_source: prepared
+lifecycle: active
