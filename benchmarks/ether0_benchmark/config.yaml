@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/ether0_benchmark/configs/ether0_benchmark.yaml
+ether0_benchmark:
+  resources_servers:
+    ether0_benchmark:
+      datasets:
+      - name: ether0_benchmark
+        type: benchmark
+        jsonl_fpath: resources_servers/ether0_benchmark/data/benchmark.jsonl
+        prepare_script: benchmarks/ether0_benchmark/prepare.py
+        num_repeats: 1

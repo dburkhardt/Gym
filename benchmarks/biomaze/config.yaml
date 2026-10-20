@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/biomaze/configs/biomaze.yaml
+biomaze:
+  resources_servers:
+    biomaze:
+      datasets:
+      - name: biomaze
+        type: benchmark
+        jsonl_fpath: resources_servers/biomaze/data/benchmark.jsonl
+        prepare_script: benchmarks/biomaze/prepare.py
+        num_repeats: 1
