@@ -265,3 +265,151 @@ async def test_shared_chat_transport_uses_guarded_identity(tmp_path):
     with pytest.raises(ValueError, match="provider_dispatch_guard"):
         await agent.guarded_model_call(body, payload, 1)
     assert server.post.await_count == 1
+
+
+def test_header_cache_verifies_content_and_source(tmp_path):
+    (tmp_path / "main_turbo.py").write_text('def get_prompt_header(flags):\n    return "trusted header"\n')
+    loop = NativeLoop(tmp_path, tmp_path / "trial", "", "")
+    with patch("benchmarks.genehop.native_loop.validate_source", return_value={"main": "pinned"}):
+        assert loop.header() == "trusted header"
+        assert loop.header() == "trusted header"
+        (tmp_path / "trial/prompt-header.txt").write_text("changed header")
+        with pytest.raises(ValueError, match="provenance"):
+            loop.header()
+
+
+def test_header_cache_without_provenance_fails_closed(tmp_path):
+    loop = NativeLoop(tmp_path, tmp_path / "trial", "", "")
+    (tmp_path / "trial/prompt-header.txt").write_text("unattributed")
+    with patch("benchmarks.genehop.native_loop.validate_source", return_value={}):
+        with pytest.raises(FileNotFoundError):
+            loop.header()
+
+
+def test_redirect_validated_before_request():
+    from benchmarks.genehop.native_loop import AllowedRedirect
+
+    with pytest.raises(ValueError, match="NCBI"):
+        AllowedRedirect().redirect_request(None, None, 302, "", {}, "http://127.0.0.1/private")
+
+
+@pytest.mark.asyncio
+async def test_cancel_settles_native_thread_before_releasing_lock(tmp_path):
+    import asyncio
+    import threading
+    from unittest.mock import MagicMock
+
+    from nemo_gym.server_utils import ServerClient
+    from responses_api_agents.genehop_native.app import Config, GeneHopAgent, RunRequest
+
+    started = threading.Event()
+    released = threading.Event()
+    cleaned = threading.Event()
+
+    def execute(self, body, model_call, stop_event):
+        started.set()
+        stop_event.wait(2)
+        assert stop_event.is_set()
+        released.wait(2)
+        cleaned.set()
+        return tmp_path, {"status": "infrastructure_failure"}
+
+    agent = GeneHopAgent(
+        config=Config(
+            host="127.0.0.1",
+            port=46001,
+            entrypoint="app.py",
+            name="genehop",
+            upstream_repo=tmp_path,
+            output_root=tmp_path / "out",
+        ),
+        server_client=MagicMock(spec=ServerClient, global_config_dict={}),
+    )
+    body = RunRequest.model_validate(
+        {
+            "uuid": "test",
+            "responses_create_params": {"input": [{"role": "user", "content": "Q"}]},
+            "verifier_metadata": {"question": "Q", "category": "Disease gene location", "answer": ["x"]},
+        }
+    )
+    with patch.object(GeneHopAgent, "execute", execute):
+        task = asyncio.create_task(agent.run(None, body))
+        while not started.is_set():
+            await asyncio.sleep(0.001)
+        task.cancel()
+        await asyncio.sleep(0.01)
+        assert not task.done() and agent._lock.locked()
+        released.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert cleaned.is_set() and not agent._lock.locked()
+
+
+def test_cached_header_tool_bytes_are_verified(tmp_path):
+    (tmp_path / "main_turbo.py").write_text('def get_prompt_header(flags):\n    return "header"\n')
+    loop = NativeLoop(tmp_path, tmp_path / "trial", "", "")
+    (loop.artifacts / "tool-001.json").write_text("{}")
+    body = loop.artifacts / "tool-001.body"
+    body.write_bytes(b"original")
+    with patch("benchmarks.genehop.native_loop.validate_source", return_value={"main": "pinned"}):
+        loop.header()
+        body.write_bytes(b"changed")
+        with pytest.raises(ValueError, match="tool evidence"):
+            loop.header()
+
+
+@pytest.mark.asyncio
+async def test_cancel_waits_for_inflight_model_receipt_and_prevents_next_turn(tmp_path):
+    import asyncio
+    from unittest.mock import MagicMock
+
+    from nemo_gym.server_utils import ServerClient
+    from responses_api_agents.genehop_native.app import Config, GeneHopAgent, RunRequest
+
+    started, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def model_call(self, body, payload, turn):
+        calls.append(turn)
+        started.set()
+        await release.wait()
+        return reply("[https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gene&term=X]")
+
+    agent = GeneHopAgent(
+        config=Config(
+            host="127.0.0.1",
+            port=46001,
+            entrypoint="app.py",
+            name="genehop",
+            upstream_repo=tmp_path,
+            output_root=tmp_path / "out",
+            model_server={"type": "responses_api_models", "name": "policy_model"},
+        ),
+        server_client=MagicMock(spec=ServerClient, global_config_dict={"provider_dispatch_guard": True}),
+    )
+    body = RunRequest.model_validate(
+        {
+            "uuid": "test",
+            "_ng_rollout_id": "fresh",
+            "responses_create_params": {"input": [{"role": "user", "content": "Q"}]},
+            "verifier_metadata": {"question": "Q", "category": "Disease gene location", "answer": ["x"]},
+        }
+    )
+    with (
+        patch("responses_api_agents.genehop_native.app.validate_source"),
+        patch.object(NativeLoop, "header", return_value="header"),
+        patch.object(GeneHopAgent, "guarded_model_call", model_call),
+        patch.object(NativeLoop, "call_api") as tool,
+    ):
+        task = asyncio.create_task(agent.run(None, body))
+        await started.wait()
+        task.cancel()
+        await asyncio.sleep(0.01)
+        assert not task.done() and agent._lock.locked()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        tool.assert_not_called()
+    assert calls == [0]
+    assert (tmp_path / "out/test/model-00-intent.json").exists()
+    assert (tmp_path / "out/test/model-00.json").exists()

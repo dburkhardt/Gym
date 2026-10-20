@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -62,19 +63,20 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
         if rollout_id is None:
             raise ValueError("Guarded GeneHop requires native rollout identity")
         digest = configuration_digest({"harness": "genehop-native", "task": body.model_dump(), "payload": payload})
-        response = await self.server_client.post(
-            server_name=self.config.model_server.name,
-            url_path=rollout_path_prefix(rollout_id) + "/v1/chat/completions",
-            json=payload,
-            headers={
-                "x-nemo-gym-logical-call-id": f"genehop:{body.uuid}:{turn}",
-                "x-nemo-gym-call-config-sha256": digest,
-            },
-        )
-        await raise_for_status(response)
-        return await response.json()
+        async with asyncio.timeout(600):
+            response = await self.server_client.post(
+                server_name=self.config.model_server.name,
+                url_path=rollout_path_prefix(rollout_id) + "/v1/chat/completions",
+                json=payload,
+                headers={
+                    "x-nemo-gym-logical-call-id": f"genehop:{body.uuid}:{turn}",
+                    "x-nemo-gym-call-config-sha256": digest,
+                },
+            )
+            await raise_for_status(response)
+            return await response.json()
 
-    def execute(self, body, model_call=None):
+    def execute(self, body, model_call=None, stop_event=None):
         if not re.fullmatch(r"[A-Za-z0-9_: -]+", body.uuid):
             raise ValueError("Unsafe task UUID")
         taskid = body.uuid.replace(":", "-").replace(" ", "_")
@@ -87,6 +89,7 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
                 "" if model_call else os.environ[self.config.api_key_env],
                 self.config.base_url,
                 model_call=model_call,
+                stop_event=stop_event,
             )
             loop.header_path = self.config.output_root / "prompt-header.txt"
             result = loop.run(body.verifier_metadata["question"])
@@ -107,18 +110,40 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
         if len(inp) != 1 or inp[0]["role"] != "user" or inp[0]["content"] != question:
             raise ValueError("Question mismatch")
         model_call = None
+        stop_event = threading.Event()
+        dispatch_lock = threading.Lock()
         if self.config.model_server is not None:
             validate_source(self.config.upstream_repo)
             event_loop = asyncio.get_running_loop()
 
             def model_call(payload, turn):
-                return asyncio.run_coroutine_threadsafe(
-                    self.guarded_model_call(body, payload, turn), event_loop
-                ).result()
+                with dispatch_lock:
+                    if stop_event.is_set():
+                        raise RuntimeError("GeneHop run cancelled before dispatch")
+                    future = asyncio.run_coroutine_threadsafe(self.guarded_model_call(body, payload, turn), event_loop)
+                return future.result()
         elif self.server_client.global_config_dict.get("provider_dispatch_guard") is True:
             raise ValueError("Guarded GeneHop cannot use legacy direct transport")
         async with self._lock:
-            out, result = await asyncio.to_thread(self.execute, body, model_call)
+            worker = asyncio.create_task(asyncio.to_thread(self.execute, body, model_call, stop_event))
+            try:
+                out, result = await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                with dispatch_lock:
+                    stop_event.set()
+                # Let an already dispatched bounded request finish and retain its receipt.
+                # Cancelling the bridge Future does not prove its HTTP coroutine settled.
+                while not worker.done():
+                    try:
+                        await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                # Consume worker errors without replacing the original cancellation.
+                if not worker.cancelled():
+                    worker.exception()
+                raise
         score = None
         failure = None
         if result["status"] != "completed":

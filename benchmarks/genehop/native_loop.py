@@ -7,12 +7,17 @@ pinned main_turbo.py. No model-generated code is executed.
 import ast
 import hashlib
 import json
+import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
+
+from benchmarks.genehop.source_identity import validate_source
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
@@ -33,8 +38,28 @@ def validate_url(url):
     return url.replace(" ", "+")
 
 
+class AllowedRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def publish(path, payload):
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w") as stream:
+        json.dump(payload, stream, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 class NativeLoop:
-    def __init__(self, upstream, artifacts, api_key, base_url, model_call=None):
+    def __init__(self, upstream, artifacts, api_key, base_url, model_call=None, stop_event=None):
         self.upstream = Path(upstream)
         self.artifacts = Path(artifacts)
         self.artifacts.mkdir(parents=True, exist_ok=True)
@@ -42,13 +67,23 @@ class NativeLoop:
         self.base_url = base_url.rstrip("/")
         self.tool_count = 0
         self.model_call = model_call
+        self.stop_event = stop_event or threading.Event()
+
+    def check_stop(self):
+        if self.stop_event.is_set():
+            raise RuntimeError("GeneHop run cancelled; no further calls permitted")
+
+    def pause(self, seconds):
+        if self.stop_event.wait(seconds):
+            self.check_stop()
 
     def call_api(self, url):
         url = validate_url(url)
-        time.sleep(1)
+        self.check_stop()
+        self.pause(1)
         self.tool_count += 1
         request = urllib.request.Request(url)
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.build_opener(AllowedRedirect()).open(request, timeout=120) as response:
             final_url = validate_url(response.url)
             body = response.read(8 * 1024 * 1024 + 1)
         if len(body) > 8 * 1024 * 1024:
@@ -67,25 +102,57 @@ class NativeLoop:
                 indent=2,
             )
         )
+        self.check_stop()
         return body
 
     def header(self):
         path = getattr(self, "header_path", self.artifacts / "prompt-header.txt")
+        sources = validate_source(self.upstream)
+        metadata_path = path.with_suffix(".provenance.json")
         if path.exists():
+            metadata = json.loads(metadata_path.read_text())
+            if (
+                metadata["source_hashes"] != sources
+                or metadata["header_sha256"] != hashlib.sha256(path.read_bytes()).hexdigest()
+            ):
+                raise ValueError("Cached GeneHop header provenance mismatch")
+            for tool in metadata["tools"]:
+                receipt = path.parent / tool["receipt"]
+                body = receipt.with_suffix(".body")
+                if (
+                    hashlib.sha256(receipt.read_bytes()).hexdigest() != tool["receipt_sha256"]
+                    or hashlib.sha256(body.read_bytes()).hexdigest() != tool["body_sha256"]
+                ):
+                    raise ValueError("Cached GeneHop header tool evidence mismatch")
             return path.read_text()
         tree = ast.parse((self.upstream / "main_turbo.py").read_text())
         node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "get_prompt_header")
-        namespace = {"call_api": self.call_api, "re": re, "time": time}
+        namespace = {"call_api": self.call_api, "re": re, "time": SimpleNamespace(sleep=self.pause)}
         exec(compile(ast.Module(body=[node], type_ignores=[]), "creator-get-prompt-header", "exec"), namespace)
         text = namespace["get_prompt_header"]([True] * 6)
         path.write_text(text)
+        tools = []
+        for receipt in sorted(self.artifacts.glob("tool-*.json")):
+            tools.append(
+                {
+                    "receipt": os.path.relpath(receipt, path.parent),
+                    "receipt_sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+                    "body_sha256": hashlib.sha256(receipt.with_suffix(".body").read_bytes()).hexdigest(),
+                }
+            )
+        publish(
+            metadata_path,
+            {"source_hashes": sources, "header_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "tools": tools},
+        )
         return text
 
     def run(self, question):
+        self.check_stop()
         prompt = self.header() + f"Question: {question}\n"
         calls = []
         answer = None
         for turn in range(10):
+            self.check_stop()
             if len(prompt) > 36000:
                 prompt = prompt[-36000:]
             payload = {
@@ -95,6 +162,7 @@ class NativeLoop:
                 "max_tokens": 16384,
                 "stop": ["->", "\n\nQuestion"],
             }
+            publish(self.artifacts / f"model-{turn:02d}-intent.json", {"turn": turn, "request": payload})
             started = time.time()
             # No automatic retry: uncertain inference must be reconciled before reissue.
             try:
@@ -121,6 +189,7 @@ class NativeLoop:
             record = {"turn": turn, "request": payload, "response": raw, "elapsed_seconds": time.time() - started}
             (self.artifacts / f"model-{turn:02d}.json").write_text(json.dumps(record, indent=2))
             calls.append(record)
+            self.check_stop()
             if raw.get("model") != MODEL:
                 raise RuntimeError("Unexpected provider model")
             choice = raw["choices"][0]
@@ -140,7 +209,7 @@ class NativeLoop:
                 break
             url = urls[0]
             if "blast" in url and "Get" in url:
-                time.sleep(30)
+                self.pause(30)
             tool = self.call_api(url)
             if "blast" in url and "Put" in url:
                 match = re.search("RID = (.*)\n", tool.decode())
