@@ -129,10 +129,12 @@ def redirect_native_caches(output: Path, manifest: dict) -> dict:
 def main() -> None:
     from blade_bench.baselines.config import EvalConfig, MultiRunConfig
     from blade_bench.baselines.multirun import RunLLMMultiRun
-    from blade_bench.data.datamodel.transforms import TransformDataReturn  # noqa: F401 - creator pickle resolution
+    from blade_bench.data.datamodel.transforms import TransformDataReturn
     from blade_bench.eval.evaluator import run_eval_on_analyses
     from blade_bench.llms.textgen_openai import OpenAITextGenerator
 
+    # Native Jupyter output pickles this symbol under __main__, not function locals.
+    globals()["TransformDataReturn"] = TransformDataReturn
     manifest = json.loads(Path("/controller/frozen_sources.json").read_text())
     imported = {}
     for obj in (OpenAITextGenerator, MultiRunConfig, EvalConfig, RunLLMMultiRun, run_eval_on_analyses):
