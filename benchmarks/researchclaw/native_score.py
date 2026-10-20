@@ -19,6 +19,7 @@ def score(source,workspace,output):
     class Capturing:
         def __init__(self,*a,**kw):
             assert kw['model_version']==MODEL
+            kw['headers']={'X-Campaign-Benchmark':'ResearchClawBench'}
             self.agent=original(*a,**kw)
             # Disable SDK retries; creator's explicit max_try2 remains observable.
             if hasattr(self.agent, 'client'):
