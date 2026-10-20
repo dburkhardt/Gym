@@ -26,17 +26,43 @@ def creator_defaults(path):
     return parser.parse_args([])
 
 
+class ReplayPrefix:
+    def __init__(self, path):
+        self.rows = [json.loads(x) for x in Path(path).read_text().splitlines()]
+        self.index = 0
+        last = self.rows[-1]['response']['choices'][0]
+        assert last['finish_reason'] == 'length' and last['message']['content'] is None
+
+    def consume(self, stage, request):
+        if self.index >= len(self.rows):
+            return None
+        row = self.rows[self.index]
+        assert row['stage'] == stage and row['request'] == request, f'Replay divergence at {self.index}'
+        self.index += 1
+        if self.index == len(self.rows):
+            return None  # failed request is retried only after its exact identity is checked
+        from openai.types.chat import ChatCompletion
+        return ChatCompletion.model_validate(row['response'])
+
+
 class RecordedClient:
-    def __init__(self, *, stage, trace, **kwargs):
+    def __init__(self, *, stage, trace, replay=None, **kwargs):
         from openai import OpenAI
         assert kwargs['base_url'] == 'http://127.0.0.1:49180/v1'
         self.inner = OpenAI(**kwargs, max_retries=0, timeout=600)
-        self.stage, self.trace = stage, Path(trace)
+        self.stage, self.trace, self.replay = stage, Path(trace), replay
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
     def create(self, **kwargs):
         assert kwargs['model'] == MODEL
         assert kwargs.get('max_tokens') == 8192  # creator default, never silently changed
+        if self.replay is not None:
+            result = self.replay.consume(self.stage, kwargs)
+            if result is not None:
+                with self.trace.with_name('replay-receipts.jsonl').open('a') as stream:
+                    stream.write(json.dumps({'stage':self.stage,'source_index':self.replay.index-1,'inference':False})+'\n')
+                return result
+            kwargs['max_tokens'] = 16384
         started = time.time()
         record = {'stage': self.stage, 'request': kwargs, 'started': started}
         try:
@@ -53,7 +79,7 @@ class RecordedClient:
                 stream.write(json.dumps(record) + '\n')
 
 
-def run(repo, out, task_id, *, screening_only=False):
+def run(repo, out, task_id, *, screening_only=False, replay_path=None):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     pins = json.loads(Path(__file__).with_name('source-sha256.json').read_text())
@@ -65,8 +91,9 @@ def run(repo, out, task_id, *, screening_only=False):
     trace = out / 'model-traces.jsonl'
     if trace.exists():
         raise RuntimeError('Existing model trace; reconcile explicitly before rerunning')
+    replay = ReplayPrefix(replay_path) if replay_path else None
     for stage, module in zip(names, modules):
-        module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, **kw)
+        module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, replay=replay, **kw)
     common = dict(api_type=0, api_key=Path(os.environ['MOOSE_KEY_FILE']).read_text().strip(),
                   base_url='http://127.0.0.1:49180/v1', model_name=MODEL,
                   chem_annotation_path=str(repo/'Data/chem_research_2024.xlsx'),
@@ -107,9 +134,10 @@ if __name__ == '__main__':
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--task-id',type=int,required=True)
     parser.add_argument('--screening-only',action='store_true')
+    parser.add_argument('--replay-path',type=Path)
     args=parser.parse_args()
     try:
-        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only)
+        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path)
         (args.output/'result.json').write_text(json.dumps(result,indent=2))
     except Exception as exc:
         (args.output/'failure.json').write_text(json.dumps({'type':type(exc).__name__,'message':str(exc)},indent=2))

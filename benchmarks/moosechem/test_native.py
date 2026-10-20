@@ -40,3 +40,21 @@ def test_retrieval_prompt_reference_isolation(screen,monkeypatch):
 def test_defaults_are_source_derived():
     assert creator_defaults(REPO/'Method/hypothesis_generation.py').if_use_gdth_insp==0
     assert creator_defaults(REPO/'Method/evaluate.py').api_type==1
+
+
+def test_saved_prefix_checks_every_request_and_never_reissues_successes():
+    from benchmarks.moosechem.native import ReplayPrefix
+    path = Path('outputs/broad-eval-campaign/moosechem/task18/model-traces.jsonl')
+    replay = ReplayPrefix(path)
+    for i, row in enumerate(replay.rows):
+        result = replay.consume(row['stage'], row['request'])
+        assert (result is None) == (i == 46)
+    assert replay.index == 47
+
+
+def test_saved_prefix_rejects_divergence():
+    from benchmarks.moosechem.native import ReplayPrefix
+    import pytest
+    replay = ReplayPrefix('outputs/broad-eval-campaign/moosechem/task18/model-traces.jsonl')
+    with pytest.raises(AssertionError):
+        replay.consume('wrong-stage', {})
