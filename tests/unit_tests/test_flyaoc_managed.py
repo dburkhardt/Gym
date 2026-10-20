@@ -1,0 +1,62 @@
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from benchmarks.flyaoc import managed
+
+
+def test_solver_mounts_exclude_reference_data(tmp_path):
+    request = tmp_path / "request.json"
+    request.write_text("{}")
+    result = managed.spec(
+        image="sha256:" + "a" * 64,
+        root=tmp_path / "assets",
+        output=tmp_path / "output",
+        phase="solver",
+        lineage="trial",
+        request=request,
+        socket_dir="/tmp/socket",
+        token="local",
+    )
+    volumes = result.provider_options["volumes"]
+    assert not any("references.jsonl" in x for x in volumes)
+    assert not any("/var/run/docker.sock" in x for x in volumes)
+    assert result.env["HF_HUB_OFFLINE"] == "1"
+    assert result.env["HF_DATASETS_OFFLINE"] == "1"
+    assert result.resources.memory_mib == 4096
+    with pytest.raises(ValueError, match="immutable"):
+        managed.spec(image="python:latest", root=tmp_path, output=tmp_path, phase="solver", lineage="trial")
+
+
+def test_asset_view_rejects_reference_and_symlink(tmp_path, monkeypatch):
+    controller = tmp_path / "controller"
+    controller.mkdir()
+    root = tmp_path / "assets"
+    root.mkdir()
+    (root / "src").mkdir()
+    (root / "src/a.py").write_text("x=1")
+    digest = hashlib.sha256((root / "src/a.py").read_bytes()).hexdigest()
+    (controller / "runtime_sources.json").write_text(
+        json.dumps({"source_files": {"a.py": digest}, "corpus_files": {}, "dataset_revision": "revision"})
+    )
+    (controller / "frozen_sources.json").write_text(json.dumps({"ontology_sha256": {}}))
+    monkeypatch.setattr(managed, "CONTROLLER", controller)
+    managed.validate_assets(root)
+    reference = root / "reference-records.jsonl"
+    reference.write_text("secret")
+    with pytest.raises(ValueError, match="Unexpected solver asset"):
+        managed.validate_assets(root)
+    reference.unlink()
+    (root / "alias").symlink_to(root / "src/a.py")
+    with pytest.raises(ValueError, match="Unexpected solver asset"):
+        managed.validate_assets(root)
+
+
+def test_native_agent_import_and_scientific_budgets():
+    from responses_api_agents.flyaoc_native.app import Config
+
+    assert "runtime_image" in Config.model_fields
+    source = (Path(managed.__file__).parent / "native_phase.py").read_text()
+    assert "paper_budget=10" in source and "max_turns=50" in source and "resume=False" in source

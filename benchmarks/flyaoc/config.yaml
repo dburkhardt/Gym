@@ -1,0 +1,17 @@
+flyaoc_agent:
+  responses_api_agents:
+    flyaoc_native:
+      entrypoint: app.py
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      runtime_image: ${oc.env:FLYAOC_RUNTIME_IMAGE}
+      solver_assets: ${oc.env:FLYAOC_SOLVER_ASSETS}
+      references: ${oc.env:FLYAOC_REFERENCES}
+      output_root: ${oc.env:FLYAOC_OUTPUT_ROOT}
+      datasets:
+        - name: flyaoc
+          type: benchmark
+          jsonl_fpath: benchmarks/flyaoc/data/benchmark.jsonl
+          prepare_script: benchmarks/flyaoc/prepare.py
+          num_repeats: 1
