@@ -38,7 +38,7 @@ def run(repo,out,task_id):
    assert head==raw['content']['base_commit'],(head,raw['content']['base_commit'])
    tracked=self.container.exec_run(['git','ls-files','-z']);assert tracked.exit_code==0
    files=tracked.output.decode().rstrip('\0').split('\0')
-   hash_script="import hashlib,json,pathlib; files=json.loads(__import__('sys').argv[1]); print(json.dumps({f:hashlib.sha256(pathlib.Path(f).read_bytes()).hexdigest() for f in files},sort_keys=True))"
+   hash_script="import hashlib,json,pathlib; files=json.loads(__import__('sys').argv[1]); print(json.dumps({f:({'symlink':__import__('os').readlink(f)} if pathlib.Path(f).is_symlink() else {'sha256':hashlib.sha256(pathlib.Path(f).read_bytes()).hexdigest()}) for f in files},sort_keys=True))"
    before=self.container.exec_run(['python','-c',hash_script,json.dumps(files)]);assert before.exit_code==0,before.output
    # Keep base tree byte-identical; remove answer patches and reachable future git history.
    command='rm -f /home/fix.patch /home/test.patch /home/fix-run.sh /home/test-run.sh /home/run.sh; rm -rf .git; git init -q; git -c user.name=Benchmark -c user.email=benchmark@local add -A; git -c user.name=Benchmark -c user.email=benchmark@local commit -qm base; test ! -e /home/fix.patch; test ! -e /home/test.patch'
