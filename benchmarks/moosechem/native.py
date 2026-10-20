@@ -10,10 +10,43 @@ import os
 from pathlib import Path
 import sys
 import time
+import uuid
 from types import SimpleNamespace
 
 MODEL = 'nvidia/nvidia/nemotron-3.5-super-vl'
 PIN = 'f8cda98a3bed30b0f0d85fba625e343d688461ab'
+
+class ReceiptAbort(BaseException):
+    """Escape native retry loops if durable evidence cannot be preserved."""
+
+def claim_run(out):
+    """An interrupted or concurrent start must require explicit reconciliation."""
+    path = Path(out)/'run-intent.json'
+    with path.open('x') as stream:
+        json.dump({'pid':os.getpid(),'started':time.time()},stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    fd = os.open(path.parent,os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+def append_durable(path, record):
+    """Preserve intent before dispatch and completion before another request."""
+    path = Path(path)
+    try:
+        with path.open('a') as stream:
+            stream.write(json.dumps(record) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except (OSError, TypeError, ValueError) as exc:
+        raise ReceiptAbort('Durable receipt failed; reconcile before further dispatch') from exc
 
 
 class TransportAbort(BaseException):
@@ -102,7 +135,9 @@ class RecordedClient:
         elif self.output_token_budget != 8192:
             kwargs['max_tokens'] = self.output_token_budget
         started = time.time()
-        record = {'stage': self.stage, 'request': kwargs, 'started': started}
+        record = {'stage': self.stage, 'request': kwargs, 'started': started,
+                  'request_id': uuid.uuid4().hex}
+        append_durable(self.trace.with_name('dispatch-intents.jsonl'), record)
         try:
             result = self.inner.chat.completions.create(**kwargs)
             assert result.model == MODEL
@@ -115,10 +150,14 @@ class RecordedClient:
             if isinstance(exc, APIError):
                 raise TransportAbort(exc) from exc
             raise
+        except (KeyboardInterrupt, SystemExit) as exc:
+            record['error_type'] = type(exc).__name__
+            record['outcome'] = 'unknown'
+            record['requires_reconciliation'] = True
+            raise
         finally:
             record['elapsed_seconds'] = time.time() - started
-            with self.trace.open('a') as stream:
-                stream.write(json.dumps(record) + '\n')
+            append_durable(self.trace, record)
 
 
 def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_token_budget=8192, allow_transport_tail=False):
@@ -131,8 +170,9 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_to
     names = ['inspiration_screening', 'hypothesis_generation', 'evaluate']
     modules = [importlib.import_module('Method.' + name) for name in names]
     trace = out / 'model-traces.jsonl'
-    if trace.exists():
-        raise RuntimeError('Existing model trace; reconcile explicitly before rerunning')
+    if trace.exists() or (out/'dispatch-intents.jsonl').exists():
+        raise RuntimeError('Existing model trace or dispatch intent; reconcile explicitly before rerunning')
+    claim_run(out)
     replay = ReplayPrefix(replay_path, allow_transport_tail=allow_transport_tail) if replay_path else None
     for stage, module in zip(names, modules):
         module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, replay=replay, output_token_budget=output_token_budget, **kw)
@@ -188,6 +228,6 @@ if __name__ == '__main__':
     try:
         result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path,output_token_budget=args.output_token_budget,allow_transport_tail=args.allow_transport_tail)
         (args.output/'result.json').write_text(json.dumps(result,indent=2))
-    except (Exception, TransportAbort) as exc:
+    except (Exception, TransportAbort, ReceiptAbort) as exc:
         write_failure(args.output, exc)
         raise
