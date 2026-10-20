@@ -234,13 +234,6 @@ class NemoGymLLM(BaseLLM):
                 reasoning_content = parts[0]
                 content = parts[1] if len(parts) > 1 else ""
 
-        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
-            raise OutputLengthExceededError(
-                f"Model {self._model_name} hit max_tokens limit. "
-                "Response was truncated. Consider increasing max_tokens if possible.",
-                truncated_response=content,
-            )
-
         usage = self._extract_usage_info(response_dict)
         prompt_token_ids = None
         completion_token_ids = None
@@ -280,6 +273,16 @@ class NemoGymLLM(BaseLLM):
                 "routed_experts": self._last_routed_experts,
             }
             self._save_dispatch_state()
+        # A length-limited HTTP response is a known completed provider call.
+        # Native Chat retains its partial text and advances the turn cursor.
+        # Persist completion before exposing that control-flow exception.
+        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+            raise OutputLengthExceededError(
+                f"Model {self._model_name} hit max_tokens limit. "
+                "Response was truncated. Consider increasing max_tokens if possible.",
+                truncated_response=content,
+            )
+
         return result
 
     def _select_dispatch_cursor(self, history: list[dict[str, Any]]) -> None:

@@ -148,3 +148,32 @@ async def test_native_capture_replays_completed_call_after_client_restart(tmp_pa
         assert result.content == "answer"
         await llm.aclose()
     assert physical == ["sent"]
+
+
+@pytest.mark.asyncio
+async def test_truncated_response_is_durable_before_chat_advances(tmp_path):
+    from harbor.llms.base import OutputLengthExceededError
+
+    path = tmp_path / "state.json"
+    llm = make_llm(path)
+    llm._http_client = AsyncMock()
+    llm._http_client.post.return_value = httpx.Response(200, json={
+        "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]
+    })
+    with pytest.raises(OutputLengthExceededError) as error:
+        await NemoGymLLM.call.__wrapped__(llm, "question")
+    assert error.value.truncated_response == "partial"
+    assert json.loads(path.read_text())["calls"]["0"]["completed"]
+    first = llm._http_client.post.call_args.kwargs["headers"]["x-nemo-gym-logical-call-id"]
+    await llm.aclose()
+    restored = make_llm(path, resume=True)
+    restored._http_client = AsyncMock()
+    restored._http_client.post.return_value = httpx.Response(200, json={
+        "choices": [{"message": {"content": "finished"}, "finish_reason": "stop"}]
+    })
+    history = [{"role": "user", "content": "question"}, {"role": "assistant", "content": "partial"}]
+    result = await NemoGymLLM.call.__wrapped__(restored, "continue", history)
+    assert result.content == "finished"
+    assert restored._http_client.post.call_args.kwargs["headers"]["x-nemo-gym-logical-call-id"] != first
+    assert len(json.loads(path.read_text())["calls"]) == 2
+    await restored.aclose()
