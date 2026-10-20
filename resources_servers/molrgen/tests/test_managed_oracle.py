@@ -100,3 +100,26 @@ async def test_cancel_during_creation_waits_and_cleans(tmp_path, monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
     sandbox.stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", ["source", "data"])
+async def test_changed_assets_rejected_before_container_creation(tmp_path, monkeypatch, mismatch):
+    (tmp_path / "native.py").write_text("native")
+    digest = hashlib.sha256(f"native.py {hashlib.sha256(b'native').hexdigest()}\n".encode()).hexdigest()
+    cfg = module.ManagedOracleConfig(
+        source_dir=tmp_path,
+        source_sha256=digest if mismatch != "source" else "bad",
+        data_dir=tmp_path,
+        data_sha256=module._data_hash(tmp_path) if mismatch != "data" else "bad",
+        artifact_dir=tmp_path / "artifacts",
+    )
+
+    def forbidden(*args):
+        raise AssertionError("Container must not be created")
+
+    monkeypatch.setattr(module, "AsyncSandbox", forbidden)
+    with pytest.raises(ValueError, match="hash mismatch"):
+        async with module.managed_oracle(cfg):
+            pass
+    assert not cfg.artifact_dir.exists()
