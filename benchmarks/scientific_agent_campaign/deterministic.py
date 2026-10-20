@@ -5,13 +5,14 @@ import argparse
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 try:
     from .prepare import stratified
 except ImportError:
     from prepare import stratified
 
-PINS = {'chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -19,6 +20,7 @@ PINS = {'chemiq':'63826f64990802e87f1b11b9192606a20838d522',
 def module(path: Path):
     spec = importlib.util.spec_from_file_location('creator_' + path.stem, path)
     result = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = result
     spec.loader.exec_module(result)
     return result
 
@@ -32,7 +34,17 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'chemiq':
+    if kind == 'sino_us_drugqa':
+        upstream = module(repo/'evaluation/common.py')
+        data = upstream.load_release(str(repo/'data/release/all.jsonl'))
+        for x in data:
+            system = upstream.SYSTEM_PROMPT
+            # Creator .format mistakes literal JSON braces for a field; replace only the two intended fields.
+            prompt = upstream.USER_PROMPT_TEMPLATE.replace('{question}',x['question']).replace('{options}',upstream.format_options(x['choices']))
+            rows.append({'uuid':str(x['id']),'stratum':x['task_type']+'/'+x['language'],
+                         'responses_create_params':{'input':[{'role':'system','content':system},{'role':'user','content':prompt}]},
+                         'verifier_metadata':x})
+    elif kind == 'chemiq':
         data = [json.loads(x) for x in (repo/'questions/chemiq.jsonl').read_text().splitlines()]
         for x in data:
             rows.append({'uuid':x['uuid'],'stratum':x['question_category'],
@@ -73,6 +85,12 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'sino_us_drugqa':
+        upstream = module(repo/'evaluation/common.py')
+        parsed = upstream.parse_selected_answer(answer)
+        prediction = upstream.Prediction(id=str(meta['id']),predicted_answer=parsed,valid_output=bool(parsed))
+        scored = upstream.score_prediction(meta,prediction)
+        return {'reward':float(bool(scored.correct)),'parsed':parsed,'valid_output':scored.valid_output,'metric':'creator_accuracy'}
     if kind == 'qcbench':
         scorer = module(repo/'eval.py')
         parsed = scorer.extract_boxed(answer)
