@@ -17,7 +17,10 @@ def prepare() -> Path:
         expected = [{"role": "user", "content": row["verifier_metadata"]["question"]}]
         if row["responses_create_params"]["input"] != expected:
             raise ValueError("GeneHop solver prompt differs from the frozen creator question")
-    return path
+    from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
+
+    destination = Path(os.environ.get("GENEHOP_PREPARED_SAMPLE", "benchmarks/genehop/data/benchmark.jsonl"))
+    return prepare_sample(destination, source=path)
 
 
 if __name__ == "__main__":

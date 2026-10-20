@@ -10,7 +10,7 @@ genehop_agent:
       datasets:
       - name: genehop
         type: benchmark
-        jsonl_fpath: ${oc.env:GENEHOP_SAMPLE}
+        jsonl_fpath: ${oc.env:GENEHOP_PREPARED_SAMPLE,benchmarks/genehop/data/benchmark.jsonl}
         prepare_script: benchmarks/genehop/prepare.py
         num_repeats: 1
         prompt_config: null
