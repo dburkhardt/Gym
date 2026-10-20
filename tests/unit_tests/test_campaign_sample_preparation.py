@@ -44,3 +44,16 @@ def test_invalid_sample_preserves_existing_destination(tmp_path, case):
     with pytest.raises(ValueError):
         prepare_sample(target, source=source, expected_source_sha256="0" * 64 if case == "hash" else None)
     assert target.read_text() == "prior-valid-output"
+
+
+def test_explicit_metadata_identity_preserves_source(tmp_path):
+    source = tmp_path / "source.jsonl"
+    row = {
+        "responses_create_params": {"input": [{"role": "user", "content": "unchanged"}]},
+        "verifier_metadata": {"id": "246210390723", "metadata": {"prompt_id": "246210390723"}},
+    }
+    source.write_text(json.dumps(row) + "\n")
+    output = prepare_sample(tmp_path / "output.jsonl", source=source, identity_metadata_key="id")
+    staged = json.loads(output.read_text())
+    assert staged.pop("task_id") == "246210390723"
+    assert staged == row

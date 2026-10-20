@@ -12,7 +12,11 @@ from nemo_gym.dataset_staging import stage_file
 
 
 def prepare_sample(
-    destination: Path, *, source: Path | None = None, expected_source_sha256: str | None = None
+    destination: Path,
+    *,
+    source: Path | None = None,
+    expected_source_sha256: str | None = None,
+    identity_metadata_key: str = "task_id",
 ) -> Path:
     """Preserve every source field and expose its frozen identity to Gym's planner.
 
@@ -35,7 +39,7 @@ def prepare_sample(
         metadata = row.get("verifier_metadata")
         if not isinstance(metadata, dict) or not row.get("responses_create_params", {}).get("input"):
             raise ValueError("Missing solver input or isolated verifier metadata")
-        identity = row.get("task_id", row.get("uuid", metadata.get("task_id")))
+        identity = row.get("task_id", row.get("uuid", metadata.get(identity_metadata_key)))
         if isinstance(identity, bool) or not isinstance(identity, (str, int)) or not str(identity):
             raise ValueError("Missing stable task identity; positional IDs are not allowed")
         row.setdefault("task_id", str(identity))
