@@ -3,12 +3,13 @@
 """Copy audited campaign rows, never download an unpinned dataset implicitly."""
 
 import os
-import shutil
 from pathlib import Path
+
+from nemo_gym.dataset_staging import stage_file
 
 
 if __name__ == "__main__":
     source = Path(os.environ["CAMPAIGN_SAMPLE_JSONL"])
     destination = Path(__file__).resolve().parents[2] / "resources_servers/superchem/data/benchmark.jsonl"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
+    stage_file(source, destination)
