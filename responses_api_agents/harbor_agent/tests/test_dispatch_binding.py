@@ -169,6 +169,13 @@ async def test_truncated_response_is_durable_before_chat_advances(tmp_path):
     restored = make_llm(path, resume=True)
     restored._http_client = AsyncMock()
     restored._http_client.post.return_value = httpx.Response(200, json={
+        "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]
+    })
+    with pytest.raises(OutputLengthExceededError) as replay_error:
+        await NemoGymLLM.call.__wrapped__(restored, "question")
+    assert replay_error.value.truncated_response == "partial"
+    assert restored._http_client.post.call_args.kwargs["headers"]["x-nemo-gym-logical-call-id"] == first
+    restored._http_client.post.return_value = httpx.Response(200, json={
         "choices": [{"message": {"content": "finished"}, "finish_reason": "stop"}]
     })
     history = [{"role": "user", "content": "question"}, {"role": "assistant", "content": "partial"}]
