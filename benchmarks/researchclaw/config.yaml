@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- benchmarks/researchclaw/campaign.yaml
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      harbor_verifier_import_path: responses_api_agents.harbor_agent.custom_verifiers.researchclaw.verifier:ResearchClawVerifier
+      harbor_verifier_kwargs:
+        controller_python: ${oc.env:RESEARCHCLAW_CONTROLLER_PYTHON}
+        source_root: ${oc.env:RESEARCHCLAW_SOURCE}
+        frozen_manifest: ${oc.env:RESEARCHCLAW_FROZEN_MANIFEST}
+        frozen_manifest_sha256: ${oc.env:RESEARCHCLAW_FROZEN_MANIFEST_SHA256}
+      datasets:
+      - name: researchclaw
+        type: benchmark
+        jsonl_fpath: benchmarks/researchclaw/data/benchmark.jsonl
+        prepare_script: benchmarks/researchclaw/stage_frozen.py
+        num_repeats: 1

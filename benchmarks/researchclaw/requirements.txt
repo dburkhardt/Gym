@@ -1,0 +1,3 @@
+# Dedicated trusted creator-controller environment; install Gym fork as well.
+structai==0.1.23
+json-repair==0.54.2
