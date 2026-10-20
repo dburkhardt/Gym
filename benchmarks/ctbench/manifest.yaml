@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: ctbench
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: custom-gym-verifier
+domain: knowledge
+description: ctbench experimental pilot
+modality: text
+licensing: CC0-1.0
+authors:
+- dburkhardt
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: ctbench
+agent_server: simple_agent
+model_server: policy_model
+datasets:
+- name: ctbench
+  type: benchmark
+  jsonl_fpath: resources_servers/ctbench/data/benchmark.jsonl
+  prepare_script: benchmarks/ctbench/prepare.py
+  num_repeats: 1
+canonical_split: CT-Pub and CT-Repo excluding three demonstration trials
+prompt_source: prepared
+lifecycle: active

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/ctbench/configs/ctbench.yaml
+ctbench:
+  resources_servers:
+    ctbench:
+      datasets:
+      - name: ctbench
+        type: benchmark
+        jsonl_fpath: resources_servers/ctbench/data/benchmark.jsonl
+        prepare_script: benchmarks/ctbench/prepare.py
+        num_repeats: 1
