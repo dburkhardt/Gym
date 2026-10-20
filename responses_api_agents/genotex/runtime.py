@@ -47,7 +47,7 @@ def stage(data_root: Path, run_root: Path, task: dict) -> dict[str, Path]:
         if not value or Path(value).name != value or value in (".", ".."):
             raise ValueError("Unsafe trait identifier")
     source = data_root / "upstream"
-    paths = {name: run_root / name for name in ["public", "prediction", "reference", "grading"]}
+    paths = {name: run_root / name for name in ["public", "prediction", "reference", "grading", "workspace"]}
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=False)
     public = paths["public"]
@@ -115,6 +115,8 @@ class Container:
             f"type=bind,source={self.paths['public']},target=/data,readonly",
             "--mount",
             f"type=bind,source={self.paths['prediction']},target=/output",
+            "--mount",
+            f"type=bind,source={self.paths['workspace']},target=/work",
             "--workdir",
             "/work",
             self.image,

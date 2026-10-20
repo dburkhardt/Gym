@@ -25,7 +25,12 @@ def response(output):
 
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
-    paths = {name: tmp_path / name for name in ["public", "prediction", "reference", "grading"]}
+    paths = {
+        name: tmp_path / "runs" / "shared" / name
+        for name in ["public", "prediction", "reference", "grading", "workspace"]
+    }
+    for path in paths.values():
+        path.mkdir(parents=True)
     monkeypatch.setattr(app, "stage", lambda *_: paths)
     container = AsyncMock()
     container.inspect.return_value = {"image_id": "fixture-image", "network_mode": "none"}
@@ -126,7 +131,7 @@ async def test_container_checks_writes_and_uses_host_uid(tmp_path, monkeypatch):
     calls = AsyncMock(return_value=(0, ""))
     monkeypatch.setattr(runtime, "command", calls)
     container = runtime.Container(
-        image="test", paths={"public": tmp_path, "prediction": tmp_path}, cpus=1, memory_gb=1
+        image="test", paths={"public": tmp_path, "prediction": tmp_path, "workspace": tmp_path}, cpus=1, memory_gb=1
     )
     await container.start()
     args = calls.call_args_list[0].args
@@ -142,7 +147,7 @@ async def test_unwritable_container_is_stopped_before_inference(tmp_path, monkey
     calls = AsyncMock(side_effect=[(0, ""), (1, "permission denied"), (0, "")])
     monkeypatch.setattr(runtime, "command", calls)
     container = runtime.Container(
-        image="test", paths={"public": tmp_path, "prediction": tmp_path}, cpus=1, memory_gb=1
+        image="test", paths={"public": tmp_path, "prediction": tmp_path, "workspace": tmp_path}, cpus=1, memory_gb=1
     )
     with pytest.raises(RuntimeError, match="not writable"):
         await container.start()
@@ -169,3 +174,85 @@ async def test_native_token_limit_is_a_task_failure_not_infrastructure(setup):
     assert result.failure_reason == "model_response_incomplete:max_output_tokens"
     assert not result.mask_sample
     scorer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resume_preserves_completed_tool_and_original_budget(setup):
+    from pathlib import Path
+
+    agent, body, client, container, scorer = setup
+    client.post.side_effect = [
+        response(
+            [
+                {
+                    "type": "function_call",
+                    "name": "shell",
+                    "arguments": json.dumps({"command": "echo done"}),
+                    "call_id": "call1",
+                    "id": "fc1",
+                }
+            ]
+        ),
+        RuntimeError("transport lost"),
+    ]
+    failed = await agent.run(body)
+    checkpoint = Path(failed.artifact_dir) / "checkpoint.json"
+    state = json.loads(checkpoint.read_text())
+    assert state["next_step"] == 1
+    assert len(list(Path(failed.artifact_dir).glob("tool-*.json"))) == 1
+    assert state["history"][-1]["call_id"] == "call1"
+    old_elapsed = state["elapsed_seconds"]
+    resolution = {
+        "action_id": state["pending"]["action_id"],
+        "outcome": "not_forwarded",
+        "checkpoint": str(checkpoint),
+    }
+    resumed = body.model_copy(deep=True)
+    resumed.verifier_metadata.update(resume_checkpoint=str(checkpoint), resume_resolution=resolution)
+    client.post.side_effect = [response([])]
+    result = await agent.run(resumed)
+    assert not result.mask_sample
+    assert result.elapsed_seconds >= old_elapsed
+    container.shell.assert_awaited_once_with("echo done")
+    assert json.loads(checkpoint.read_text()) == state  # original record remains immutable
+    assert len(json.loads((Path(result.artifact_dir) / "trajectory.json").read_text())) == 3
+
+
+@pytest.mark.asyncio
+async def test_uncertain_model_request_cannot_silently_repeat(setup):
+    from pathlib import Path
+
+    agent, body, client, container, scorer = setup
+    client.post.side_effect = RuntimeError("transport lost")
+    failed = await agent.run(body)
+    resumed = body.model_copy(deep=True)
+    resumed.verifier_metadata["resume_checkpoint"] = str(Path(failed.artifact_dir) / "checkpoint.json")
+    result = await agent.run(resumed)
+    assert result.mask_sample
+    assert "receipt review" in result.failure_reason
+    assert client.post.await_count == 1
+
+
+def test_checkpoint_refuses_uncertain_tool_and_exhausted_budget(tmp_path):
+    from responses_api_agents.genotex.checkpoint import remaining_budget, restore_checkpoint, save_checkpoint
+
+    paths = {}
+    for name in ("public", "prediction", "reference", "grading", "workspace"):
+        folder = tmp_path / name
+        folder.mkdir()
+        paths[name] = str(folder)
+    state = {
+        "task": {"trait": "T"},
+        "paths": paths,
+        "pending": {"kind": "tool", "action_id": "unknown"},
+        "elapsed_seconds": 10,
+        "next_step": 2,
+    }
+    checkpoint = tmp_path / "checkpoint.json"
+    save_checkpoint(checkpoint, state)
+    with pytest.raises(ValueError, match="Unresolved tool"):
+        restore_checkpoint(checkpoint, work_root=tmp_path, task={"trait": "T"})
+    with pytest.raises(ValueError, match="budget exhausted"):
+        remaining_budget(state, timeout_s=10, max_steps=80)
+    with pytest.raises(ValueError, match="budget exhausted"):
+        remaining_budget(state, timeout_s=7200, max_steps=2)

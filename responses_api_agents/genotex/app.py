@@ -18,6 +18,7 @@ from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, Simpl
 from nemo_gym.config_types import ModelServerRef
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.server_utils import get_response_json, raise_for_status
+from responses_api_agents.genotex.checkpoint import remaining_budget, restore_checkpoint, save_checkpoint
 from responses_api_agents.genotex.runtime import SHELL_TOOL, Container, score, stage, task_prompt
 
 
@@ -63,7 +64,9 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
 
     async def _run(self, body: GenoTEXRunRequest, request: Request | None) -> GenoTEXResponse:
         started = time.monotonic()
-        task = body.verifier_metadata
+        task = {k: v for k, v in body.verifier_metadata.items() if k not in ("resume_checkpoint", "resume_resolution")}
+        work_root = Path(self.config.work_root).expanduser().resolve()
+        resume_path = body.verifier_metadata.get("resume_checkpoint")
         run_root = Path(self.config.work_root).expanduser().resolve() / uuid.uuid4().hex
         run_root.mkdir(parents=True)
         (run_root / "task.json").write_text(json.dumps(task, indent=2))
@@ -80,37 +83,90 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
         metrics, failure, masked = {}, None, False
         container = None
         trajectory = []
+        state = None
+        prior_elapsed = 0.0
+        checkpoint_path = run_root / "checkpoint.json"
+
+        def persist():
+            state["elapsed_seconds"] = prior_elapsed + time.monotonic() - started
+            save_checkpoint(checkpoint_path, state)
+
         try:
-            paths = stage(Path(self.config.data_root).expanduser().resolve(), run_root, task)
+            if resume_path:
+                state = restore_checkpoint(
+                    Path(str(resume_path)),
+                    work_root=work_root,
+                    task=task,
+                    resolution=body.verifier_metadata.get("resume_resolution"),
+                )
+                prior_elapsed = state["elapsed_seconds"]
+                paths = {k: Path(v) for k, v in state["paths"].items()}
+                (run_root / "resumed-from.json").write_text(json.dumps({"checkpoint": str(resume_path)}))
+            else:
+                paths = stage(Path(self.config.data_root).expanduser().resolve(), run_root, task)
+                state = {
+                    "version": 1,
+                    "task": task,
+                    "paths": {k: str(v) for k, v in paths.items()},
+                    "history": [{"role": "user", "content": task_prompt(task)}],
+                    "trajectory": [],
+                    "next_step": 0,
+                    "elapsed_seconds": 0.0,
+                    "pending": None,
+                    "pending_calls": [],
+                    "solver_done": False,
+                }
+            remaining_s, _ = remaining_budget(state, timeout_s=self.config.timeout_s, max_steps=self.config.max_steps)
+            history, trajectory = state["history"], state["trajectory"]
+            if state.get("last_response"):
+                response = NeMoGymResponse.model_validate(state["last_response"])
+            persist()
             container = Container(
                 image=self.config.image, paths=paths, cpus=self.config.cpus, memory_gb=self.config.memory_gb
             )
             await container.start()
             (run_root / "container.json").write_text(json.dumps(await container.inspect(), indent=2))
-            history = [{"role": "user", "content": task_prompt(task)}]
             params = body.responses_create_params.model_dump(exclude_none=True)
             params.update(tools=[SHELL_TOOL], parallel_tool_calls=False, temperature=0)
-            async with asyncio.timeout(self.config.timeout_s):
-                for step in range(self.config.max_steps):
-                    reply = await self.server_client.post(
-                        server_name=self.config.model_server.name,
-                        url_path="/v1/responses",
-                        json={**params, "input": history},
-                        cookies=request.cookies if request else {},
-                    )
-                    await raise_for_status(reply)
-                    payload = await get_response_json(reply)
-                    response = NeMoGymResponse.model_validate(payload)
-                    outputs = payload.get("output", [])
-                    history.extend(outputs)
-                    trajectory.append({"step": step, "response": payload})
-                    calls = [item for item in outputs if item.get("type") == "function_call"]
-                    if not calls:
-                        if payload.get("status") == "incomplete":
-                            reason = (payload.get("incomplete_details") or {}).get("reason", "unknown")
-                            failure = f"model_response_incomplete:{reason}"
-                        break
-                    for call in calls:
+            remaining_s = self.config.timeout_s - prior_elapsed - (time.monotonic() - started)
+            if remaining_s <= 0:
+                raise TimeoutError("Original elapsed budget exhausted during setup")
+            async with asyncio.timeout(remaining_s):
+                while not state["solver_done"]:
+                    if not state["pending_calls"]:
+                        if state["next_step"] >= self.config.max_steps:
+                            failure = "max_steps_exhausted"
+                            break
+                        step = state["next_step"]
+                        state["pending"] = {"kind": "model", "action_id": uuid.uuid4().hex, "step": step}
+                        persist()
+                        reply = await self.server_client.post(
+                            server_name=self.config.model_server.name,
+                            url_path="/v1/responses",
+                            json={**params, "input": history},
+                            cookies=request.cookies if request else {},
+                        )
+                        await raise_for_status(reply)
+                        payload = await get_response_json(reply)
+                        response = NeMoGymResponse.model_validate(payload)
+                        state["last_response"] = payload
+                        outputs = payload.get("output", [])
+                        history.extend(outputs)
+                        trajectory.append({"step": step, "response": payload})
+                        state["pending_calls"] = [item for item in outputs if item.get("type") == "function_call"]
+                        state["next_step"] += 1
+                        state["pending"] = None
+                        if not state["pending_calls"]:
+                            state["solver_done"] = True
+                            if payload.get("status") == "incomplete":
+                                reason = (payload.get("incomplete_details") or {}).get("reason", "unknown")
+                                failure = f"model_response_incomplete:{reason}"
+                        persist()
+                    while state["pending_calls"]:
+                        call = state["pending_calls"][0]
+                        action_id = uuid.uuid4().hex
+                        state["pending"] = {"kind": "tool", "action_id": action_id, "call": call}
+                        persist()
                         try:
                             args = json.loads(call["arguments"])
                             if call["name"] != "shell" or not isinstance(args.get("command"), str):
@@ -118,13 +174,15 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                             result = await container.shell(args["command"])
                         except (ValueError, TimeoutError) as exc:
                             result = {"error": str(exc)}
+                        receipt = {"action_id": action_id, "call": call, "result": result}
+                        save_checkpoint(run_root / f"tool-{action_id}.json", receipt)
                         history.append(
                             {"type": "function_call_output", "call_id": call["call_id"], "output": json.dumps(result)}
                         )
-                        trajectory.append({"step": step, "tool": call, "result": result})
-                    (run_root / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
-                else:
-                    failure = "max_steps_exhausted"
+                        trajectory.append({"step": state["next_step"] - 1, "tool": call, "result": result})
+                        state["pending_calls"].pop(0)
+                        state["pending"] = None
+                        persist()
             await container.stop()
             container = None
             metrics = await score(
@@ -158,6 +216,8 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                     await container.stop()
                 except Exception as exc:
                     failure, masked = f"Container cleanup failed: {type(exc).__name__}: {exc}", True
+            if state is not None:
+                persist()
             (run_root / "trajectory.json").write_text(json.dumps(trajectory, indent=2))
         result = GenoTEXResponse(
             **body.model_dump(),
@@ -165,7 +225,7 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
             reward=float(metrics.get("reward", 0)),
             metrics=metrics,
             artifact_dir=str(run_root),
-            elapsed_seconds=time.monotonic() - started,
+            elapsed_seconds=prior_elapsed + time.monotonic() - started,
             mask_sample=masked,
             failure_kind="genotex:infrastructure" if masked else None,
             failure_reason=failure,
