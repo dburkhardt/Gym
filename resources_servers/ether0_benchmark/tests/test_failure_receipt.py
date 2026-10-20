@@ -4,7 +4,7 @@ from resources_servers.ether0_benchmark import app
 from resources_servers.superchem.tests.test_native_contracts import response
 
 class Process:
-    def __init__(self,code=0,stdout=b'{"reward":1,"diagnostics":{}}',timeout=False):
+    def __init__(self,code=0,stdout=b'ETHER0_RESULT_JSON:{"reward":1,"diagnostics":{}}\nnative C diagnostic\n',timeout=False):
         self.returncode=code; self.stdout=stdout; self.timeout=timeout; self.killed=False
     async def communicate(self,payload):
         assert b'<answer>CCO</answer>' in payload
@@ -16,7 +16,7 @@ class Process:
 @pytest.mark.asyncio
 @pytest.mark.parametrize('case',['success','nonzero','timeout','malformed','oserror'])
 async def test_subprocess_verifier_preserves_response(monkeypatch,case):
-    process=Process(code=1 if case=='nonzero' else 0,stdout=b'invalid' if case=='malformed' else b'{"reward":1,"diagnostics":{}}',timeout=case=='timeout')
+    process=Process(code=1 if case=='nonzero' else 0,stdout=b'invalid' if case=='malformed' else b'ETHER0_RESULT_JSON:{"reward":1,"diagnostics":{}}\nnative C diagnostic\n',timeout=case=='timeout')
     async def create(*args,**kwargs):
         assert args[1:]==('-m','resources_servers.ether0_benchmark.score_worker')
         if case=='oserror': raise OSError('spawn failed')
@@ -57,5 +57,5 @@ def test_score_worker_keeps_creator_prints_off_json_stdout(monkeypatch, capsys):
     monkeypatch.setattr(sys, 'stdin', io.StringIO('{"answer":"C"}'))
     runpy.run_path(str(Path(__file__).resolve().parents[1] / 'score_worker.py'), run_name='__main__')
     captured = capsys.readouterr()
-    assert json.loads(captured.out) == {'reward': 1.0}
+    assert json.loads(captured.out.removeprefix('ETHER0_RESULT_JSON:')) == {'reward': 1.0}
     assert 'creator diagnostic' in captured.err

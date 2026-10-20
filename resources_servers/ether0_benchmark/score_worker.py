@@ -8,4 +8,4 @@ if __name__ == '__main__':
     # Creator native libraries can print diagnostics; reserve stdout for JSON IPC.
     with contextlib.redirect_stdout(sys.stderr):
         result = grade(**payload)
-    print(json.dumps(result))
+    print("ETHER0_RESULT_JSON:" + json.dumps(result), flush=True)

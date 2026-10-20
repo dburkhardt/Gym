@@ -48,7 +48,11 @@ class Verifier:
                 raise RuntimeError("Creator scorer subprocess exceeded 120 seconds")
             if process.returncode:
                 raise RuntimeError(f"Creator scorer subprocess exited {process.returncode}: " + stderr.decode(errors="replace")[-2000:])
-            result = json.loads(stdout)
+            records = [line[len(b"ETHER0_RESULT_JSON:"):] for line in stdout.splitlines()
+                       if line.startswith(b"ETHER0_RESULT_JSON:")]
+            if len(records) != 1:
+                raise ValueError("Creator worker must return exactly one framed JSON record")
+            result = json.loads(records[0])
         except (RuntimeError, OSError, ValueError) as exc:
             return Response(
                 **body.model_dump(),
