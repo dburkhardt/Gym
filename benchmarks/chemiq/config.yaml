@@ -3,6 +3,7 @@ chemiq_resources:
   resources_servers:
     campaign_creator_scoring:
       entrypoint: app.py
+      domain: knowledge
       verified: false
       benchmark: chemiq
       upstream_repo: ${oc.env:CAMPAIGN_UPSTREAM_REPO}
