@@ -4,6 +4,7 @@
 import hashlib
 import json
 import os
+import re
 import tarfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -43,7 +44,9 @@ def validate(prepared, audit_path, runtime):
     return audit
 
 
-def stage(prepared, audit_path, runtime, destination):
+def stage(prepared, audit_path, runtime, destination, *, docker_image=None):
+    if docker_image is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", docker_image):
+        raise ValueError("Final local image must be an immutable SHA256 image ID")
     audit = validate(prepared, audit_path, runtime)
     with TemporaryDirectory() as temp:
         temp = Path(temp)
@@ -61,7 +64,12 @@ def stage(prepared, audit_path, runtime, destination):
             src = prepared / "tasks" / TASK / relative
             if relative == "task.toml":
                 overlay = temp / "task.toml"
-                overlay.write_text('artifacts = ["/workspace"]\n' + src.read_text())
+                content = 'artifacts = ["/workspace"]\n' + src.read_text()
+                if docker_image:
+                    content = content.replace(
+                        "[environment]", '[environment]\ndocker_image = "' + docker_image + '"', 1
+                    )
+                overlay.write_text(content)
                 stage_file(overlay, target / relative)
             elif relative == "environment/Dockerfile":
                 overlay = temp / "Dockerfile"
@@ -107,6 +115,7 @@ def stage(prepared, audit_path, runtime, destination):
                     "audit_sha256": AUDIT_SHA256,
                     "runtime_sha256": RUNTIME_SHA256,
                     "creator_image": CREATOR_IMAGE,
+                    "final_local_image": docker_image,
                     "build_packages": "Resolved apt/transitive pip versions recorded inside image; final image digest required before live",
                     "task": TASK,
                     "regime": "medium",
@@ -129,6 +138,7 @@ def prepare():
         Path(os.environ["COREBENCH_SOURCE_AUDIT"]),
         Path(os.environ["COREBENCH_RUNTIME_ARCHIVE"]),
         Path(__file__).parent / "data",
+        docker_image=os.environ.get("COREBENCH_DOCKER_IMAGE"),
     )
 
 

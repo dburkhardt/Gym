@@ -24,7 +24,7 @@ def assets():
 
 def test_native_preparation_preserves_references_outside_environment(assets, tmp_path):
     prepared, audit, runtime = assets
-    output = stage(prepared, audit, runtime, tmp_path)
+    output = stage(prepared, audit, runtime, tmp_path, docker_image="sha256:" + "a" * 64)
     row = json.loads(output.read_text())
     assert row["instance_id"] == row["task_id"] == f"corebench::{TASK}"
     plan = build_eval_plan(
@@ -39,6 +39,7 @@ def test_native_preparation_preserves_references_outside_environment(assets, tmp
         prepared / "tasks" / TASK / "tests/evaluations.py"
     ).read_bytes()
     assert (task / "task.toml").read_text().startswith('artifacts = ["/workspace"]')
+    assert 'docker_image = "sha256:' + "a" * 64 + '"' in (task / "task.toml").read_text()
     assert (task / "environment/python/bin/python3").exists()
     assert (task / "environment/Dockerfile").read_text().startswith("FROM " + CREATOR_IMAGE)
     assert not list((task / "environment").rglob("answers.json"))
@@ -86,3 +87,8 @@ def test_oracle_controls_keep_reference_outside_build_context(assets, tmp_path):
         assert ("deliberately incorrect control" in script) is (not correct)
         with pytest.raises(ValueError, match="overwrite"):
             stage_control(prepared / "tasks", destination, correct=correct)
+
+
+def test_mutable_final_image_refused_before_staging(tmp_path):
+    with pytest.raises(ValueError, match="immutable"):
+        stage(tmp_path, tmp_path, tmp_path, tmp_path, docker_image="example:latest")

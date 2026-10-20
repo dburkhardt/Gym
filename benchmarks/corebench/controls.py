@@ -23,7 +23,7 @@ def stage_control(native_tasks: Path, destination: Path, *, correct: bool) -> Pa
     (solution / "solve.sh").write_text(
         '#!/bin/bash\nset -eu\ntest ! -e /tests/answers.json\ntest ! -e /workspace/answers.json\ntest -z "$(find /workspace/capsule-9070543/results -type f -print -quit)"\nprintf %s '
         + payload
-        + ' > /workspace/report.json\nprintf "reference isolation passed\\n" > /workspace/control-isolation.txt\n'
+        + ' > /workspace/report.json\nprintf "reference isolation passed\\n" > /workspace/control-isolation.txt\ncp -r /opt/corebench-build-metadata /workspace/corebench-build-metadata\n'
     )
     (solution / "solve.sh").chmod(0o755)
     return destination
