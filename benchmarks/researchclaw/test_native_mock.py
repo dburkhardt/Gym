@@ -17,6 +17,7 @@ class Native(unittest.TestCase):
         for value,masked in [({'score':50,'reasoning':'control'},False),(None,True),({},True)]:
             with tempfile.TemporaryDirectory() as d:
                 w=Path(d)/'workspace';w.mkdir();(w/'report').mkdir();(w/'report/report.md').write_text('Synthetic control report, not model output')
+                (w/'capture-manifest.json').write_text('[]')
                 (w/'_meta.json').write_text(json.dumps({'run_id':'mock','task_id':'Life_002'}))
                 Fake.response=value
                 r=score(SOURCE,str(w),str(Path(d)/'receipt.json'))

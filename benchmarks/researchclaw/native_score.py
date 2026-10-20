@@ -4,9 +4,12 @@
 import importlib, json, os, sys, threading, math
 from pathlib import Path
 MODEL='nvidia/nvidia/nemotron-3.5-super-vl'
-def annotate(native, calls):
-    failures=[i for i,c in enumerate(calls) if not isinstance(c.get('parsed'),dict) or 'score' not in c['parsed'] or isinstance(c['parsed'].get('score'),bool) or not isinstance(c['parsed'].get('score'),(float,int)) or not math.isfinite(c['parsed']['score'])]
+def annotate(native, calls, expected_count=None, capture_omissions=None):
+    failures=[i for i,c in enumerate(calls) if not isinstance(c.get('parsed'),dict) or 'score' not in c['parsed'] or isinstance(c['parsed'].get('score'),bool) or not isinstance(c['parsed'].get('score'),(float,int)) or not math.isfinite(c['parsed']['score']) or not 0 <= c['parsed']['score'] <= 100]
     error=native.get('error')
+    expected_count = len(native.get('items', [])) if expected_count is None else expected_count
+    coverage_error = expected_count <= 0 or len(calls) != expected_count or len(native.get('items', [])) != expected_count
+    error = error or ('incomplete_checklist_coverage' if coverage_error else None) or ('capture_omissions' if capture_omissions else None)
     return {'native':native,'judge_calls':calls,'mask_sample':bool(failures or error),'failure_kind':'judge_failed' if failures else ('missing_report_or_native_error' if error else None),'invalid_judge_call_indices':failures,'reward':None if failures or error else native['total_score']/100,'qualification':'Native checklist agreement, not independent scientific correctness; raw creator metric preserved.'}
 def score(source,workspace,output):
     if os.environ.get('JUDGE_MODEL_NAME') != MODEL: raise ValueError('Exact Super judge required before imports/calls')
@@ -24,8 +27,21 @@ def score(source,workspace,output):
                 Path(output+'.calls.json').write_text(json.dumps(calls,indent=2))
             return result
     module.LLMAgent=Capturing
+    original_item=module._score_single_item
+    covered=[]
+    def audit_item(agent,report,item,*args,**kwargs):
+        with lock: covered.append(json.dumps(item,sort_keys=True))
+        return original_item(agent,report,item,*args,**kwargs)
+    module._score_single_item=audit_item
     try: native=module.score_workspace(workspace)
     except Exception as e: native={'error':type(e).__name__+': '+str(e)}
-    finally: module.LLMAgent=original
-    report=annotate(native,calls);Path(output).write_text(json.dumps(report,indent=2));return report
+    finally:
+        module.LLMAgent=original
+        module._score_single_item=original_item
+    meta=json.loads((Path(workspace)/'_meta.json').read_text())
+    checklist=json.loads((Path(source)/'tasks'/meta['task_id']/'target_study/checklist.json').read_text())
+    manifest=Path(workspace)/'capture-manifest.json'
+    omissions=[x for x in json.loads(manifest.read_text()) if not x.get('copied')] if manifest.exists() else [{'reason':'capture manifest missing'}]
+    if sorted(covered) != sorted(json.dumps(x,sort_keys=True) for x in checklist): omissions.append({'reason':'native criterion identity coverage mismatch'})
+    report=annotate(native,calls,len(checklist),omissions); report['criterion_coverage']=covered;Path(output).write_text(json.dumps(report,indent=2));return report
 if __name__=='__main__': score(*sys.argv[1:])
