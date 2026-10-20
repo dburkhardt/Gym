@@ -167,7 +167,20 @@ class ScicodeResourcesServer(SimpleResourcesServer):
             execution_details[i] = {"step_number": sub_step["step_number"], **result}
             return bool(result["passed"])
 
-        step_results = list(await asyncio.gather(*[_run_substep(i) for i in scored]))
+        tasks = [asyncio.create_task(_run_substep(i)) for i in scored]
+        try:
+            step_results = list(await asyncio.gather(*tasks))
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            # Cleanup can itself fail; retain the original scientific infrastructure error.
+            settlement = asyncio.gather(*tasks, return_exceptions=True)
+            while not settlement.done():
+                try:
+                    await asyncio.shield(settlement)
+                except asyncio.CancelledError:
+                    continue
+            raise
         num_passed = sum(step_results)
         all_passed = num_passed == len(scored)
 

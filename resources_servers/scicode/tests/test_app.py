@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
 import hashlib
 import tempfile
 from contextlib import contextmanager
@@ -230,3 +231,29 @@ def test_h5_checksum_mismatch_fails_closed():
         h5.flush()
         with pytest.raises(ValueError, match="SHA256 mismatch"):
             _server(h5.name)._resolve_test_data()
+
+
+@pytest.mark.asyncio
+async def test_infrastructure_failure_settles_sibling_cleanup():
+    entered = asyncio.Event()
+    cleaned = asyncio.Event()
+    calls = 0
+
+    async def execute(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await entered.wait()
+            raise RuntimeError("original infrastructure failure")
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await asyncio.sleep(0.01)
+            cleaned.set()
+            raise ValueError("sibling cleanup failure")
+
+    with tempfile.NamedTemporaryFile(suffix=".h5") as h5, patch.object(app, "execute_substep", execute):
+        with pytest.raises(RuntimeError, match="original infrastructure failure"):
+            await _server(h5.name).verify(_request(solutions={"1.1": "a", "1.2": "b"}))
+    assert cleaned.is_set()
