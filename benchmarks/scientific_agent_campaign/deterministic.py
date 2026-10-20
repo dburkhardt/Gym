@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'molinstructions':'d08a15f88e0c1b5e6d1e08330f570983885ddee1','molpuzzle':'4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2','s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -40,7 +40,24 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 's2tomg':
+    if kind == 'molinstructions':
+        import zipfile
+        z=zipfile.ZipFile(os.environ['MOLINSTRUCTIONS_BIOTEXT_ZIP']);templates=json.loads((repo/'demo/templates/alpaca.json').read_text())
+        for sub in ['multi_choice_question','true_or_false_question']:
+            for i,x in enumerate(json.loads(z.read('Biomolecular_Text_Instructions/'+sub+'.json'))):
+                if x['metadata']['split']!='test':continue
+                prompt=templates['prompt_input' if x['input'] else 'prompt_no_input'].format(instruction=x['instruction'],input=x['input'])
+                rows.append({'uuid':sub+'_'+str(i),'stratum':sub,'responses_create_params':{'input':[{'role':'user','content':prompt}]},'verifier_metadata':{'output':x['output'],'subtask':sub}})
+    elif kind == 'molpuzzle':
+        import base64
+        tree=ast.parse((repo/'src/molpuzzle/spectrum_analysis.py').read_text());prompts=next(ast.literal_eval(n.value) for n in ast.walk(tree) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SYS_PROMPTS' for t in n.targets))
+        for i,x in enumerate(json.loads((repo/'Data/Stage2.json').read_text())):
+            if x['spectrum_type']!='H-NMR':continue
+            image=repo/'Data/Spectrum_images/nmr_H_complet'/(str(x['Molecule Index']).strip()+'.png')
+            if not image.exists():continue
+            content=[{'type':'input_text','text':prompts['H-NMR']+'\n'+x['Question']},{'type':'input_image','image_url':'data:image/png;base64,'+base64.b64encode(image.read_bytes()).decode(),'detail':'auto'}]
+            rows.append({'uuid':str(i),'stratum':x['Answer'],'responses_create_params':{'input':[{'role':'system','content':'You are an expert organic chemist.'},{'role':'user','content':content}]},'verifier_metadata':{'answer':x['Answer'],'spectrum_type':'H-NMR','molecule_id':str(x['Molecule Index']).strip()}})
+    elif kind == 's2tomg':
         import csv
         tree=ast.parse((repo/'utils/dataset.py').read_text());system=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SYSTEM_HEAD_JSON' for t in n.targets))
         for i,x in enumerate(csv.DictReader(open(os.environ['S2TOMG_ATOMNUM_CSV']))):
@@ -147,6 +164,14 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'molinstructions':
+        if not answer:return {'reward':0.0,'valid':False,'metric':'empty_response_failed; creator_mcq_would_raise_IndexError'}
+        fn=next(n for n in ast.parse((repo/'evaluation/biotext'/(meta['subtask']+'.py')).read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='calculate_accuracy');ns={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_molins','exec'),ns)
+        return {'reward':float(ns['calculate_accuracy']([{'output':meta['output'],'my_output':answer}])/100),'valid':True,'metric':'creator_'+meta['subtask']+'_accuracy'}
+    if kind == 'molpuzzle':
+        pred=1 if 'yes' in answer.lower() else 0 if 'no' in answer.lower() else -1
+        ref=1 if str(meta['answer']).strip().lower()=='yes' else 0
+        return {'reward':float(pred==ref),'valid':pred!=-1,'prediction':pred,'reference':ref,'metric':'creator_binary_accuracy; repaired_image_transport_variant'}
     if kind == 's2tomg':
         from rdkit import Chem
         from rdkit.Chem import Descriptors

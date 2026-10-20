@@ -1,0 +1,5 @@
+# Mol-Instructions held-out biotext QA
+
+Pinned creator source d08a15f88e0c1b5e6d1e08330f570983885ddee1 (zjunlp/Mol-Instructions), HF release66da41958866dfce072595017aaf460bb290c19b. Uses only records with metadata.split=test:1001 multi-choice and100 true/false questions from Biomolecular_Text_Instructions.zip. Other tasks and training examples are excluded. Creator demo Alpaca template, referenced by evaluation's Prompter default, wraps source instruction/input; output never enters prompt. Exact creator calculate_accuracy functions run on the response. Empty MCQ response would crash upstream; we explicitly count it as failed with invalid flag.
+
+Set MOLINSTRUCTIONS_BIOTEXT_ZIP to pinned archive; prepare using deterministic module and standard sample/repository variables. Stage prepare.py then load config.yaml. Report task-level accuracies separately: seeded pilot alternates the two task types and is not population-weighted. The true/false task also has a creator macroF1 metric; this per-row integration reports accuracy only. Original checkpoint-specific Llama decoding settings are not asserted to apply to Nemotron.
