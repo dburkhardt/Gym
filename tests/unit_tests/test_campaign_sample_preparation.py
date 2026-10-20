@@ -73,3 +73,36 @@ def test_destination_symlink_cannot_redirect_publication(tmp_path):
     assert destination.is_symlink()
     assert unrelated.read_text() == "preserve unrelated artifact"
     assert not destination.with_suffix(".source.json").exists()
+
+
+def test_image_normalization_preserves_explicit_detail_and_source(tmp_path):
+    import json
+
+    from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
+
+    row = {
+        "verifier_metadata": {"id": 47, "answer": "3"},
+        "responses_create_params": {
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_image", "image_url": "https://example.org/a.png"},
+                        {"type": "input_image", "image_url": "https://example.org/b.png", "detail": "high"},
+                    ],
+                }
+            ]
+        },
+    }
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps(row) + "\n")
+    original = source.read_bytes()
+    output = prepare_sample(
+        tmp_path / "output.jsonl", source=source, identity_metadata_key="id", normalize_image_detail=True
+    )
+    staged = json.loads(output.read_text())
+    assert staged["task_id"] == "47"
+    assert staged["responses_create_params"]["input"][0]["content"][0]["detail"] == "auto"
+    assert staged["responses_create_params"]["input"][0]["content"][1]["detail"] == "high"
+    assert source.read_bytes() == original
+    assert json.loads(output.with_suffix(".source.json").read_text())["normalizations"] == ["image_detail_auto"]

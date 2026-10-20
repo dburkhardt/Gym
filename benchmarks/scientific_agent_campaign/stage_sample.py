@@ -17,6 +17,7 @@ def prepare_sample(
     source: Path | None = None,
     expected_source_sha256: str | None = None,
     identity_metadata_key: str = "task_id",
+    normalize_image_detail: bool = False,
 ) -> Path:
     """Preserve every source field and expose its frozen identity to Gym's planner.
 
@@ -39,6 +40,15 @@ def prepare_sample(
         metadata = row.get("verifier_metadata")
         if not isinstance(metadata, dict) or not row.get("responses_create_params", {}).get("input"):
             raise ValueError("Missing solver input or isolated verifier metadata")
+        if normalize_image_detail:
+            from nemo_gym.openai_utils import NeMoGymResponseCreateParamsNonStreaming
+
+            for message in row["responses_create_params"]["input"]:
+                if isinstance(message.get("content"), list):
+                    for part in message["content"]:
+                        if part.get("type") == "input_image":
+                            part.setdefault("detail", "auto")
+            NeMoGymResponseCreateParamsNonStreaming.model_validate(row["responses_create_params"])
         identity = row.get("task_id", row.get("uuid", metadata.get(identity_metadata_key)))
         if isinstance(identity, bool) or not isinstance(identity, (str, int)) or not str(identity):
             raise ValueError("Missing stable task identity; positional IDs are not allowed")
@@ -52,7 +62,13 @@ def prepare_sample(
     # stage_file must see and reject a destination symlink itself.
     destination = destination.parent.resolve() / destination.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    receipt = {"source_sha256": source_hash, "output_sha256": output_hash, "task_ids": ids, "rows": len(rows)}
+    receipt = {
+        "source_sha256": source_hash,
+        "output_sha256": output_hash,
+        "task_ids": ids,
+        "rows": len(rows),
+        "normalizations": ["image_detail_auto"] if normalize_image_detail else [],
+    }
     with tempfile.TemporaryDirectory(prefix="gym-frozen-sample-") as temporary:
         candidate = Path(temporary) / "sample.jsonl"
         candidate.write_bytes(output)
