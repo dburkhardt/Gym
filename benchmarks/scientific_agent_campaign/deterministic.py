@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -40,7 +40,16 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'fukuyama':
+    if kind == 'mollangbench':
+        import pyarrow.parquet as pq
+        data=Path(os.environ['MOLLANG_DATA_DIR'])
+        for sub in ['generation','edit']:
+            template=(repo/'prompts'/('editing' if sub=='edit' else sub)/'prompt_smiles.txt').read_text().strip()
+            table=pq.read_table(data/(sub+'-test-00000-of-00001.parquet'))
+            for i,x in enumerate(table.to_pylist()):
+                prompt=template.format(structure_description=x['structure_description']) if sub=='generation' else template.format(original_smiles=x['original_smiles'],edit_instructions=x['edit_instructions'])
+                rows.append({'uuid':sub+'_'+str(i),'stratum':sub,'responses_create_params':{'input':[{'role':'user','content':prompt}]},'verifier_metadata':{'smiles':x['smiles'] if sub=='generation' else x['edited_smiles'],'subtask':sub}})
+    elif kind == 'fukuyama':
         import yaml
         from typing import Dict,List,Optional
         tree=ast.parse((repo/'eval/run_infer_pathway.py').read_text());fns=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ['load_pathway_data','format_user_prompt']]
@@ -130,6 +139,9 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'mollangbench':
+        upstream=module(repo/'scripts/evaluate_results.py'); predicted=upstream.canonicalize_smiles(upstream.parse_smiles_from_output(answer)); target=upstream.canonicalize_smiles(meta['smiles'])
+        return {'reward':float(predicted is not None and predicted==target),'valid':predicted is not None,'metric':'creator_canonical_smiles_accuracy'}
     if kind == 'fukuyama':
         upstream=module(repo/'eval/eval_infer_pathway.py');pred=upstream.extract_pathway_from_response(answer)
         if not pred:return {'reward':0.0,'valid':False,'parse_error':True}

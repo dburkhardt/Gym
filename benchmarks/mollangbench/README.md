@@ -1,0 +1,5 @@
+# MolLangBench SMILES generation and editing
+
+Uses creator repository https://github.com/TheLuoFengLab/MolLangBench pinned at 76dcacb082e20871851cbca6395180503a8b6d22 and ChemFM/MolLangBench dataset revision 859cb8337b49c1d9646e504ca2813c49339c180f. This is the 400-record generation/edit test subset, not recognition or image-input variants. Creator prompt templates are preserved exactly. The grader calls creator SMILES-tag parsing and RDKit canonicalization, with canonical equality and validity diagnostics. References remain verifier metadata.
+
+Download generation and edit test parquet files from that pinned dataset into MOLLANG_DATA_DIR with names `{generation,edit}-test-00000-of-00001.parquet`. Run `python -m benchmarks.scientific_agent_campaign.deterministic mollangbench --repo SOURCE --output OUTPUT`. Set CAMPAIGN_UPSTREAM_REPO and CAMPAIGN_SAMPLE_JSONL; stage with `python benchmarks/mollangbench/prepare.py`, then use config.yaml with the campaign model configuration. The scorer requires shared resource dependencies including RDKit/datasets. Twenty gold-reference and empty controls pass. This does not establish model performance.
