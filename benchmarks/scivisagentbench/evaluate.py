@@ -21,6 +21,7 @@ async def _evaluate(source: Path, source_case: dict, case_dir: Path, data_dir: P
     original_client = llm_evaluator.OpenAI
     original_text = llm_evaluator.LLMEvaluator.evaluate_text
     original_vision = llm_evaluator.LLMEvaluator.evaluate_visualization
+    original_result_only = llm_evaluator.LLMEvaluator.evaluate_visualization_result_only
     previous_price = llm_evaluator.LLMEvaluator.MODEL_PRICING.get(MODEL)
     assertions = source_case['assert']
     if any(a['type'] != 'llm-rubric' or a['subtype'] not in ('vision','text') for a in assertions):
@@ -44,6 +45,7 @@ async def _evaluate(source: Path, source_case: dict, case_dir: Path, data_dir: P
         llm_evaluator.LLMEvaluator.MODEL_PRICING[MODEL] = {'input':0,'cached_input':0,'output':0,'provider':'openai'}
         llm_evaluator.LLMEvaluator.evaluate_text = wrap(original_text,'text')
         llm_evaluator.LLMEvaluator.evaluate_visualization = wrap(original_vision,'vision')
+        llm_evaluator.LLMEvaluator.evaluate_visualization_result_only = wrap(original_result_only,'vision')
         manager = EvaluationManager(eval_mode='mcp',openai_api_key='host-only-placeholder',eval_model=MODEL,
                                     static_screenshot=True,agent_mode=agent_mode,openai_base_url='http://unused-injected-client')
         result = await manager.run_evaluation(str(case_dir),case_dir.name,list(rubrics),rubrics,files,str(data_dir))
@@ -58,6 +60,7 @@ async def _evaluate(source: Path, source_case: dict, case_dir: Path, data_dir: P
         llm_evaluator.OpenAI = original_client
         llm_evaluator.LLMEvaluator.evaluate_text = original_text
         llm_evaluator.LLMEvaluator.evaluate_visualization = original_vision
+        llm_evaluator.LLMEvaluator.evaluate_visualization_result_only = original_result_only
         if previous_price is None:llm_evaluator.LLMEvaluator.MODEL_PRICING.pop(MODEL,None)
         else:llm_evaluator.LLMEvaluator.MODEL_PRICING[MODEL]=previous_price
 
