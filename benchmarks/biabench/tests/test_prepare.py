@@ -40,3 +40,20 @@ def test_changed_source_rejected(tmp_path):
     asset.write_bytes(b"changed")
     with pytest.raises(ValueError, match="mismatch"):
         prepare.validate(tmp_path, pinned)
+
+
+@pytest.mark.parametrize("role", ["solver", "references", "verifier_source"])
+def test_role_directory_alias_rejected_before_staging(tmp_path, monkeypatch, role):
+    source, task, destination = (tmp_path / n for n in ("source", "task", "prepared"))
+    source.mkdir()
+    task.mkdir()
+    destination.mkdir()
+    outside = tmp_path / "shared"
+    outside.mkdir()
+    (destination / role).symlink_to(outside, target_is_directory=True)
+    (tmp_path / "frozen_sources.json").write_text(json.dumps({"creator_files": {}, "task_files": {}}))
+    monkeypatch.setattr(prepare, "__file__", str(tmp_path / "prepare.py"))
+    with pytest.raises(ValueError, match="role must not be a symlink"):
+        prepare.stage(source, task, destination)
+    assert list(outside.iterdir()) == []
+    assert not (destination / "benchmark.jsonl").exists()

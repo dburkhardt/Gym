@@ -33,6 +33,10 @@ def stage(source: Path, task: Path, destination: Path) -> Path:
     validate(task, manifest["task_files"])
     source, task = source.resolve(), task.resolve()
     public = {name: sha for name, sha in manifest["task_files"].items() if name.startswith("input/")}
+    # Reject role-directory aliases before any staging can cross isolation boundaries.
+    for role in ("solver", "references", "verifier_source"):
+        if (destination / role).is_symlink():
+            raise ValueError(f"Solver/verifier staging role must not be a symlink: {role}")
     solver = destination / "solver"
     for path in solver.rglob("*"):
         if path.is_symlink():
