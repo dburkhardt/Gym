@@ -25,8 +25,12 @@ This does NOT download test_data.h5 (the ~1 GB numeric test targets used for sco
 must be staged manually at the path the resources server is configured to read.
 """
 
+import hashlib
+import json
+import tempfile
 from pathlib import Path
 
+from nemo_gym.dataset_staging import stage_file
 from nemo_gym.global_config import HF_TOKEN_KEY_NAME, get_global_config_dict
 
 
@@ -36,17 +40,16 @@ OUTPUT_FPATH = DATA_DIR / "scicode_benchmark.jsonl"
 
 # Keep this aligned with the current AA SciCode problem set.
 SPLITS = ["test"]
+DATASET_REVISION = "4510f6a6aa27c43fad7b43da2c59602a86e88480"
 
 
 def prepare() -> Path:
     """Download SciCode problems and convert to Gym JSONL format."""
-    import json
-
     from datasets import load_dataset
 
     print("Downloading SciCode from HuggingFace...")
     hf_token = get_global_config_dict().get(HF_TOKEN_KEY_NAME)
-    ds = load_dataset("SciCode1/SciCode", token=hf_token)
+    ds = load_dataset("SciCode1/SciCode", revision=DATASET_REVISION, token=hf_token)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -63,11 +66,34 @@ def prepare() -> Path:
                 "sub_steps": entry["sub_steps"],
                 # problem_id is unique across both splits, so it doubles as the rollout uuid.
                 "uuid": entry["problem_id"],
+                "task_id": str(entry["problem_id"]),
             }
             rows.append(json.dumps(row) + "\n")
 
-    with open(OUTPUT_FPATH, "w") as f:
-        f.writelines(rows)
+    identities = [json.loads(row)["task_id"] for row in rows]
+    if not identities or len(identities) != len(set(identities)):
+        raise ValueError("SciCode source must contain nonempty, unique problem identities")
+    content = "".join(rows).encode()
+    digest = hashlib.sha256(content).hexdigest()
+    with tempfile.TemporaryDirectory(prefix="gym-scicode-") as temporary:
+        candidate = Path(temporary) / "dataset.jsonl"
+        candidate.write_bytes(content)
+        stage_file(candidate, OUTPUT_FPATH, expected_sha256=digest)
+        receipt = Path(temporary) / "source.json"
+        receipt.write_text(
+            json.dumps(
+                {
+                    "dataset": "SciCode1/SciCode",
+                    "revision": DATASET_REVISION,
+                    "splits": SPLITS,
+                    "task_ids": identities,
+                    "output_sha256": digest,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        stage_file(receipt, OUTPUT_FPATH.with_suffix(".source.json"))
 
     print(f"Wrote {len(rows)} problems to {OUTPUT_FPATH}")
     return OUTPUT_FPATH

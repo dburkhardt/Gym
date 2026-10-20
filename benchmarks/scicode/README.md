@@ -49,9 +49,9 @@ If the file is missing, the resources server fails fast with a clear error rathe
 gym eval prepare --benchmark scicode
 ```
 
-Downloads `SciCode1/SciCode` and writes `benchmarks/scicode/data/scicode_benchmark.jsonl`
+Downloads `SciCode1/SciCode` at revision `4510f6a6aa27c43fad7b43da2c59602a86e88480` and atomically writes `benchmarks/scicode/data/scicode_benchmark.jsonl`
 (one row per problem from the HuggingFace `test` split, carrying the full `sub_steps` list). This
-does not fetch `test_data.h5` — see above.
+does not fetch `test_data.h5` — see above. The sibling `scicode_benchmark.source.json` records the revision, task IDs and output SHA256; compare that hash with the dataset before relying on the receipt after an interruption. Scientific fields are unchanged; `task_id` aliases the existing problem identity for native planning.
 
 The agent uses the current AA SciCode prompt in `benchmarks/scicode/prompts/background.yaml`.
 The scientist-authored background in each sub-step is included in the prompt; the model is asked
