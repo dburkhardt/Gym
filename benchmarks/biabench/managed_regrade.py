@@ -12,7 +12,7 @@ from pathlib import Path
 
 from benchmarks.biabench.regrade_outcome import prediction_hashes
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
-from responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.verifier import _owned_sandbox
+from nemo_gym.sandbox.lifecycle import _owned_sandbox
 
 
 async def regrade_managed(*, source: Path, task: Path, predictions: Path, output: Path, image: str) -> dict:
