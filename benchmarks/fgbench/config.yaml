@@ -10,8 +10,8 @@ fgbench_resources:
       datasets:
       - name: fgbench
         type: benchmark
-        jsonl_fpath: ${oc.env:CAMPAIGN_SAMPLE_JSONL}
-        prepare_script: benchmarks/scientific_agent_campaign/use_sample.py
+        jsonl_fpath: benchmarks/fgbench/data/benchmark.jsonl
+        prepare_script: benchmarks/fgbench/prepare.py
         num_repeats: 1
 fgbench_agent:
   responses_api_agents:
