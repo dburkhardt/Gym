@@ -1,0 +1,8 @@
+{
+  "molbench/data/molbench-mo/molbench-mo-opt/solubility.json": "0d327c9b83c6ebd8d284b86c301b2bac1a94d68e8f33bcaafc8cd92f7c3ee4f9",
+  "molbench/data/molbench-mo/molbench-mo-opt/qed.json": "4ca1f659538d08e3d22dd05db9e3f8c75815fa10110798fa5974751e683439bd",
+  "molbench/data/molbench-mo/molbench-mo-opt/logp.json": "e919e2eb75cd2e173f6a19453b9dbc0185953ed6f0ec79d309218931a25186cd",
+  "molbench/eval/ChemCoTBench/baseline_and_eval/eval/eval_molopt.py": "95f2146e12696d3852d7cae1d7f9c83ade23e1705c6748c6c1d7ea09527f77cf",
+  "molbench/eval/ChemCoTBench/baseline_and_eval/eval/eval_metric.py": "ca7da67ea7ac46e0fd9c32973719554fba9d0b63b72c984df9238b38272fcf1a",
+  "molbench/eval/ChemCoTBench/baseline_and_eval/oracle/fpscores.pkl": "24a4392f5c673e79c0446af3c4d8e458293b5fecaa244328e76741ead9d21dbf"
+}

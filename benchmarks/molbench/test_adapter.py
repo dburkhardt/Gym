@@ -45,3 +45,13 @@ def test_editing_native_reward_does_not_certify_scaffold_preservation():
  from benchmarks.molbench.adapter import prepare_editing_rows
  row=next(r for r in prepare_editing_rows(REPO) if r['uuid']=='mo-edit-fc5d76e6-7c65-4a6e-86b0-e8099c4da911')
  assert score(REPO,row['verifier_metadata'],'<answer>CC#N</answer>')['reward']==1
+
+def test_optimization_isolated_native_unchanged_and_empty():
+ from benchmarks.molbench.adapter import prepare_optimization_rows,modules
+ rows=prepare_optimization_rows(REPO);assert len(rows)==39
+ loaders,_=modules(REPO);loader=loaders.ChemCoTBenchMolOptPhyschemLoader()
+ for subtask in ['logp','qed','solubility']:
+  row=next(r for r in rows if r['verifier_metadata']['subtask']==subtask);meta=row['verifier_metadata'];source=loader.build_pred_entry(meta['sample'],{},'',subtask)['src_smiles']
+  result=score(REPO,meta,'<answer>'+json.dumps({'Final Target Molecule':source})+'</answer>')
+  assert result['reward']==0 and result['creator_metrics']['valid_score_pair']==1
+  empty=score(REPO,meta,'');assert empty['reward']==0 and empty['creator_metrics']['valid_score_pair']==0

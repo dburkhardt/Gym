@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Pinned creator tool-free MolBench ms-3 baseline; not MolClaw agent."""
-import hashlib,importlib.util,json,tempfile,random
+import hashlib,importlib.util,json,tempfile,random,os,subprocess
 from pathlib import Path
 
 def load(path,name):
@@ -15,6 +15,11 @@ def modules(repo):
 
 def score(repo,meta,answer):
  loaders,metrics=modules(repo)
+ if meta.get('stratum')=='mo-opt':
+  python=os.environ.get('MOLBENCH_OPT_PYTHON')
+  if not python:raise RuntimeError('MOLBENCH_OPT_PYTHON must point to isolated pinned native oracle environment')
+  result=subprocess.run([python,str(Path(__file__).with_name('optimization_worker.py')),str(Path(repo).resolve())],input=json.dumps({'meta':meta,'answer':answer}),capture_output=True,text=True,timeout=180,check=True)
+  return json.loads(result.stdout)
  if meta.get('stratum')=='mo-edit':
   dependency=Path(repo)/'molbench/eval/ChemCoTBench/baseline_and_eval'
   expected=json.loads(Path(__file__).with_name('editing-source-sha256.json').read_text())
@@ -83,5 +88,15 @@ def prepare_editing_rows(repo,seed=20261020):
   for sample in loader.load_data(str(repo/'molbench/data/molbench-mo'),subtask):
    messages=[{'role':'system','content':templates.SYSTEM_PROMPT_MINIMAL},{'role':'user','content':loader.get_query(sample,subtask)+'\n\n'+templates.ANSWER_OUTPUT_HINT}]
    rows.append({'uuid':'mo-edit-'+sample['id'],'stratum':'mo-edit-'+subtask,'responses_create_params':{'input':messages},'verifier_metadata':{'stratum':'mo-edit','subtask':subtask,'sample':sample}})
+ random.Random(seed).shuffle(rows)
+ return rows
+
+
+def prepare_optimization_rows(repo,seed=20261020):
+ repo=Path(repo);loaders,_=modules(repo);templates=load(repo/'molclaw_run/templates/template.py','molbench_creator_template');loader=loaders.ChemCoTBenchMolOptPhyschemLoader();rows=[]
+ for subtask in loader.get_subtasks():
+  for sample in loader.load_data(str(repo/'molbench/data/molbench-mo'),subtask):
+   messages=[{'role':'system','content':templates.SYSTEM_PROMPT_MINIMAL},{'role':'user','content':loader.get_query(sample,subtask)+'\n\n'+templates.ANSWER_OUTPUT_HINT}]
+   rows.append({'uuid':'mo-opt-'+sample['id'],'stratum':'mo-opt-'+subtask,'responses_create_params':{'input':messages},'verifier_metadata':{'stratum':'mo-opt','subtask':subtask,'sample':sample}})
  random.Random(seed).shuffle(rows)
  return rows
