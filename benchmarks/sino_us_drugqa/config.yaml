@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+sino_us_drugqa_resources:
+  resources_servers:
+    campaign_creator_scoring:
+      entrypoint: app.py
+      verified: false
+      benchmark: sino_us_drugqa
+      upstream_repo: ${oc.env:CAMPAIGN_UPSTREAM_REPO}
+      datasets:
+      - name: sino_us_drugqa
+        type: benchmark
+        jsonl_fpath: ${oc.env:CAMPAIGN_SAMPLE_JSONL}
+        num_repeats: 1
+sino_us_drugqa_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      max_steps: 1
+      resources_server:
+        type: resources_servers
+        name: sino_us_drugqa_resources
+      model_server:
+        type: responses_api_models
+        name: policy_model
+sino_us_drugqa_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: sino_us_drugqa_agent
