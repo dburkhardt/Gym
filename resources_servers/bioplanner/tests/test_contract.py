@@ -16,3 +16,11 @@ async def test_partial_null_metrics_preserved(monkeypatch):
     assert result.metrics['argument_precision'] is None
     assert result.reward==0 and not result.mask_sample
     assert result.response==request.response
+
+def test_creator_scaled_distance_and_extraction():
+    from resources_servers.bioplanner.normalization import scaled_edit_distance,extract_single_code_block
+    assert scaled_edit_distance(5,'line1\nline2\n')==5/3
+    assert scaled_edit_distance(None,'line1') is None
+    assert extract_single_code_block('```python\nfoo(x="a")\n```')==('foo(x="a")','single_fenced_python_block')
+    raw='```python\na()\n```\n```python\nb()\n```'
+    assert extract_single_code_block(raw)[0]==raw

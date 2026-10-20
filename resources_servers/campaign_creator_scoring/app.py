@@ -32,7 +32,12 @@ class CreatorResourcesServer(SimpleResourcesServer):
             {'uuid': body.uuid, 'verifier_metadata':body.verifier_metadata}, body.response.output_text or '')
         if details.get('reward') is None:
             raise ValueError('This task has no upstream automatic score; do not convert to zero.')
-        return VerifyResponse(**body.model_dump(by_alias=True), reward=details['reward'], scoring_details=details)
+        accounting = {}
+        if body.response.status == 'incomplete':
+            reason = getattr(body.response.incomplete_details, 'reason', None)
+            accounting = {'failure_kind': 'model_budget' if reason == 'max_output_tokens' else 'incomplete_response',
+                          'failure_reason': 'Model response incomplete: ' + str(reason)}
+        return VerifyResponse(**body.model_dump(by_alias=True), reward=details['reward'], scoring_details=details, **accounting)
 
 if __name__ == '__main__':
     CreatorResourcesServer.run_webserver()

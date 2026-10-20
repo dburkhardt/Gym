@@ -82,3 +82,22 @@ def test_structured_output_response_alias_roundtrip():
     body=VerifyRequest.model_validate({**sample,'response':response})
     actual=VerifyResponse(**body.model_dump(by_alias=True),reward=1,scoring_details={})
     assert actual.response.text.format.schema_==response['text']['format']['schema']
+
+@pytest.mark.asyncio
+async def test_model_budget_accounting_keeps_score_and_denominator(monkeypatch):
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+    from concurrent.futures import ThreadPoolExecutor
+    from resources_servers.campaign_creator_scoring import app
+    rows=list(map(json.loads,Path('../../outputs/broad-eval-campaign/moljson-schema-repaired/pilot-5-v2.jsonl').read_text().splitlines()))
+    row=next(r for r in rows if r['response']['status']=='incomplete')
+    body=app.VerifyRequest.model_validate(row)
+    with ThreadPoolExecutor(1) as pool:
+        monkeypatch.setattr(app,'_POOL',pool)
+        monkeypatch.setattr(app,'score',lambda *args:{'reward':0,'metric':'fixture'})
+        server=SimpleNamespace(config=SimpleNamespace(benchmark='moljson',upstream_repo='/tmp'))
+        result=await app.CreatorResourcesServer.verify(server,body)
+    assert result.failure_kind=='model_budget'
+    assert result.reward==0 and not result.mask_sample
+    assert result.response==body.response

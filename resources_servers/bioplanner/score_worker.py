@@ -26,4 +26,6 @@ with contextlib.redirect_stdout(sys.stderr):
    for key,value in zip(names,call()):metrics[key]=None if not math.isfinite(float(value)) else float(value)
   except Exception as e:
    for key in names:metrics[key]=None;errors[key]=type(e).__name__+': '+str(e)
+from normalization import scaled_edit_distance
+metrics['scaled_levenshtein_distance']=scaled_edit_distance(metrics['edit_distance'],gold)
 print(json.dumps({'metrics':metrics,'metric_errors':errors,'reference_ast_error':reference_error}))

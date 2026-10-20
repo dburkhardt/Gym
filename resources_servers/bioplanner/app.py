@@ -15,7 +15,12 @@ class Server(SimpleResourcesServer):
     config:Config
     ray_enabled=False
     async def verify(self,body:Request)->Response:
-        payload={**body.verifier_metadata,'answer':body.response.output_text or ''}
+        answer=body.response.output_text or ''
+        extraction='raw'
+        if os.environ.get('BIOPLANNER_EXTRACT_CODE_FENCE')=='1':
+            from resources_servers.bioplanner.normalization import extract_single_code_block
+            answer,extraction=extract_single_code_block(answer)
+        payload={**body.verifier_metadata,'answer':answer}
         p=await asyncio.create_subprocess_exec(os.environ['BIOPLANNER_SCORER_PYTHON'],str(Path(__file__).with_name('score_worker.py')),stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
         try:
             stdout,stderr=await asyncio.wait_for(p.communicate(json.dumps(payload).encode()),timeout=300)
@@ -25,6 +30,8 @@ class Server(SimpleResourcesServer):
             result={'metrics':None,'scorer_error':'Native metrics exceeded300seconds'}
         except ValueError as e:
             result={'metrics':None,'scorer_error':'Malformed scorer output: '+str(e)}
+        result['extraction']=extraction
+        result['scored_code']=answer
         metrics=result.get('metrics');value=metrics.get('argument_recall') if metrics else None
         extra={} if value is not None else {'mask_sample':True,'failure_kind':'bioplanner:scorer_or_reference_invalid','failure_reason':str(result)}
         return Response(**body.model_dump(by_alias=True),reward=value if value is not None else 0.0,metrics=metrics,scoring_diagnostics={k:v for k,v in result.items() if k!='metrics'},scoring_note='Reward is argument recall bookkeeping only; report all native metrics. Nulls are not zero. Provided definitions inflate function metrics.',**extra)
