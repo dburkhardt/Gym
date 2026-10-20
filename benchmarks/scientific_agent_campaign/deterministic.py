@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'molinstructions':'d08a15f88e0c1b5e6d1e08330f570983885ddee1','molpuzzle':'4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2','s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'lpm24':'8e747238e90734bf8774712ecc010ee24efcd346','molinstructions':'d08a15f88e0c1b5e6d1e08330f570983885ddee1','molpuzzle':'4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2','s2tomg':'df70b90de6efb62e753345b886234b7acfeff874','suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -40,7 +40,11 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'molinstructions':
+    if kind == 'lpm24':
+        for i,line in enumerate((repo/'final_evaluation/molgen/eval-molgen.txt').read_text().splitlines()):
+            parts=line.split('\t');smiles,description=parts[:2]
+            rows.append({'uuid':str(i),'stratum':'molgen','responses_create_params':{'input':[{'role':'user','content':'Generate a molecule matching this description. Return only its SMILES string.\n\n'+description}]},'verifier_metadata':{'smiles':smiles}})
+    elif kind == 'molinstructions':
         import zipfile
         z=zipfile.ZipFile(os.environ['MOLINSTRUCTIONS_BIOTEXT_ZIP']);templates=json.loads((repo/'demo/templates/alpaca.json').read_text())
         for sub in ['multi_choice_question','true_or_false_question']:
@@ -164,6 +168,14 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'lpm24':
+        import numpy as np
+        from nltk.translate.bleu_score import corpus_bleu
+        from Levenshtein import distance
+        from rdkit import Chem
+        fn=next(n for n in ast.parse((repo/'final_evaluation/molgen/scorer.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='evaluate');ns={'np':np,'corpus_bleu':corpus_bleu,'lev':distance,'Chem':Chem};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_lpm','exec'),ns)
+        bleu,exact,lev,valid=ns['evaluate']([meta['smiles']],[answer.strip()])
+        return {'reward':float(exact),'valid':bool(valid),'levenshtein':float(lev),'metric':'creator_InChI_exact_match_only; explicit_chat_prompt_variant'}
     if kind == 'molinstructions':
         if not answer:return {'reward':0.0,'valid':False,'metric':'empty_response_failed; creator_mcq_would_raise_IndexError'}
         fn=next(n for n in ast.parse((repo/'evaluation/biotext'/(meta['subtask']+'.py')).read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='calculate_accuracy');ns={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_molins','exec'),ns)

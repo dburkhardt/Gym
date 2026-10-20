@@ -1,0 +1,7 @@
+# LPM24 molecular generation, exact-match metric only
+
+Creator repository language-plus-molecules/LPM-24-Dataset at8e747238e90734bf8774712ecc010ee24efcd346. Uses21805 final_evaluation/molgen/eval-molgen.txt records; no training data. The exact creator evaluate function computes molecular equality by RDKit InChI, with its validity/Levenshtein diagnostics retained. Corpus BLEU, FCD, fingerprint, property-combination and captioning scores are not claimed. Do not compare this single metric to an overall shared-task score.
+
+Explicit chat-prompt variant: the original release is a text-to-molecule conditioning dataset, not a universal chat prompt. We prefix the exact description with `Generate a molecule matching this description. Return only its SMILES string.` References remain verifier metadata. This is not a reproduction of model-specific T5 training/prompt protocols. No generated response parsing beyond whitespace stripping is applied.
+
+Use pinned source checkout, deterministic sample preparation and standard native staging. Add nltk and Levenshtein from shared requirements for source function execution; no Text2Mol weights or spaCy model are needed for this selected metric. Gold structure and invalid-output controls validate metric execution, not semantic correctness or uniqueness of the reference molecule. Many descriptions admit multiple structures; exact match is intentionally only one creator metric.

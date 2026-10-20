@@ -3,3 +3,6 @@ requests
 rdkit
 # MolecularIQ only: install separately from pinned checkout a1b89635371c3cd942e44ebeec63ec3665e7743d
 datasets
+
+nltk
+Levenshtein
