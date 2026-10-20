@@ -1,7 +1,24 @@
-"""Validate already frozen creator rows; no data acquisition or resampling."""
-import json,os
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Validate already frozen creator rows; no acquisition, resampling or mutation."""
+
+import json
+import os
 from pathlib import Path
-p=Path(os.environ['GENEHOP_SAMPLE'])
-for line in p.read_text().splitlines():
-    row=json.loads(line)
-    assert row['responses_create_params']['input']==[{'role':'user','content':row['verifier_metadata']['question']}]
+
+
+def prepare() -> Path:
+    """Return the configured frozen sample through Gym's preparation interface."""
+    path = Path(os.environ["GENEHOP_SAMPLE"]).absolute()
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    if not rows:
+        raise ValueError("GeneHop sample is empty")
+    for row in rows:
+        expected = [{"role": "user", "content": row["verifier_metadata"]["question"]}]
+        if row["responses_create_params"]["input"] != expected:
+            raise ValueError("GeneHop solver prompt differs from the frozen creator question")
+    return path
+
+
+if __name__ == "__main__":
+    prepare()
