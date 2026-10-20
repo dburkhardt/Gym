@@ -11,3 +11,12 @@ def test_controls_and_upstream_false_pass():
     assert result["reward"] == 1
     assert result["diagnostics"]["strict_valid"] is False
     assert grade("nonsense", answer="No")["diagnostics"]["strict_score"] == 0
+
+
+def test_openended_parser():
+    from resources_servers.biomaze.openended import parse_judge
+
+    assert parse_judge("Comment: matches.\nJudge: Correct")
+    assert not parse_judge("Judge: Incorrect")
+    assert not parse_judge("")
+    assert not parse_judge("Judge: Correct\nextra")
