@@ -1,0 +1,20 @@
+genehop_agent:
+  responses_api_agents:
+    genehop_native:
+      entrypoint: app.py
+      upstream_repo: ${oc.env:GENEHOP_SOURCE}
+      output_root: ${oc.env:GENEHOP_OUTPUT}
+      datasets:
+      - name: genehop
+        type: benchmark
+        jsonl_fpath: ${oc.env:GENEHOP_SAMPLE}
+        prepare_script: benchmarks/genehop/prepare.py
+        num_repeats: 1
+        prompt_config: null
+genehop_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: genehop_agent
