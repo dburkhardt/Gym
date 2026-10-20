@@ -77,8 +77,6 @@ def stage(prepared, audit_path, runtime, destination):
                 (target / relative).chmod(src.stat().st_mode & 0o777)
         for src in sorted((temp / "python").rglob("*")):
             dst = target / "environment" / src.relative_to(temp)
-            if src.is_dir():
-                continue
             if src.is_symlink():
                 # The verified archive's data filter enforces links inside its root.
                 dst.parent.mkdir(parents=True, exist_ok=True)
@@ -88,6 +86,8 @@ def stage(prepared, audit_path, runtime, destination):
                 if dst.exists() or dst.is_symlink():
                     raise ValueError("Existing runtime link differs")
                 dst.symlink_to(link)
+            elif src.is_dir():
+                continue
             else:
                 stage_file(src, dst, expected_sha256=digest(src))
                 dst.chmod(src.stat().st_mode & 0o777)
