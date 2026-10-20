@@ -75,7 +75,15 @@ def test_invalid_model_binding_fails_even_with_capability_declaration(broken):
         validate_eval_compatibility(config)
 
 
-@pytest.mark.parametrize("name,capability", [("microvqa", "vision"), ("brainbench", "conditional_loglikelihood")])
+@pytest.mark.parametrize(
+    "name,capability",
+    [
+        ("microvqa", "vision"),
+        ("reactbench", "vision"),
+        ("microvqa_plusplus_demo", "vision"),
+        ("brainbench", "conditional_loglikelihood"),
+    ],
+)
 def test_native_benchmark_requirements_fail_closed(name, capability):
     from pathlib import Path
 
