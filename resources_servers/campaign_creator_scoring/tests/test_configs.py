@@ -7,7 +7,7 @@ from nemo_gym.global_config import GlobalConfigDictParser, GlobalConfigDictParse
 from nemo_gym.server_utils import ServerClient
 from resources_servers.campaign_creator_scoring.app import Config, CreatorResourcesServer
 
-@pytest.mark.parametrize('benchmark',['qcbench','chemiq','sino_us_drugqa','moleculariq','fgbench','scienceqa','scibench','fukuyama','mollangbench','suprabench','s2tomg','molpuzzle','molinstructions','lpm24'])
+@pytest.mark.parametrize('benchmark',['qcbench','chemiq','sino_us_drugqa','moleculariq','fgbench','scienceqa','scibench','fukuyama','mollangbench','suprabench','s2tomg','molpuzzle','molinstructions','lpm24','smolinstruct'])
 def test_full_configuration_and_resource_startup(benchmark,monkeypatch):
     monkeypatch.setenv('CAMPAIGN_UPSTREAM_REPO','/tmp/creator')
     monkeypatch.setenv('CAMPAIGN_SAMPLE_JSONL','/tmp/sample.jsonl')
@@ -51,7 +51,7 @@ def test_verify_endpoint_with_pinned_qcbench(monkeypatch):
         assert result.json()['scoring_details']['metric']=='creator_numeric'
 
 
-@pytest.mark.parametrize('benchmark',['qcbench','chemiq','sino_us_drugqa','moleculariq','fgbench','scienceqa','scibench','fukuyama','mollangbench','suprabench','s2tomg','molpuzzle','molinstructions','lpm24'])
+@pytest.mark.parametrize('benchmark',['qcbench','chemiq','sino_us_drugqa','moleculariq','fgbench','scienceqa','scibench','fukuyama','mollangbench','suprabench','s2tomg','molpuzzle','molinstructions','lpm24','smolinstruct'])
 def test_prepare_and_real_collation(benchmark,monkeypatch,tmp_path):
     import importlib
     import json
