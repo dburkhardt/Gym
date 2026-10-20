@@ -1,3 +1,4 @@
+-e nemo-gym[dev] @ ../..
 numpy
 requests
 rdkit
