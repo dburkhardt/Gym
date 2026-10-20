@@ -1,0 +1,7 @@
+# P-Bench maintained migration
+
+`prepare.py` stages the preserved frozen5,20 or50 tasks using Gym's checksum-verified publisher. Set `PBENCH_PREPARED_SOURCE` to the preserved Harbor conversion, `PBENCH_DATA` to a fresh output directory and `PBENCH_SAMPLE_SIZE` to the prefix size. All450 task files are pinned; prompts, CSVs, answer keys and creator scorer bytes are preserved. Reference answer keys remain in `tests/`, outside the solver image build context. Source provenance currently identifies an archive short revision and the full dataset revision, not a verified full source commit.
+
+This preserves the earlier **Terminus terminal R variant**, not the creator's persistent XML/Fisher harness. The scorer reports creator single-run raw/strict metrics; it does not reproduce paper three-repeat pass@1/pass@3. All50 tasks have staged successfully, and the5/20/50 dataset payloads match the previous frozen rows apart from added stable task IDs. This is preparation evidence, not live execution acceptance.
+
+Runtime qualification remains required: the preserved Dockerfile references a local runtime tag whose immutable image identity must be checked before building; CRAN dependency resolutions require a recorded lock. A native config and separate verifier/artifact lifecycle must be qualified before additional live inference. No runnable config is supplied yet. Do not mount `tests/` into the solver or publish a completed benchmark result based on preparation alone.
