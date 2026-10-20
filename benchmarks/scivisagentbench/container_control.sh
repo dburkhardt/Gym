@@ -9,7 +9,9 @@ command=("$root/runtime-ram/env/bin/python" /control/mcp_control.py /source /wor
 if (( $# )); then command=("$@"); fi
 full_args=()
 if [[ ${SCIVIS_FULL_CONTROL:-0} == 1 ]]; then full_args=(--mount "type=bind,src=$root/runtime-ram/assets,dst=/workspace/data/dataset_002,readonly" -e SCIVIS_FULL_CONTROL=1); fi
-exec docker run --ulimit core=0 --rm --name scivis-isolation-control --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 --cpus 2 --memory "${SCIVIS_MEMORY:-2g}" "${full_args[@]}" --pids-limit 128 \
+node_args=()
+if [[ -d runtime-ram/node-tools ]]; then node_args=(--mount "type=bind,src=$root/runtime-ram/node-env,dst=$root/runtime-ram/node-env,readonly" --mount "type=bind,src=$root/runtime-ram/node-tools,dst=$root/runtime-ram/node-tools,readonly" -e "SCIVIS_NODE=$root/runtime-ram/node-env/bin/node" -e "SCIVIS_FILESYSTEM_MCP=$root/runtime-ram/node-tools/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js"); fi
+exec docker run --ulimit core=0 --rm --name scivis-isolation-control --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 --cpus 2 --memory "${SCIVIS_MEMORY:-2g}" "${full_args[@]}" --pids-limit 128 "${node_args[@]}" \
  --tmpfs /tmp:rw,nosuid,nodev,size=128m --tmpfs /home/control:rw,nosuid,nodev,size=32m,uid=1000,gid=1000 \
  --mount "type=bind,src=$root/runtime-ram/env,dst=$root/runtime-ram/env,readonly" \
  --mount "type=bind,src=$root/runtime-ram/sysroot,dst=$root/runtime-ram/sysroot,readonly" \

@@ -68,6 +68,20 @@ def main():
                         response = await session.call_tool('save_text', {'filename': '/workspace/write-control.txt', 'content': 'native writable path control'})
                         assert Path('/workspace/write-control.txt').read_text() == 'native writable path control'
                         result['controls'].append({'writable_workspace': True})
+                    if os.environ.get('SCIVIS_FILESYSTEM_MCP'):
+                        fs = StdioServerParameters(command=os.environ['SCIVIS_NODE'], args=[os.environ['SCIVIS_FILESYSTEM_MCP'], '/workspace'], env=dict(os.environ))
+                        async with stdio_client(fs) as (fr, fw), ClientSession(fr, fw) as filesystem:
+                            await filesystem.initialize()
+                            tools = await filesystem.list_tools()
+                            result['filesystem_tool_names'] = [t.name for t in tools.tools]
+                            for path in ['/workspace/GS/dataset_002_1.png', '/source/benchmark/eval_cases/napari/eval_visualization_tasks.yaml', '/home/ubuntu/projects/skill-eval/.secrets/inference-nvidia.key', '/var/run/docker.sock']:
+                                reply = await filesystem.call_tool('read_text_file', {'path': path})
+                                assert reply.isError, reply
+                                result['controls'].append({'filesystem_denied':path,'response':reply.model_dump(mode='json')})
+                            reply = await filesystem.call_tool('read_text_file', {'path':'/workspace/write-control.txt'})
+                            assert not reply.isError
+                            assert any('native writable path control' in getattr(c,'text','') for c in reply.content)
+                            result['controls'].append({'filesystem_public_output_read':True})
                     import resource
                     result['peak_rss_kib'] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
                     result['full_assets'] = os.environ.get('SCIVIS_FULL_CONTROL') == '1'
