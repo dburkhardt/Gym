@@ -90,3 +90,21 @@ def test_native_benchmark_requirements_fail_closed(name, capability):
         validate_eval_compatibility(config)
     config.component_capabilities.policy_model[capability] = True
     validate_eval_compatibility(config)
+
+
+@pytest.mark.parametrize("entrypoint", ["e2e_rollout_collection", "collect_rollouts"])
+def test_native_entrypoints_reject_before_execution(monkeypatch, capsys, entrypoint):
+    from nemo_gym import rollout_collection
+    from nemo_gym.cli import eval as cli
+
+    monkeypatch.setattr(cli, "get_global_config_dict", lambda: configuration(harness={"tools": True}))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Execution started before rejecting incompatible configuration")
+
+    monkeypatch.setattr(cli.RunHelper, "start", forbidden)
+    monkeypatch.setattr(rollout_collection.RolloutCollectionHelper, "__init__", forbidden)
+    with pytest.raises(SystemExit) as exc:
+        getattr(cli, entrypoint)()
+    assert exc.value.code == 1
+    assert "vision" in capsys.readouterr().out
