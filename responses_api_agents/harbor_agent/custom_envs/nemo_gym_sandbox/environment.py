@@ -37,6 +37,7 @@ from typing import Any, Mapping, Optional
 
 from harbor.environments.base import BaseEnvironment, ExecResult
 from harbor.models.environment_type import EnvironmentType
+from harbor.models.task.config import NetworkMode, NetworkPolicy
 from harbor.models.trial.paths import EnvironmentPaths
 
 from nemo_gym.sandbox import (
@@ -148,6 +149,13 @@ class NemoGymSandboxEnvironment(BaseEnvironment):
         self._sandbox: Optional[AsyncSandbox] = None
 
         super().__init__(*args, **kwargs)
+        # Preserve the previous pinned Harbor defaults for omitted task resources.
+        # Explicit task values and environment overrides always win.
+        defaults = {"cpus": 1, "memory_mb": 2048, "storage_mb": 10240, "gpus": 0}
+        self.task_env_config = self.task_env_config.model_copy(
+            update={key: value for key, value in defaults.items() if getattr(self.task_env_config, key) is None}
+        )
+        self._validate_internet_config()
 
     @staticmethod
     def type() -> EnvironmentType:
@@ -182,13 +190,22 @@ class NemoGymSandboxEnvironment(BaseEnvironment):
             )
 
     def _validate_internet_config(self):
-        if not self.task_env_config.allow_internet and not self.can_disable_internet:
+        if self.task_env_config.allow_internet is False and not self.can_disable_internet:
             raise ValueError(
                 f"Task {self.environment_name!r} requires allow_internet=false, which "
                 "NemoGymSandboxEnvironment cannot enforce. Set "
                 "harbor_environment_kwargs.allow_unenforced_internet_isolation=true to run "
                 "the task anyway (without isolation)."
             )
+
+    def validate_network_policy_support(self, network_policy: NetworkPolicy | None = None) -> None:
+        policy = network_policy or self._network_policy
+        if policy.network_mode == NetworkMode.NO_NETWORK:
+            if not self._allow_unenforced_internet_isolation:
+                raise ValueError("NemoGymSandboxEnvironment cannot enforce the requested no-network policy.")
+            self.logger.warning("Requested no-network policy is explicitly unenforced for this sandbox.")
+            return
+        super().validate_network_policy_support(policy)
 
     @property
     def _resolved_image(self) -> str:
@@ -230,7 +247,7 @@ class NemoGymSandboxEnvironment(BaseEnvironment):
                 "force_build is not supported by NemoGymSandboxEnvironment; using the task's prebuilt image %r.",
                 self._resolved_image,
             )
-        if not self.task_env_config.allow_internet:
+        if self.task_env_config.allow_internet is False:
             self.logger.warning(
                 "Task %r requests allow_internet=false but NemoGymSandboxEnvironment does "
                 "not enforce network isolation; the sandbox keeps cluster-default egress.",

@@ -15,8 +15,11 @@
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+from pydantic import ValidationError
 
 from nemo_gym.openai_utils import (
     NeMoGymEasyInputMessage,
@@ -30,6 +33,51 @@ from nemo_gym.openai_utils import (
 
 @dataclass
 class HarborAgentUtils:
+    @staticmethod
+    def validate_task_resources(task_path: Path, environment_config: object) -> None:
+        """Reject implicit resource changes introduced by the Harbor pin upgrade."""
+        from harbor.models.task.task import Task
+
+        task = Task(task_path)
+        environments = [("environment", task.config.environment)]
+        verifiers = [("verifier", task.config.verifier)] + [
+            (f"step {step.name} verifier", step.verifier) for step in task.config.steps or []
+        ]
+        for label, verifier in verifiers:
+            if verifier is not None and verifier.environment is not None:
+                environments.append((f"{label}.environment", verifier.environment))
+        for label, resources in environments:
+            missing = [
+                field
+                for field in ("cpus", "memory_mb")
+                if getattr(resources, field) is None and getattr(environment_config, f"override_{field}", None) is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"Task {task_path.name!r} needs explicit {label} {', '.join(missing)} before execution. "
+                    "The previous Harbor pin defaulted to cpus=1 and memory_mb=2048. "
+                    "Record the intended scientific resource limits in task.toml; do not silently uncap them."
+                )
+
+    @staticmethod
+    def with_native_validity(trial_result: dict[str, Any]) -> dict[str, Any]:
+        """Derive current Harbor policy without modifying the saved raw receipt.
+
+        Historical receipts may not satisfy the current result schema; those
+        continue through the explicit legacy classification in failure_diagnostics.
+        """
+        from harbor.models.trial.result import TrialResult
+
+        try:
+            parsed = TrialResult.model_validate(trial_result)
+        except ValidationError:
+            return trial_result
+        return {
+            **trial_result,
+            "reward_valid": parsed.reward_valid,
+            "failure_cause": parsed.failure_cause.value if parsed.failure_cause else None,
+        }
+
     @staticmethod
     def _wrap_reasoning_in_think_tags(texts: List[str]) -> str:
         return "".join(f"<think>{text}</think>" for text in texts if text)

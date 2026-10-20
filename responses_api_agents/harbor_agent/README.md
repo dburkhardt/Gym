@@ -534,3 +534,27 @@ contiguity across turns. Details:
 https://docs.nvidia.com/nemo/gym/latest/contribute/rl-framework-integration/openai-compatible-http-server-on-policy-correction.html
 
 For Harbor related questions, check out the official Harbor docs: https://harborframework.com/docs.
+
+
+## Pinned Harbor migration
+
+This adapter targets Harbor commit `96ff9c6db90cc015f0fc0987d896670c9c5f1fad`.
+It uses `Job.create`, the unified dataset schema, one trial per Gym request,
+and explicitly disables Harbor job retries. Preserve the full trial directory,
+including `artifacts/manifest.json`, to use Harbor's saved-output regrade flow.
+Regrading creates a new trial; it does not overwrite the original score.
+
+Before running migrated tasks, record explicit `cpus` and `memory_mb` in
+`task.toml` for the agent environment and any distinct verifier environment.
+The previous pin supplied omitted defaults of 1 CPU and 2048 MiB; the new pin
+leaves them unspecified. Gym rejects omissions before starting containers rather
+than silently removing those bounds. Existing explicit scientific limits are
+unchanged. The sandbox adapter additionally retains its old omitted resource
+defaults (1 CPU, 2048 MiB, 10240 MiB storage) for direct environment construction.
+
+Current Harbor computes reward validity as a property rather than storing it in
+`result.json`. Gym derives that policy while preserving raw result metadata and
+uses explicit legacy classification for older receipts. Agent exceptions now
+propagate after trajectory/diagnostic preservation, so infrastructure failures
+cannot become valid scores merely because the wrapper swallowed an exception.
+This does not retroactively certify historical campaign scores.

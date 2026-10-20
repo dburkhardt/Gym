@@ -1,0 +1,15 @@
+{
+  "source_path": "outputs/broad-eval-campaign/harbor/pbench-worker-jobs/20261020/pbench/nemotron-3.5-super-vl/063857_b4dd352a/logistic_regression--hbiostat__v__WekrDFv/result.json",
+  "source_sha256": "9a1d5310bc15c0f976b19226b922eef904fd0f58e754ad82f818ed217dbbd071",
+  "projection": {
+    "exception_info": null,
+    "verifier_result": {
+      "rewards": {
+        "reward": 0.0,
+        "raw": 1.0,
+        "strict": 0.0
+      }
+    },
+    "step_results": null
+  }
+}

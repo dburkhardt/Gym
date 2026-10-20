@@ -15,6 +15,7 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import sys
 from asyncio import Semaphore
@@ -45,6 +46,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
 )
+from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
 
@@ -168,7 +170,12 @@ async def run_harbor_job(job_config_dict: dict) -> str:
     from harbor.models.job.config import JobConfig
 
     config = JobConfig(**job_config_dict)
-    job = Job(config)
+    job = await Job.create(config)
+    # The reviewed Harbor pin resolves/cache-downloads tasks in create(). Inspect
+    # those exact paths before starting containers; newer Harbor no longer gives
+    # omitted resources the old 1 CPU / 2048 MiB defaults.
+    for download in job._task_download_results.values():
+        HarborAgentUtils.validate_task_resources(download.path, config.environment)
 
     job_error = None
     try:
@@ -274,6 +281,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
             )
 
             failure_reason = None
+            failure_kind = None
             failure_metadata = {}
             try:
                 params = dict(
@@ -303,7 +311,18 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
                 # Extract reward from verifier result
                 verifier_result = trial_result.get("verifier_result")
-                reward = HarborAgentUtils.extract_reward(verifier_result)
+                failure_kind, failure_reason = measurement_failure(
+                    HarborAgentUtils.with_native_validity(trial_result),
+                    llm_failure=agent_error_flags.get("llm_call_failure"),
+                )
+                # Keep native rewards in metadata even when the Gym numeric field
+                # needs a finite placeholder for an invalid measurement.
+                try:
+                    reward = HarborAgentUtils.extract_reward(verifier_result)
+                except (TypeError, ValueError, OverflowError):
+                    reward = 0.0
+                if not math.isfinite(reward):
+                    reward = 0.0
 
                 # Convert Harbor outputs to NeMo Gym response items:
                 # keep rich trajectory details, then overlay rollout token details when present.
@@ -314,15 +333,16 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
                 # Populate usage from trajectory final_metrics or agent_result
                 usage = HarborAgentUtils.extract_usage(trial_result, trajectory)
-                if llm_failure := agent_error_flags.get("llm_call_failure"):
-                    # A verifier may score a partial artifact after inference failed.
-                    # Preserve that raw score and usage, but exclude it from metrics.
-                    failure_reason = f"LLM call failed: {llm_failure}"
+                if agent_error_flags.get("llm_call_failure"):
+                    # Preserve inference diagnostics alongside native scores.
+                    # measurement_failure distinguishes provider failures from
+                    # scored benchmark budget exhaustion.
                     trial_result = {**trial_result, "agent_error_flags": agent_error_flags}
 
             except Exception as e:
                 logger.exception("Error running Harbor job for %s", instance_id)
                 failure_reason = f"{type(e).__name__}: {e}"
+                failure_kind = AGENT_RUN_ERROR
                 # A wrapper error can happen after model execution. Preserve the
                 # artifact location without claiming that no inference occurred.
                 failure_metadata = {
@@ -361,7 +381,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 instance_id=instance_id,
                 metadata=trial_result if trial_result else failure_metadata,
                 mask_sample=failure_reason is not None,
-                failure_kind=AGENT_RUN_ERROR if failure_reason is not None else None,
+                failure_kind=failure_kind,
                 failure_reason=failure_reason,
                 context_length_exceeded_error=int(agent_error_flags.get("context_length_exceeded", False)),
                 memory_limit_exceeded_error=int(agent_error_flags.get("memory_limit_exceeded", False)),
@@ -450,13 +470,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
         responses_create_params: Optional[dict[str, Any]] = None,
     ) -> dict:
         """Build a Harbor JobConfig dict for a single task."""
-        from harbor.models.job.config import (
-            JobConfig,
-            LocalDatasetConfig,
-            OrchestratorConfig,
-            RegistryDatasetConfig,
-        )
-        from harbor.models.registry import RemoteRegistryInfo
+        from harbor.models.job.config import DatasetConfig, JobConfig, RetryConfig
         from harbor.models.trial.config import (
             AgentConfig,
             EnvironmentConfig,
@@ -531,20 +545,14 @@ class HarborAgent(SimpleResponsesAPIAgent):
             ),
         )
 
-        orchestrator_config = OrchestratorConfig(
-            n_concurrent_trials=1,
-            quiet=True,
-        )
-
         if has_registry:
-            dataset_config = RegistryDatasetConfig(
-                registry=RemoteRegistryInfo(),
+            dataset_config = DatasetConfig(
                 name=dataset_source.dataset_name,
                 version=dataset_source.dataset_version,
                 task_names=[task_name],
             )
         else:
-            dataset_config = LocalDatasetConfig(
+            dataset_config = DatasetConfig(
                 path=Path(dataset_source.local_dataset_path),
                 task_names=[task_name],
             )
@@ -555,7 +563,9 @@ class HarborAgent(SimpleResponsesAPIAgent):
             timeout_multiplier=(
                 self.config.harbor_timeout_multiplier if self.config.harbor_timeout_multiplier is not None else 1.0
             ),
-            orchestrator=orchestrator_config,
+            n_concurrent_trials=1,
+            quiet=True,
+            retry=RetryConfig(max_retries=0),
             environment=environment_config,
             verifier=verifier_config,
             agents=[agent_config],

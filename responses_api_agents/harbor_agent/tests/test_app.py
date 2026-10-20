@@ -437,6 +437,31 @@ class TestApp:
         assert "I will look at foo.py" in out[0]["content"][0]["text"]
         assert response.response.usage.total_tokens == 1380
 
+    @pytest.mark.parametrize("fixture", ["verifier_missing", "provider_admission_budget"])
+    async def test_run_preserves_failed_native_receipt(self, fixture):
+        fixture_path = Path(__file__).parent / "fixtures" / "measurement_validity" / f"{fixture}.json"
+        result = json.loads(fixture_path.read_text())["projection"]
+        server = _make_server()
+        with _harbor_run_mocks(trial_result=result, trajectory=TRAJECTORY_NO_TOKEN_DETAILS):
+            response = await server.run(_make_run_request())
+        assert response.mask_sample is True
+        assert response.metadata["exception_info"] == result["exception_info"]
+        assert response.metadata["verifier_result"] == result["verifier_result"]
+
+    async def test_native_agent_budget_keeps_valid_zero(self):
+        result = {
+            **DEFAULT_TRIAL_RESULT,
+            "verifier_result": {"rewards": {"reward": 0.0}},
+            "exception_info": {"exception_type": "AgentTimeoutError", "exception_message": "native budget"},
+        }
+        server = _make_server()
+        with _harbor_run_mocks(trial_result=result, trajectory=TRAJECTORY_NO_TOKEN_DETAILS):
+            response = await server.run(_make_run_request())
+        assert response.mask_sample is False
+        assert response.reward == 0.0
+        assert response.agent_timeout_error == 1
+        assert response.metadata["exception_info"] == result["exception_info"]
+
     async def test_run_failed_execution(self):
         server = _make_server()
         with _harbor_run_mocks(side_effect=Exception("Harbor job failed")):
@@ -481,7 +506,7 @@ class TestApp:
             response = await server.run(_make_run_request())
         assert response.reward == 0.7
         assert response.mask_sample is True
-        assert response.failure_kind == "agent_run_error"
+        assert response.failure_kind == "transport_peer_drop"
         assert "uncertain dispatch" in response.failure_reason
         assert response.metadata["agent_error_flags"]["llm_call_failure"] == failure
         assert response.response.usage.total_tokens > 0
@@ -866,9 +891,12 @@ class TestLLMClientTeardown:
         from harbor.agents.terminus_2.terminus_2 import Terminus2
 
         with patch.object(Terminus2, "run", new=AsyncMock(side_effect=super_run_side_effect)) as mock_super_run:
-            # run() handles agent errors gracefully, so it must never raise, whether the
-            # underlying agent loop succeeds or blows up.
-            await agent.run("solve the task", MagicMock(), MagicMock())
+            # Preserve failures for native policy while always closing the client.
+            if super_run_side_effect is not None:
+                with pytest.raises(RuntimeError, match="agent crashed"):
+                    await agent.run("solve the task", MagicMock(), MagicMock())
+            else:
+                await agent.run("solve the task", MagicMock(), MagicMock())
 
         mock_super_run.assert_awaited_once()
         # The persistent client is closed in the finally block on both paths.

@@ -74,6 +74,9 @@ class Terminus2NemoGym(Terminus2):
                 timeout_sec=nemo_model_server_timeout_sec,
             )
 
+        # Current Harbor validates native options and no longer accepts an llm
+        # kwarg. Inject through its supported backend-construction hook instead.
+        self._nemo_gym_llm = llm
         super().__init__(
             logs_dir=logs_dir,
             model_name=model_name,
@@ -93,30 +96,31 @@ class Terminus2NemoGym(Terminus2):
             tmux_pane_height=tmux_pane_height,
             store_all_messages=store_all_messages,
             record_terminal_session=record_terminal_session,
-            llm=llm,
             interleaved_thinking=interleaved_thinking,
             *args,
             **kwargs,
         )
 
-    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        """Override run() to gracefully handle agent errors.
+    def _init_llm(self, *args: Any, **kwargs: Any) -> BaseLLM:
+        """Retain the configured Gym backend when Harbor initializes its agent."""
+        return self._nemo_gym_llm
 
-        The parent's run() has a finally block that saves rollout_details and
-        dumps the trajectory before any exception propagates. By catching
-        exceptions here, we let Harbor's trial system proceed normally with the
-        verifier — returning the agent's conversation history from all completed
-        turns (reward will be 0 for incomplete work) instead of crashing the
-        entire rollout batch.
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
+        """Preserve trajectory diagnostics while retaining native failure classification.
+
+        Harbor owns whether a failed agent phase can be scored. Suppressing the
+        exception here would hide provider or sandbox failures from that policy.
         """
         self._memory_limit_exceeded = False
         try:
             await super().run(instruction, environment, context)
         except MemoryLimitExceededError as e:
             self._memory_limit_exceeded = True
-            self.logger.info(f"Agent error: {type(e).__name__}: {e}. Returning history from completed turns.")
+            self.logger.info(f"Agent error: {type(e).__name__}: {e}. Preserving completed history.")
+            raise
         except Exception as e:
-            self.logger.info(f"Agent error: {type(e).__name__}: {e}. Returning history from completed turns.")
+            self.logger.info(f"Agent error: {type(e).__name__}: {e}. Preserving completed history.")
+            raise
         finally:
             self._attach_routed_experts_to_trajectory()
             self._write_agent_error_flags()

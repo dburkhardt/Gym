@@ -18,6 +18,7 @@ from typing import Optional
 
 import pytest
 from harbor.models.task.config import EnvironmentConfig as TaskEnvironmentConfig
+from harbor.models.task.config import NetworkPolicy
 from harbor.models.trial.paths import TrialPaths
 
 from nemo_gym.sandbox import SandboxExecResult, SandboxHandle, SandboxSpec, SandboxStatus, register_provider
@@ -132,6 +133,18 @@ class TestValidation:
         config = TaskEnvironmentConfig(docker_image="example/task:1.0", allow_internet=False)
         with pytest.raises(ValueError, match="allow_internet"):
             _make_environment(tmp_path, task_env_config=config)
+
+    def test_rejects_current_no_network_policy_by_default(self, tmp_path):
+        config = TaskEnvironmentConfig(docker_image="example/task:1.0", network_mode="no-network")
+        with pytest.raises(ValueError, match="no-network"):
+            _make_environment(
+                tmp_path, task_env_config=config, network_policy=NetworkPolicy(network_mode="no-network")
+            )
+
+    def test_omitted_resource_defaults_are_preserved(self, tmp_path):
+        env = _make_environment(tmp_path, task_env_config=TaskEnvironmentConfig(docker_image="example/task:1.0"))
+        resources = env._build_spec().resources
+        assert (resources.cpu, resources.memory_mib, resources.disk_gib) == (1.0, 2048, 10)
 
     def test_internet_isolation_opt_in(self, tmp_path):
         config = TaskEnvironmentConfig(docker_image="example/task:1.0", allow_internet=False)
