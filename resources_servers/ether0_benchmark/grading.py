@@ -14,7 +14,10 @@ def grade(text: str, *, solution: str, **metadata: object) -> dict:
     import importlib.util
     from pathlib import Path
 
-    spec = importlib.util.find_spec("ether0")
+    try:
+        spec = importlib.util.find_spec("ether0.rewards")
+    except ModuleNotFoundError:
+        spec = None
     if spec is None or spec.origin is None:
         raise RuntimeError(
             "Pinned ether0 creator package is not installed; install resource requirements before scoring"
@@ -28,6 +31,16 @@ def grade(text: str, *, solution: str, **metadata: object) -> dict:
         path = package / name
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise RuntimeError(f"Missing or mismatched pinned creator asset: {path}; run stage_assets.py")
+    import json
+
+    source_hashes = json.loads(Path(__file__).with_name("creator_hashes.json").read_text())
+    for name, digest in source_hashes.items():
+        module = importlib.util.find_spec("ether0." + name.removesuffix(".py"))
+        path = package / name
+        if module is None or module.origin is None or Path(module.origin).resolve() != path.resolve():
+            raise RuntimeError(f"Unexpected creator module location: {name}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise RuntimeError(f"Mismatched pinned creator source: {path}")
     from ether0.rewards import accuracy_reward
 
     diagnostics = []
@@ -35,4 +48,8 @@ def grade(text: str, *, solution: str, **metadata: object) -> dict:
     detail = diagnostics[0]
     if detail.get("reward_reason") == "reward_function_exception":
         raise RuntimeError("Upstream chemistry oracle failed; do not count as model error")
+    detail = {
+        **detail,
+        "creator_runtime": {"package": str(package), "source_sha256": source_hashes, "asset_sha256": hashes},
+    }
     return {"reward": float(score), "diagnostics": detail}

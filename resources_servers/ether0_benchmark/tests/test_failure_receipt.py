@@ -106,3 +106,21 @@ def test_missing_creator_package_is_explicit_runtime_failure(monkeypatch):
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
     with pytest.raises(RuntimeError, match="creator package is not installed"):
         grade("CCO", solution="fg_eval!:!x")
+
+
+def test_namespace_package_uses_rewards_location(monkeypatch, tmp_path):
+    import importlib.util
+    from types import SimpleNamespace
+
+    from resources_servers.ether0_benchmark.grading import grade
+
+    requested = []
+
+    def lookup(name):
+        requested.append(name)
+        return SimpleNamespace(origin=str(tmp_path / "rewards.py"))
+
+    monkeypatch.setattr(importlib.util, "find_spec", lookup)
+    with pytest.raises(RuntimeError, match="Missing or mismatched pinned creator asset"):
+        grade("CCO", solution="fg_eval!:!x")
+    assert requested == ["ether0.rewards"]
