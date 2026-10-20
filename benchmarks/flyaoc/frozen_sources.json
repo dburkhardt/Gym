@@ -56,5 +56,38 @@
   ],
   "historical_pilot5_sha256": "d75e111bd001c02d3783c407d23593cabf321cd41025c3dfee5f9a1f986efc53",
   "reference_records_sha256": "5fc0bb1808ce026d1484f58ff722f4b8c3f6ca5768cf9c256fb47c3326d75202",
-  "qualification": "Source archive short revision only; dataset pin and exact input bytes preserved. Native runtime migration pending."
+  "qualification": "Source archive short revision only; dataset pin and exact input bytes preserved. Native runtime migration pending.",
+  "scorer_source_files": {
+    "flyaoc/__init__.py": "be8c32791c9df5681df9bb15fc09903af8caefbb1e5e3a0cf402ef493c47a975",
+    "flyaoc/baselines/__init__.py": "8a56a4cdc60c8499d6ab619e5ea9a29c71b22166c24d6f27c78ecdd902197b74",
+    "flyaoc/baselines/adapters/__init__.py": "4ae9c252b17587aaa1c32415c871cda58539987527d702b1f3af6c2038c6ab1c",
+    "flyaoc/baselines/adapters/common.py": "38ade3bbd689bf73c8d0aa905a4ea6ad97a8eeef31e798cb7d61ce880be29198",
+    "flyaoc/baselines/adapters/memorization.py": "0cabf5320ff1ced989e63ef31c43637806e3f7e4ca8288a955f7a70723849b1f",
+    "flyaoc/baselines/adapters/multi_agent.py": "95eb52fce0c0d2c2525987ebff5b8604448d57f75784a732d37d0dd0e3ea0ede",
+    "flyaoc/baselines/adapters/pipeline.py": "7d0f9072b414ae85c0172243b093881cf740deca7fcefcdb7763b2f68a24e542",
+    "flyaoc/baselines/adapters/single_agent.py": "48a05a8613978e88ffda746374d36cb7ec24f3c93cbb8f299cdb2638443f33f4",
+    "flyaoc/baselines/cli.py": "893842cf5124e7e5cbf9f4e65612bf1006962d7b7281694a9078bc9df4c5a896",
+    "flyaoc/baselines/data.py": "81ca19f9492907dce89738a7ec2d14ee1f020d9db1bad05e89d9b996da6c6d79",
+    "flyaoc/baselines/normalize.py": "0b40a0bb980d2e3478100bc4c9743bb382b3f60ce375cdadb6af66eee843ad9f",
+    "flyaoc/baselines/providers.py": "d0e529934c6f74f71808075b0ece55fb5168525b795c0abf0dc78c1c42258cb9",
+    "flyaoc/baselines/runners.py": "bb92952c34cd9ffa23170393ee6e7a2e856d89e88a22e39f3e281d27eb205d4f",
+    "flyaoc/baselines/types.py": "73bd92fda41e7678abc4a58319ba41eeb4d38b24f72406d386cc8db825478d83",
+    "flyaoc/data/__init__.py": "fe47acb357fca8833f575afab0021fc858a8026141336b8aa4212212d5549615",
+    "flyaoc/data/hf.py": "4f8809f50f484e14286436c35e66827dfa3b754f69d7baac9295361f8c1429f3",
+    "flyaoc/evaluation/__init__.py": "87a0ba1a934cf0770a1f8e2c8c733d98ead79d74fab455644443ef937e5fc799",
+    "flyaoc/evaluation/cli.py": "84f0f1fdb0ce5e46df9cddd6d9938129176d466d204db58d247cc052924c7666",
+    "flyaoc/evaluation/constants.py": "c71db428dcf5ae612b296fe17478cafe0788472bc096052a98be7b0c7835f2cd",
+    "flyaoc/evaluation/evaluate.py": "7798b28fcd03693479a52d15072ac1d0f88f071da5d4aad85a4748cb30dbf487",
+    "flyaoc/evaluation/io.py": "26a3758c67a5b0e7e3d27949d3d3e31ed5ef367317c0d288e8e26b1bb34c6748",
+    "flyaoc/evaluation/ontology.py": "a00faa79fd4054dd572c8d7c0c8f22ac7d1bc170792d07684dca4975dea3cc0b",
+    "flyaoc/evaluation/recall.py": "1cd9ed57a1c0026f03e14c8682c26b65476cc9cd3657fbe53cb4bc0e59f6a172",
+    "flyaoc/providers/__init__.py": "22a87d4b3bf8fd45d17cd77cde9cf6b2bd929007b8b96f21fe9295deb394ea5a",
+    "flyaoc/reporting/__init__.py": "83e87c0930581d2788cad5b2adaef9912e44aaf945caffb9aeef64c281e3a5c1",
+    "flyaoc/reporting/smoke.py": "7d04f76edce40dacde40ce106495cae037bc5a7038b5b2803dac80dfc546a7be",
+    "flyaoc/reporting/tables.py": "3e66005bbfaed2821bdfd44034667df7c0c0a71d4bcbbb400622ad8351b5ab69"
+  },
+  "ontology_sha256": {
+    "go-basic.obo": "4e3ce039a6ad3d45e2752097625330152cc8ae97d35d824c7fcb0735b45d0fc3",
+    "fly_anatomy.obo": "50cbbc694414f765b2cae8b27984fc96e0627774e2e1e55e02197259e292f2be"
+  }
 }
