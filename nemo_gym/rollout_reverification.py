@@ -1105,6 +1105,7 @@ def _load_reverified_results(output_fpath: Path) -> Tuple[List[Dict], List[Dict]
 class RolloutReverificationHelper(BaseModel):
     async def run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
         if not config.provider_dispatch_guard:
+            _validate_reverification_guard(False)
             return await self._run_from_config(config)
         warning = await _guard_reverify_mode(config) if config.input_format != "atif" else None
         output = Path(config.output_jsonl_fpath)

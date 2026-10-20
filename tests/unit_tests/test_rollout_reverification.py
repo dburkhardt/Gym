@@ -2213,6 +2213,7 @@ class TestRolloutReverificationRunFromConfig:
             lambda *_args, **_kwargs: [fake_future(row, result) for row, result in pairs],
         )
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", AsyncMock(return_value=None))
+        monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._guard_reverify_mode", AsyncMock(return_value=None))
         monkeypatch.setattr("nemo_gym.rollout_reverification.get_exporters", list)
         # run_from_config resolves the input paths for real; the files don't exist in these tests, so stub it out.
@@ -2601,6 +2602,7 @@ class TestRolloutReverificationRunFromConfig:
 
         agg_mock = AsyncMock(return_value=None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", agg_mock)
+        monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._guard_reverify_mode", AsyncMock(return_value=None))
         monkeypatch.setattr("nemo_gym.rollout_reverification.get_exporters", list)
         monkeypatch.setattr("nemo_gym.rollout_reverification._resolve_under_cwd_or_install", lambda p: Path(p))
@@ -2657,6 +2659,7 @@ class TestRunFromConfigForceFlag:
         *,
         force_warning: str | None,
     ) -> None:
+        monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
         row = {AGENT_REF_KEY_NAME: {"name": "agent_a"}, TASK_INDEX_KEY_NAME: 0, ROLLOUT_INDEX_KEY_NAME: 0}
         result = {"reward": 1.0}
 
@@ -2760,6 +2763,7 @@ class TestRunFromConfigResumeFromCache:
             return [fut(p) for p in payloads]
 
         monkeypatch.setattr("nemo_gym.rollout_reverification._run_verification_payloads", fake_run)
+        monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._guard_reverify_mode", AsyncMock(return_value=None))
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", AsyncMock(return_value=None))
         monkeypatch.setattr("nemo_gym.rollout_reverification.get_exporters", list)
@@ -3056,6 +3060,7 @@ class TestRunFromConfigJudgeFailedOnly:
         monkeypatch.setattr("nemo_gym.rollout_reverification._run_verification_payloads", fake_run)
         # Recovery skips the reverify-mode guard entirely; stub it so we can assert it is never awaited.
         guard_mock = AsyncMock(return_value=None)
+        monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._guard_reverify_mode", guard_mock)
         agg_mock = AsyncMock(return_value=None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", agg_mock)
@@ -3754,7 +3759,8 @@ async def test_guarded_rejected_fresh_run_never_publishes_identity(tmp_path):
     assert not output.with_name(output.name + ".reverify-identity.json").exists()
 
 
-async def test_guard_mismatch_preflight_preserves_existing_history(tmp_path, monkeypatch):
+@pytest.mark.parametrize("client_guard,server_guard", [(True, False), (False, True)])
+async def test_guard_mismatch_preflight_preserves_existing_history(tmp_path, monkeypatch, client_guard, server_guard):
     from types import SimpleNamespace
 
     from nemo_gym.config_types import ConfigError
@@ -3767,11 +3773,11 @@ async def test_guard_mismatch_preflight_preserves_existing_history(tmp_path, mon
     monkeypatch.setattr("nemo_gym.rollout_reverification._guard_atif_preflight", AsyncMock())
     monkeypatch.setattr(
         "nemo_gym.rollout_reverification.setup_server_client",
-        lambda: SimpleNamespace(global_config_dict={"provider_dispatch_guard": False}),
+        lambda: SimpleNamespace(global_config_dict={"provider_dispatch_guard": server_guard}),
     )
     config = SimpleNamespace(
         output_jsonl_fpath=str(output),
-        provider_dispatch_guard=True,
+        provider_dispatch_guard=client_guard,
         input_format="atif",
         materialized_inputs_jsonl_fpath="unused",
         atif_manifest_jsonl_fpath="unused",
