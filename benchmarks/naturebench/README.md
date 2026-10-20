@@ -20,3 +20,17 @@ Do not modify the immutable downloaded tasks, expose reference labels to the
 solver, or treat schema validation as evidence of scientific execution. Pin the
 source and image digests, preserve the full solver trajectory and judge receipts,
 and label the Nemotron judge replacement as a protocol variant.
+
+The creator's `reward_from_verdict` retains a numeric improvement when
+`is_valid` is `None`; only an explicit invalid verdict changes it to -1.
+Keep that native reward, but report unresolved judging separately and never
+count it as a validated result. Local controls cover correct clustering labels,
+equivalent cluster-ID renaming, wrong predictions, empty arrays, invalid
+shapes, noninteger labels, and negative labels.
+
+The campaign transport binds loopback and the worker's private Docker bridge
+on port 18885 and forwards to the existing worker tunnel on 18883. It accepts
+only the exact Nemotron model and nonstream requests, adds a fixed NatureBench
+accounting header, checks the returned model, and never retries uncertain calls.
+Both chat and Responses live routing controls returned the required model;
+this does not establish task execution or scoring correctness.
