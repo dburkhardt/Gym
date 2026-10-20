@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -40,7 +40,16 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'scienceqa':
+    if kind == 'fukuyama':
+        import yaml
+        from typing import Dict,List,Optional
+        tree=ast.parse((repo/'eval/run_infer_pathway.py').read_text());fns=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ['load_pathway_data','format_user_prompt']]
+        ns={'os':os,'json':json,'Dict':Dict,'List':List,'Optional':Optional};exec(compile(ast.Module(body=fns,type_ignores=[]),'creator_loader','exec'),ns)
+        data=ns['load_pathway_data'](str(repo/'fukuyama_bench/mechanisms')); prompts=yaml.safe_load((repo/'eval/prompts/infer_pathway_prompts.yaml').read_text());grader=module(repo/'eval/eval_infer_pathway.py')
+        for x in data:
+            ckpt=grader.load_checkpoints(str(repo/'fukuyama_bench/mechanisms'),x['case_id'])
+            rows.append({'uuid':x['case_id'],'stratum':x['case_id'][0],'responses_create_params':{'input':[{'role':'system','content':prompts['pathway_student_system_prompt']},{'role':'user','content':ns['format_user_prompt'](prompts['pathway_student_template_prompt'],x)}]},'verifier_metadata':{'pathway':x['ground_truth_pathway'],'checkpoints':ckpt}})
+    elif kind == 'scienceqa':
         problems=json.loads((repo/'data/scienceqa/problems.json').read_text()); ids=json.loads((repo/'data/scienceqa/pid_splits.json').read_text())['test'];captions=json.loads((repo/'data/captions.json').read_text())['captions']
         base=module(repo/'models/base_prompt.py')
         for id in ids:
@@ -121,6 +130,13 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'fukuyama':
+        upstream=module(repo/'eval/eval_infer_pathway.py');pred=upstream.extract_pathway_from_response(answer)
+        if not pred:return {'reward':0.0,'valid':False,'parse_error':True}
+        if meta['checkpoints']:
+            result=upstream.compare_pathways_with_checkpoints(pred,meta['pathway'],meta['checkpoints'],lenient=True)
+        else:result=upstream.compare_pathways(pred,meta['pathway'],lenient=True)
+        return {'reward':float(result['exact_match']),'creator_metrics':result,'metric':'creator_lenient_checkpoint_exact_match'}
     if kind == 'scienceqa':
         found=re.findall(r'The answer is ([A-Z]).',answer)
         letter=found[0] if len(found)==1 else 'FAILED'
