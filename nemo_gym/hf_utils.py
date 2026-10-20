@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import shutil
 from pathlib import Path
 
 import yaml
@@ -23,6 +22,7 @@ from huggingface_hub.errors import RemoteEntryNotFoundError
 from huggingface_hub.utils import HfHubHTTPError
 
 from nemo_gym.config_types import DownloadJsonlDatasetHuggingFaceConfig, UploadJsonlDatasetHuggingFaceConfig
+from nemo_gym.dataset_staging import stage_file
 from nemo_gym.server_metadata import visit_resources_server
 
 
@@ -81,7 +81,7 @@ def download_hf_dataset_as_jsonl(
 
             # We copy the downloaded file from the cache to the target path
             # to allow renaming (e.g., artifact_fpath="something.jsonl" -> output_fpath="train.jsonl")
-            shutil.copy(downloaded_path, output_file)
+            stage_file(Path(downloaded_path), output_file)
             print(f"[Nemo-Gym] - Downloaded {config.artifact_fpath} to: {output_file}")
             return
 
