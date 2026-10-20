@@ -104,24 +104,31 @@ class LocalProvider:
         inst = handle.raw
         timeout = timeout_s if timeout_s is not None else self._default_timeout_s
         async with self._semaphore:
-            process = await asyncio.create_subprocess_exec(
-                self._shell,
-                "-c",
-                command,
-                cwd=str(cwd or inst["workspace"]),
-                env={**os.environ, **inst["env"], **(env or {})},
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
+            spawn = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    self._shell,
+                    "-c",
+                    command,
+                    cwd=str(cwd or inst["workspace"]),
+                    env={**os.environ, **inst["env"], **(env or {})},
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,
+                )
             )
+            try:
+                process = await asyncio.shield(spawn)
+            except asyncio.CancelledError:
+                # Spawn may already have created the child before cancellation.
+                # Settle it before killing, including repeated cancellation.
+                with contextlib.suppress(Exception):
+                    process = await _settle(spawn)
+                    await _kill_and_reap(process)
+                raise
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except (TimeoutError, asyncio.TimeoutError, asyncio.CancelledError) as exc:
-                with contextlib.suppress(ProcessLookupError):
-                    # start_new_session makes the PID the group ID, even after the shell exits.
-                    os.killpg(process.pid, signal.SIGKILL)
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(process.wait(), timeout=REAP_TIMEOUT_S)
+                await _kill_and_reap(process)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 return SandboxExecResult(
@@ -157,7 +164,29 @@ class LocalProvider:
     async def close(self, handle: SandboxHandle) -> None:
         inst = handle.raw
         if inst["owned"]:
-            await asyncio.to_thread(shutil.rmtree, inst["workspace"], ignore_errors=True)
+            with contextlib.suppress(FileNotFoundError):
+                await asyncio.to_thread(shutil.rmtree, inst["workspace"])
 
     async def aclose(self) -> None:
         return None
+
+
+async def _settle(task: asyncio.Task):
+    """Finish owned cleanup even if the caller is cancelled more than once."""
+    while True:
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.done():
+                return task.result()
+
+
+async def _kill_and_reap(process: asyncio.subprocess.Process) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+
+    async def reap() -> None:
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(process.wait(), timeout=REAP_TIMEOUT_S)
+
+    await _settle(asyncio.create_task(reap()))
