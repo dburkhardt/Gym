@@ -191,7 +191,7 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
         from rdkit import Chem
         fn=next(n for n in ast.parse((repo/'final_evaluation/molgen/scorer.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='evaluate');ns={'np':np,'corpus_bleu':corpus_bleu,'lev':distance,'Chem':Chem};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_lpm','exec'),ns)
         bleu,exact,lev,valid=ns['evaluate']([meta['smiles']],[answer.strip()])
-        return {'reward':float(exact),'valid':bool(valid),'levenshtein':float(lev),'metric':'creator_InChI_exact_match_only; explicit_chat_prompt_variant'}
+        return {'reward':float(exact),'valid':bool(valid),'nonempty_validity':bool(valid) and bool(answer.strip()),'levenshtein':float(lev),'metric':'creator_InChI_exact_match_only; explicit_chat_prompt_variant'}
     if kind == 'molinstructions':
         if not answer:return {'reward':0.0,'valid':False,'metric':'empty_response_failed; creator_mcq_would_raise_IndexError'}
         fn=next(n for n in ast.parse((repo/'evaluation/biotext'/(meta['subtask']+'.py')).read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='calculate_accuracy');ns={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_molins','exec'),ns)
@@ -208,7 +208,7 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
             functions.extend(n for n in ast.parse(path.read_text()).body if isinstance(n,ast.FunctionDef) and n.name in names)
         ns={'Chem':Chem,'Descriptors':Descriptors,'re':re,'json':json};exec(compile(ast.Module(body=functions,type_ignores=[]),'creator_s2','exec'),ns);pred=ns['correct_text'](answer);valid=bool(ns['mol_prop'](pred,'validity'))
         passed=valid and all(ns['mol_prop'](pred,'num_'+k)==v for k,v in meta['counts'].items())
-        return {'reward':float(passed),'valid':valid,'metric':'creator_MolCustom_AtomNum_correct_JSON','predicted_smiles':pred}
+        return {'reward':float(passed),'valid':valid,'nonempty_validity':valid and bool(pred.strip()),'metric':'creator_MolCustom_AtomNum_correct_JSON','predicted_smiles':pred}
     if kind == 'suprabench':
         tree=ast.parse((repo/'src/eval/tbs.py').read_text()); fns=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ['_after_think','_extract_answer_tag','parse_mcq']];ns={'re':re};exec(compile(ast.Module(body=fns,type_ignores=[]),'creator_parser','exec'),ns);pred=ns['parse_mcq'](answer)
         return {'reward':float(pred==meta['answer']),'valid':pred is not None,'predicted':pred,'metric':'creator_TBS_parse; aggregate_accuracy_uses_parsed_only'}
