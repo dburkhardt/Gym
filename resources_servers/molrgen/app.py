@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
+import asyncio
 import math
 from typing import ClassVar
 
-import httpx
+from aiohttp import ClientError, ClientTimeout
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
@@ -14,6 +15,7 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
+from nemo_gym.server_utils import request
 
 
 class Config(BaseResourcesServerConfig):
@@ -35,13 +37,22 @@ class Verifier:
     async def verify(self, body: Request) -> Response:
         payload = {"query": [body.response.output_text or ""], "metadata": [body.verifier_metadata["metadata"]]}
         try:
-            async with httpx.AsyncClient(timeout=self.config.creator_timeout_seconds) as client:
-                received = await client.post(self.config.creator_url.rstrip("/") + "/get_reward", json=payload)
+            # Docking is expensive and may continue after a dropped connection.
+            # One physical request; reconcile the creator before any new attempt.
+            received = await request(
+                "POST",
+                self.config.creator_url.rstrip("/") + "/get_reward",
+                json=payload,
+                timeout=ClientTimeout(total=self.config.creator_timeout_seconds),
+                _max_num_tries=1,
+                _resend_after_disconnect=False,
+            )
+            async with received:
                 received.raise_for_status()
-                receipt = received.json()
+                receipt = await received.json()
                 if not isinstance(receipt, dict):
                     raise ValueError("Creator response must be an object")
-        except (httpx.HTTPError, ValueError) as exc:
+        except (ClientError, asyncio.TimeoutError, ValueError) as exc:
             receipt = {"error": repr(exc), "request": payload}
         reward = receipt.get("reward")
         error = receipt.get("error")
