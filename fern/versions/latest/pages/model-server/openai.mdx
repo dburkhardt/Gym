@@ -50,6 +50,7 @@ For NVCF endpoints, requests that take longer than 340 seconds to produce a firs
 | `upstream_request_timeout_seconds` | `float` | `null` | Total time limit for each provider attempt, not a deadline for the whole retry schedule. |
 | `upstream_connect_timeout_seconds` | `float` | `null` | Time limit for each attempt to obtain a connection, including waiting for a free aiohttp connection-pool slot. Requires `upstream_request_timeout_seconds`. |
 | `upstream_pool_timeout_seconds` | `float` | `null` | Time limit for each attempt to wait for one of the `max_concurrent_requests` slots. Requires `max_concurrent_requests`. |
+| `upstream_rate_limit_cooldown_seconds` | `float` | `null` | Opt-in shared, per-process cooldown after HTTP 429. Uses the provider's `Retry-After` seconds or HTTP date, with this nonnegative fallback when missing or invalid. Requires `upstream_max_num_tries: 1`. Only explicit 429 responses are retried under the configured retry policy; transport errors and timeouts propagate without an automatic retry. |
 | `upstream_retry_policy` | `object` | one attempt | Model-server retry layer around provider calls: `max_attempts`, `pre_request_jitter_seconds`, `backoff_initial_seconds`, `backoff_multiplier`, `backoff_jitter_fraction`, and `terminal_http_status_codes`. Each attempt reacquires a concurrency slot. A spent or unauthorized key stops retries immediately; exhausted retries return HTTP 500. |
 | `propagate_upstream_http_status_codes` | `list[int]` | `[]` | Upstream error statuses (400–599) returned to the caller with that status and the provider's error body, instead of HTTP 500. A status that the retry policy retries until it is exhausted still returns HTTP 500. |
 
@@ -59,6 +60,12 @@ For NVCF endpoints, requests that take longer than 340 seconds to produce a firs
 </Note>
 
 ## Usage Example
+
+When cooldown is enabled, waiting does not occupy an upstream concurrency slot.
+The cooldown is shared by calls within one model-server process, not across workers.
+Waiting still counts toward an enclosing benchmark wall-clock deadline; enabling it
+does not extend a benchmark's time or token budget. This option does not establish
+whether a timed-out provider request completed, or make recovery exactly once.
 
 ### 1. Set model and environment config
 

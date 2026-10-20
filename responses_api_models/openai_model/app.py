@@ -14,8 +14,11 @@
 # limitations under the License.
 import asyncio
 import logging
+import math
 import random
+import time
 from contextlib import asynccontextmanager, nullcontext
+from email.utils import parsedate_to_datetime
 from typing import Any, Awaitable, Callable, Dict, Literal, Optional, TypeVar
 
 from aiohttp import ClientResponseError
@@ -106,6 +109,12 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
     extra_body: Dict[str, Any] = Field(default_factory=dict)
     openai_default_headers: Dict[str, str] = Field(default_factory=dict)
     max_http_attempts: int = Field(default=MAX_NUM_TRIES, ge=1)
+    upstream_rate_limit_cooldown_seconds: Optional[float] = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Opt-in shared 429 cooldown fallback. Honors Retry-After; retries only explicit 429 responses.",
+    )
 
     reasoning_effort_none_replacement: Optional[ReasoningEffort] = Field(
         default=None,
@@ -182,6 +191,8 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
 
     @model_validator(mode="after")
     def validate_upstream_controls(self) -> "SimpleModelServerConfig":
+        if self.upstream_rate_limit_cooldown_seconds is not None and self.upstream_max_num_tries != 1:
+            raise ValueError("Rate-limit cooldown requires upstream_max_num_tries=1")
         if self.upstream_retry_policy.max_attempts > 1 and self.upstream_max_num_tries != 1:
             raise ValueError(
                 "An upstream retry policy with multiple attempts requires "
@@ -221,6 +232,7 @@ class SimpleModelServer(SimpleResponsesAPIModel):
         return error.status in self.config.propagate_upstream_http_status_codes
 
     def model_post_init(self, context):
+        self._rate_limit_until = 0.0
         self._client = NeMoGymAsyncOpenAI(
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
@@ -269,10 +281,53 @@ class SimpleModelServer(SimpleResponsesAPIModel):
         finally:
             self._semaphore.release()
 
+    async def _call_with_cooldown(self, operation: Callable[[], Awaitable[ResponseT]]) -> ResponseT:
+        """Wait outside the slot; only observed 429 rejection is safe to retry."""
+        policy = self.config.upstream_retry_policy
+        for attempt in range(policy.max_attempts):
+            if policy.pre_request_jitter_seconds is not None:
+                await asyncio.sleep(random.uniform(*policy.pre_request_jitter_seconds))
+            while True:
+                delay = self._rate_limit_until - time.monotonic()
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                async with self._upstream_request_slot():
+                    # Another request may have established a cooldown while we queued.
+                    if self._rate_limit_until > time.monotonic():
+                        continue
+                    try:
+                        return await operation()
+                    except PermanentEndpointError:
+                        raise
+                    except ClientResponseError as error:
+                        if error.status != 429:
+                            raise
+                        delay = self.config.upstream_rate_limit_cooldown_seconds
+                        value = (error.headers or {}).get("Retry-After")
+                        try:
+                            parsed = float(value)
+                        except (TypeError, ValueError):
+                            try:
+                                parsed = parsedate_to_datetime(value).timestamp() - time.time()
+                            except (TypeError, ValueError, OverflowError, AttributeError):
+                                parsed = float("nan")
+                        if math.isfinite(parsed) and parsed >= 0:
+                            delay = parsed
+                        self._rate_limit_until = max(self._rate_limit_until, time.monotonic() + delay)
+                        if error.status in policy.terminal_http_status_codes or attempt + 1 == policy.max_attempts:
+                            raise
+                break
+            # Backoff complements, rather than replaces, the shared provider wait.
+            backoff = policy.backoff_initial_seconds * policy.backoff_multiplier**attempt
+            await asyncio.sleep(backoff + random.uniform(0, backoff * policy.backoff_jitter_fraction))
+        raise AssertionError("Validated retry policy always contains an attempt")
+
     async def _call_upstream(
         self,
         operation: Callable[[], Awaitable[ResponseT]],
     ) -> ResponseT:
+        if self.config.upstream_rate_limit_cooldown_seconds is not None:
+            return await self._call_with_cooldown(operation)
         retry_policy = self.config.upstream_retry_policy
         if retry_policy.max_attempts == 1:
             # Preserve the ordinary model server's historical behavior: one
