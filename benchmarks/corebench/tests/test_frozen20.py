@@ -60,3 +60,16 @@ def test_recipe_never_replaces_scientific_python_path(tmp_path):
     assert 'COPY python /opt/corebench-harness' in text
     assert 'RUN python' not in text
     assert '/opt/corebench-harness/bin/python3 -m pip' in text
+
+
+def test_unqualified_capsules_remain_visible(tmp_path):
+    import shutil
+    medium,refs,row,q,manifest=fixture(tmp_path)
+    blocked={**row,'id':'capsule-blocked','status':'requires_cuda_no_cpu_substitution'}
+    shutil.copytree(medium/row['id'],medium/blocked['id'])
+    shutil.copytree(refs/row['id'],refs/blocked['id'])
+    manifest.write_text(json.dumps({'rows':[row,blocked]}))
+    p=stage(medium,refs,{row['id']:q},tmp_path/'out',manifest=manifest)
+    receipt=json.loads((p.parent/'preparation.json').read_text())
+    assert receipt['retained']==2 and receipt['published']==1
+    assert receipt['blocked']==[{'id':'capsule-blocked','status':'requires_cuda_no_cpu_substitution'}]
