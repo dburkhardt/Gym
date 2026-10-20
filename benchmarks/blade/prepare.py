@@ -54,6 +54,8 @@ def stage(source: Path, destination: Path) -> Path:
         rows.append(
             {
                 "task_id": f"blade::{dataset}",
+                "instance_id": f"blade::{dataset}",
+                "agent_ref": {"name": "harbor_agent"},
                 "uuid": f"blade::{dataset}",
                 "responses_create_params": {"input": []},
                 "verifier_metadata": {
@@ -78,6 +80,20 @@ def stage(source: Path, destination: Path) -> Path:
         else:
             continue
         stage_file(source / relative, target, expected_sha256=checksum)
+    for dataset in manifest["selected_datasets"]:
+        task = destination / "tasks" / dataset
+        with TemporaryDirectory() as temporary:
+            tmp = Path(temporary)
+            for name, text in {
+                "instruction.md": dataset + "\n",
+                "tests/test.sh": "#!/bin/sh\necho Native_BLADE_custom_verifier_required >&2\nexit 1\n",
+                "environment/Dockerfile": "FROM sha256:2d642ec0d5e668a7194e78665c58e2b42a7ef9b5b3dbb8ee3ecd0a3fbc4da829\nRUN mkdir -p /workspace\n",
+                "task.toml": 'version = "1.0"\nartifacts = ["/workspace"]\n[agent]\ntimeout_sec = 3720\n[verifier]\ntimeout_sec = 3720\n[environment]\ndocker_image = "sha256:2d642ec0d5e668a7194e78665c58e2b42a7ef9b5b3dbb8ee3ecd0a3fbc4da829"\ncpus = 1\nmemory_mb = 128\nstorage_mb = 1024\nallow_internet = false\n',
+            }.items():
+                file = tmp / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(text)
+                stage_file(file, task / name)
     with TemporaryDirectory() as temporary:
         temporary = Path(temporary)
         data = temporary / "benchmark.jsonl"
@@ -89,7 +105,7 @@ def stage(source: Path, destination: Path) -> Path:
                     "source_commit": manifest["source_commit"],
                     "selected_datasets": manifest["selected_datasets"],
                     "source_files": files,
-                    "execution_status": "native_transport_and_harbor_hooks_pending",
+                    "execution_status": "native_hooks_implemented_runtime_acceptance_pending",
                 },
                 indent=2,
             )

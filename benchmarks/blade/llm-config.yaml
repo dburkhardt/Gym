@@ -1,0 +1,8 @@
+providers:
+  openai:
+    models:
+      - name: nvidia/nvidia/nemotron-3.5-super-vl
+        max_tokens: 16384
+        model:
+          model: nvidia/nvidia/nemotron-3.5-super-vl
+          api_key_env_name: OPENAI_API_KEY
