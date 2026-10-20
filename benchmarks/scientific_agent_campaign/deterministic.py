@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import importlib.util
 import json
 import os
+import re
+import random
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -37,7 +40,21 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'fgbench':
+    if kind == 'scienceqa':
+        problems=json.loads((repo/'data/scienceqa/problems.json').read_text()); ids=json.loads((repo/'data/scienceqa/pid_splits.json').read_text())['test'];captions=json.loads((repo/'data/captions.json').read_text())['captions']
+        base=module(repo/'models/base_prompt.py')
+        for id in ids:
+            x=problems[id];x={**x,'caption':captions.get(id,'')}
+            prompt=base.create_one_example('QCM-A',x['question'],base.get_context_text(x,True),base.get_choice_text(x,list('ABCDE')),'','','',test_example=True)
+            rows.append({'uuid':id,'stratum':x['subject'],'responses_create_params':{'input':[{'role':'user','content':prompt}]},'verifier_metadata':x})
+    elif kind == 'scibench':
+        post=module(repo/'eval/post_process.py');prompts=module(repo/'eval/prompt/prompt_scai.py')
+        for book in ['atkins','chemmc','thermo','matter']:
+            for i,x in enumerate(json.loads((repo/f'dataset/original/{book}.json').read_text())):
+                unit=post.remove_not(x['unit']) or x['unit']
+                prompt='Q: '+x['problem_text']+' The unit of the answer is '+unit+'.\nA: The answer is'
+                rows.append({'uuid':book+':'+str(i),'stratum':book,'responses_create_params':{'input':[{'role':'system','content':prompts.sys_cal_box2},{'role':'user','content':prompt}]},'verifier_metadata':x})
+    elif kind == 'fgbench':
         data = [json.loads(x) for x in Path(os.environ['FGBENCH_JSONL']).read_text().splitlines()]
         for i,x in enumerate(data):
             rows.append({'uuid':str(i),'stratum':x['type'].rsplit('_',1)[0],
@@ -104,6 +121,21 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'scienceqa':
+        found=re.findall(r'The answer is ([A-Z]).',answer)
+        letter=found[0] if len(found)==1 else 'FAILED'
+        valid=letter in 'ABCDE'[:len(meta['choices'])]
+        predicted='ABCDE'.index(letter) if valid else random.Random(task['uuid']).choice(range(len(meta['choices'])))
+        return {'reward':float(predicted==meta['answer']),'strict_score':float(valid and predicted==meta['answer']),'fallback_randomized':not valid,'metric':'creator_gpt_caption_accuracy_seeded_fallback'}
+    if kind == 'scibench':
+        post=module(repo/'eval/post_process.py'); parsed=post.parse_math_answer(answer)
+        if parsed is None:return {'reward':0.0,'parse_error':True}
+        target=meta['answer_number'];unit=post.remove_not(meta['unit']) or meta['unit']
+        if unit!=meta['unit']:
+            parsed=post.cal_not(post.parse_not(parsed));target=post.cal_not((target,meta['unit']))
+        fn=next(n for n in ast.parse((repo/'eval/eval_zero.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='equiv')
+        ns={'math':math};exec(compile(ast.Module(body=[fn],type_ignores=[]),'creator_equiv','exec'),ns)
+        return {'reward':float(ns['equiv'](str(parsed),target,unit)),'parsed':parsed,'metric':'creator_5percent_numeric'}
     if kind == 'fgbench':
         upstream = module(repo/'result_ananlysis/analysis.py')
         kind = upstream.task_name(meta)
