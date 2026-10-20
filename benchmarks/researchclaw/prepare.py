@@ -28,6 +28,9 @@ def prepare(source, output):
         (ws/'_meta.json').write_text(json.dumps({'run_id':f'calibration-{name}','task_id':name,'agent_name':MODEL}))
         (env/'Dockerfile').write_text('FROM researchclaw-tools:campaign\nCOPY workspace /workspace\nRUN chmod -R a-w /workspace/data /workspace/related_work\nWORKDIR /workspace\n')
         (task/'task.toml').write_text('version = "1.0"\n[agent]\ntimeout_sec = 7200\n[verifier]\ntimeout_sec = 600\n[environment]\ncpus = 2\nmemory_mb = 4096\nstorage_mb = 4096\nallow_internet = false\n')
+        tests=task/'tests'; tests.mkdir()
+        shutil.copy2(Path(__file__).with_name('capture.py'),tests/'capture.py')
+        (tests/'test.sh').write_text('#!/bin/bash\nset -eu\npython /tests/capture.py\n')
         # References remain outside solver build context. Native scoring is a host sidecar.
         ref=output/'judge-only'/name; ref.mkdir(parents=True)
         shutil.copytree(src/'target_study',ref/'target_study')

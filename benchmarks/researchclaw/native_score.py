@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Wrap creator score_workspace without replacing its metric or parser."""
-import importlib, json, os, sys, threading
+import importlib, json, os, sys, threading, math
 from pathlib import Path
 MODEL='nvidia/nvidia/nemotron-3.5-super-vl'
 def annotate(native, calls):
-    failures=[i for i,c in enumerate(calls) if not isinstance(c.get('parsed'),dict) or 'score' not in c['parsed'] or isinstance(c['parsed'].get('score'),bool) or not isinstance(c['parsed'].get('score'),(float,int))]
+    failures=[i for i,c in enumerate(calls) if not isinstance(c.get('parsed'),dict) or 'score' not in c['parsed'] or isinstance(c['parsed'].get('score'),bool) or not isinstance(c['parsed'].get('score'),(float,int)) or not math.isfinite(c['parsed']['score'])]
     error=native.get('error')
     return {'native':native,'judge_calls':calls,'mask_sample':bool(failures or error),'failure_kind':'judge_failed' if failures else ('missing_report_or_native_error' if error else None),'invalid_judge_call_indices':failures,'reward':None if failures or error else native['total_score']/100,'qualification':'Native checklist agreement, not independent scientific correctness; raw creator metric preserved.'}
 def score(source,workspace,output):

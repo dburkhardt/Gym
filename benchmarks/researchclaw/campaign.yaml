@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Set SCIENTIFIC_HARBOR_TASKS_DIR to the prepared ResearchClawBench tasks directory.
+# Other benchmarks are deliberately excluded until their judge/runtime gates pass.
+policy_model_name: nvidia/nvidia/nemotron-3.5-super-vl
+policy_base_url: ${oc.env:POLICY_BASE_URL}
+policy_api_key: ${oc.env:POLICY_API_KEY}
+policy_model:
+  responses_api_models:
+    openai_model:
+      entrypoint: app.py
+      openai_base_url: ${policy_base_url}
+      openai_api_key: ${policy_api_key}
+      openai_model: ${policy_model_name}
+      openai_default_headers:
+        X-Campaign-Benchmark: ResearchClawBench
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      entrypoint: app.py
+      domain: agent
+      description: Pinned scientific Harbor pilot with deterministic upstream scoring.
+      verified: false
+      concurrency: 1
+      harbor_datasets:
+        researchclaw:
+          local_dataset_path: ${oc.env:SCIENTIFIC_HARBOR_TASKS_DIR}
+      harbor_agent_name: null
+      harbor_agent_import_path: responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym
+      harbor_agent_kwargs:
+        max_turns: 40
+        interleaved_thinking: true
+        enable_summarize: false
+        collect_rollout_details: false
+        trajectory_config:
+          raw_content: true
+        model_info:
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+          input_cost_per_token: 0.0
+          output_cost_per_token: 0.0
+      harbor_environment_type: docker
+      harbor_environment_import_path: null
+      harbor_no_delete: false
+      harbor_jobs_dir: ${oc.env:SCIENTIFIC_HARBOR_JOBS_DIR}
+      model_server:
+        type: responses_api_models
+        name: policy_model
+harbor_agent_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: harbor_agent
