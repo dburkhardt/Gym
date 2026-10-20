@@ -575,6 +575,8 @@ class DatasetConfig(BaseModel):
 
 
 class BenchmarkDatasetConfig(BaseModel):
+    required_model_capabilities: List[str] = Field(default_factory=list)
+    required_harness_capabilities: List[str] = Field(default_factory=list)
     name: str
     type: Literal["benchmark"]
     jsonl_fpath: Path

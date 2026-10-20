@@ -54,6 +54,7 @@ from nemo_gym.config_types import (
     ServerInstanceConfig,
 )
 from nemo_gym.discovery import read_config_metadata
+from nemo_gym.eval_compatibility import validate_eval_compatibility
 from nemo_gym.eval_plan import (
     PlanBenchmark,
     PlanGym,
@@ -554,6 +555,8 @@ def e2e_rollout_collection():  # pragma: no cover
 
     global_config_dict = get_global_config_dict()
 
+    validate_eval_compatibility(global_config_dict)
+
     # Ensure we have the right config first thing
     e2e_rollout_collection_config = E2ERolloutCollectionConfig.model_validate(global_config_dict)
 
@@ -668,6 +671,7 @@ def collect_rollouts():  # pragma: no cover
     )
 
     global_config_dict = get_global_config_dict()
+    validate_eval_compatibility(global_config_dict)
     config = RolloutCollectionConfig.model_validate(global_config_dict)
     rch = RolloutCollectionHelper()
 
