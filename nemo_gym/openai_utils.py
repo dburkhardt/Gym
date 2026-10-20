@@ -187,6 +187,7 @@ from pydantic import (
 )
 from typing_extensions import TypedDict
 
+from nemo_gym.provider_dispatch import current_provider_dispatch
 from nemo_gym.server_utils import (
     MAX_NUM_TRIES,
     ClientResponse,
@@ -1698,7 +1699,23 @@ class NeMoGymAsyncOpenAI(BaseModel):  # pragma: no cover
             if self._permanent_trip is not None:
                 self._raise_permanent_error()
             tries += 1
+            dispatch = current_provider_dispatch.get() if not self.internal else None
+            if dispatch is not None:
+                dispatch.before_send()
+                # One physical send per evidence row. Transport ambiguity is not retry permission.
+                request_kwargs.update(
+                    _max_num_tries=1, _max_connection_retries=1, _resend_after_disconnect=False, allow_redirects=False
+                )
             response = await request(**request_kwargs)
+            if dispatch is not None:
+                dispatch.response_headers(response.status)
+                if 300 <= response.status < 400:
+                    raise RuntimeError("guarded provider dispatch refuses automatic HTTP redirects")
+                if response.status == 429:
+                    dispatch.attempts[-1]["outcome"] = "rejected"
+                    dispatch.persist(dispatch.evidence())
+                elif response.status in RETRY_ERROR_CODES:
+                    await raise_for_status(response, await response.content.read())
 
             if response.status in (401, 403):
                 content = await response.content.read()

@@ -27,7 +27,9 @@ routing.
 """
 
 import asyncio
+import base64
 import fcntl
+import hashlib
 import inspect
 import json
 import logging
@@ -76,6 +78,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
 )
+from nemo_gym.provider_dispatch import ProviderDispatch, configuration_digest, current_provider_dispatch
 from nemo_gym.responses_streaming import (
     NamespaceMap,
     restore_namespace_tool_calls,
@@ -360,6 +363,7 @@ class SimpleResponsesAPIModel(BaseResponsesAPIModel, SimpleServer):
             app,
             capture_config,
             model_server_name=self.config.name,
+            model_config_digest=configuration_digest(self.config.model_dump(mode="json")),
             assistant_message_header=self.server_client.assistant_message_header(self.config.name),
             global_config_dict=self.server_client.global_config_dict,
             num_workers=self.config.num_workers,
@@ -418,7 +422,10 @@ class SimpleResponsesAPIModel(BaseResponsesAPIModel, SimpleServer):
         num_workers = self.config.num_workers or 1
         if num_workers == 1:
             participant = PolicyModelParticipant(
-                capture_ledger, server_name=self.config.name, cut_requester=cut_requester
+                capture_ledger,
+                server_name=self.config.name,
+                cut_requester=cut_requester,
+                provider_store=getattr(app.state, "provider_dispatch_store", None),
             )
             install_participant(
                 app,
@@ -439,6 +446,7 @@ class SimpleResponsesAPIModel(BaseResponsesAPIModel, SimpleServer):
                 instance_name=self.config.name,
                 lease_grace_seconds=settings.lease_grace_seconds,
                 socket_path=socket_path,
+                provider_store=getattr(app.state, "provider_dispatch_store", None),
             )
             self._policy_coordinator.start_in_background()
             os.environ[COORDINATOR_SOCKET_ENV] = socket_path
@@ -754,9 +762,12 @@ class ModelCallCaptureConfig(BaseModel):
 
     observability_enabled: bool = False
     model_call_capture_dir: Optional[Path] = None
+    provider_dispatch_guard: bool = False
 
     @model_validator(mode="after")
     def validate_capture_dir(self) -> "ModelCallCaptureConfig":
+        if self.provider_dispatch_guard and not self.observability_enabled:
+            raise ValueError("provider_dispatch_guard requires observability_enabled and durable capture")
         if not self.observability_enabled:
             return self
         if self.model_call_capture_dir is None:
@@ -784,9 +795,86 @@ def _validate_rollout_id(rollout_id: str) -> str:
 class CaptureStore:
     """Append-only, rollout-keyed JSONL sink for model exchanges."""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, provider_dispatch_guard: bool = False) -> None:
+        self.provider_dispatch_guard = provider_dispatch_guard
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
+
+    def identity(self) -> str:
+        """Return the durable capture-directory identity shared by every worker."""
+        path = self._root / ".capture-store-identity"
+        with path.open("a+b") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                handle.seek(0)
+                value = handle.read().decode("ascii")
+                if not value:
+                    value = uuid4().hex
+                    handle.write(value.encode("ascii"))
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                if not re.fullmatch(r"[0-9a-f]{32}", value):
+                    raise ValueError("invalid capture store identity")
+                self._sync_directory()
+                return value
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    @asynccontextmanager
+    async def bind_logical_call(self, binding: dict) -> AsyncIterator[dict | None]:
+        """Serialize one explicitly persisted call lineage across model workers."""
+        from nemo_gym._checkpoint.control import ControlError
+        from nemo_gym.episode_types import EpisodeId
+
+        lock_id = hashlib.sha256(f"{binding['logical_rollout']}:{binding['logical_call']}".encode()).hexdigest()
+        with (self._root / f".{lock_id}.capture.lock").open("ab") as lock:
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    await asyncio.sleep(0.02)
+            try:
+                for path in self._root.glob(f"{binding['logical_rollout']}*.capture.jsonl"):
+                    key = path.name.removesuffix(".capture.jsonl")
+                    if EpisodeId.from_capture_key(key).rollout_id != binding["logical_rollout"]:
+                        continue
+                    if self.is_incomplete(key):
+                        raise ControlError(f"provider capture is incomplete for {key}; reconcile before replay")
+                    for row in self.read(key):
+                        previous = row.get("provider_binding") or {}
+                        if previous.get("logical_call") != binding["logical_call"]:
+                            continue
+                        if previous != binding:
+                            raise ControlError("logical provider call was reused with changed request/configuration")
+                        if (
+                            row.get("replay_response") is not None
+                            and row.get("error_category") is None
+                            and all(
+                                attempt.get("outcome") in {"captured", "rejected"}
+                                for attempt in row.get("provider_attempts", [])
+                            )
+                        ):
+                            yield row
+                            return
+                        if any(
+                            attempt.get("outcome") not in {"rejected"} for attempt in row.get("provider_attempts", [])
+                        ):
+                            raise ControlError(
+                                "logical provider call has an unresolved response; reconcile before replay"
+                            )
+                for marker in self._root.glob(f"{binding['logical_rollout']}*.capture.pending"):
+                    row = orjson.loads(marker.read_bytes())
+                    previous = row.get("provider_binding") or {}
+                    if (
+                        previous.get("logical_rollout") == binding["logical_rollout"]
+                        and previous.get("logical_call") == binding["logical_call"]
+                    ):
+                        if any(attempt.get("outcome") != "rejected" for attempt in row.get("provider_attempts", [])):
+                            raise ControlError("logical provider call has unresolved dispatch intent")
+                yield None
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     @property
     def root(self) -> Path:
@@ -807,16 +895,111 @@ class CaptureStore:
     def pending_path_for(self, rollout_id: str, model_call_id: str) -> Path:
         return self._root / f"{_validate_rollout_id(rollout_id)}.{_pending_token(model_call_id)}{_PENDING_SUFFIX}"
 
+    def write_dispatch(self, rollout_id: str, model_call_id: str, evidence: dict) -> None:
+        """Atomically replace the existing pending marker before external dispatch."""
+        path = self.pending_path_for(rollout_id, model_call_id)
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+        try:
+            with temporary.open("xb") as handle:
+                handle.write(orjson.dumps({"model_call_id": model_call_id, **evidence}))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            self._sync_directory()
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _sync_directory(self) -> None:
+        descriptor = os.open(self._root, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def dispatch_records(self, rollout_id: str) -> list[dict]:
+        """Return durable physical-call evidence, refusing corrupt or legacy markers."""
+        from nemo_gym._checkpoint.control import ControlError
+
+        if self.is_incomplete(rollout_id):
+            raise ControlError(f"provider capture is incomplete for {rollout_id}; reconcile before recovery")
+        records = [
+            {
+                "model_call_id": row["model_call_id"],
+                "provider_attempts": row["provider_attempts"],
+                "replayable": row.get("provider_binding") is not None and row.get("replay_response") is not None,
+            }
+            for row in self.read(rollout_id)
+            if "provider_attempts" in row
+        ]
+        completed = {record["model_call_id"] for record in records}
+        for marker in self._root.glob(f"{_validate_rollout_id(rollout_id)}.*{_PENDING_SUFFIX}"):
+            try:
+                row = orjson.loads(marker.read_bytes())
+                if not isinstance(row, dict) or not isinstance(row.get("provider_attempts"), list):
+                    raise ValueError("missing dispatch evidence")
+            except (OSError, ValueError) as error:
+                raise ControlError(f"unreadable provider pending marker {marker.name}") from error
+            if row.get("model_call_id") not in completed:
+                records.append(row)
+        return records
+
+    def assert_restore_safe(self, rollout_ids: list[str]) -> None:
+        """Reject replay of durable responses until response reuse is installed."""
+        from nemo_gym._checkpoint.control import ControlError
+        from nemo_gym.episode_types import EpisodeId
+
+        self.assert_dispatch_reconciled(rollout_ids)
+        logical = {EpisodeId.from_capture_key(key).rollout_id for key in rollout_ids}
+        for path in self._root.glob("*.capture.jsonl"):
+            key = path.name.removesuffix(".capture.jsonl")
+            if EpisodeId.from_capture_key(key).rollout_id not in logical:
+                continue
+            for row in self.dispatch_records(key):
+                if not row.get("replayable") and any(
+                    attempt.get("outcome") == "captured" for attempt in row["provider_attempts"]
+                ):
+                    raise ControlError(f"saved-response replay required for {key}; refusing duplicate inference")
+
+    def assert_dispatch_reconciled(self, rollout_ids: list[str]) -> None:
+        """Hold unknown sends, including later attempts absent from an older checkpoint."""
+        from nemo_gym._checkpoint.control import ControlError
+        from nemo_gym.episode_types import EpisodeId
+
+        logical = {EpisodeId.from_capture_key(key).rollout_id for key in rollout_ids}
+        keys = set(rollout_ids)
+        for path in self._root.glob("*.capture.pending"):
+            # The marker body holds the call ID; the filename's final dot separates its token.
+            key = path.name.removesuffix(".capture.pending").rsplit(".", 1)[0]
+            if EpisodeId.from_capture_key(key).rollout_id in logical:
+                keys.add(key)
+        for key in keys:
+            for row in self.dispatch_records(key):
+                if any(attempt.get("outcome") not in {"captured", "rejected"} for attempt in row["provider_attempts"]):
+                    raise ControlError(
+                        f"unresolved provider dispatch {key}/{row.get('model_call_id')}; "
+                        "reconcile the captured request before replay"
+                    )
+
     def mark_pending(self, rollout_id: str, model_call_id: str) -> None:
         """Claim a write before it is queued, so a reader can tell 'not yet' from 'never'."""
+        if self.provider_dispatch_guard:
+            self.write_dispatch(rollout_id, model_call_id, {"provider_attempts": []})
+            return
         try:
             self.pending_path_for(rollout_id, model_call_id).touch(exist_ok=True)
         except OSError:
             logger.warning("Could not mark model-call capture pending for rollout %s.", rollout_id, exc_info=True)
 
     def clear_pending(self, rollout_id: str, model_call_id: str) -> None:
+        if self.provider_dispatch_guard:
+            try:
+                self.assert_dispatch_reconciled([rollout_id])
+            except Exception:
+                return
         try:
             self.pending_path_for(rollout_id, model_call_id).unlink(missing_ok=True)
+            if self.provider_dispatch_guard:
+                self._sync_directory()
         except OSError:
             logger.warning("Could not clear model-call capture pending for rollout %s.", rollout_id, exc_info=True)
 
@@ -829,6 +1012,8 @@ class CaptureStore:
         return any(self._root.glob(pattern))
 
     def clear_all_pending(self, rollout_id: str) -> None:
+        if self.provider_dispatch_guard:
+            self.assert_dispatch_reconciled([rollout_id])
         pattern = f"{_validate_rollout_id(rollout_id)}.*{_PENDING_SUFFIX}"
         for marker in self._root.glob(pattern):
             marker.unlink(missing_ok=True)
@@ -840,6 +1025,15 @@ class CaptureStore:
         allowing independent rollouts to write concurrently. This does blocking file IO + fsync,
         so callers run it off the event loop (the capture middleware uses ``asyncio.to_thread``).
         """
+        if self.provider_dispatch_guard:
+            pending = self.pending_path_for(rollout_id, exchange["model_call_id"])
+            evidence = orjson.loads(pending.read_bytes())
+            attempts = evidence["provider_attempts"]
+            if attempts and exchange.get("error_category") is None and exchange.get("response") is not None:
+                attempts[-1]["outcome"] = "captured"
+            exchange = {**exchange, "provider_attempts": attempts}
+            if "provider_binding" in evidence:
+                exchange["provider_binding"] = evidence["provider_binding"]
         line = orjson.dumps(exchange, default=str, option=orjson.OPT_APPEND_NEWLINE)
         path = self.path_for(rollout_id)
         with path.open("ab") as handle:
@@ -850,6 +1044,8 @@ class CaptureStore:
                 os.fsync(handle.fileno())
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        if self.provider_dispatch_guard:
+            self._sync_directory()
 
     def read(self, rollout_id: str) -> list[dict[str, Any]]:
         path = self.path_for(rollout_id)
@@ -1089,6 +1285,8 @@ class ModelCallRecord(BaseModel):
     response_status: Optional[str] = None
     finish_reason: Optional[str] = None
     upstream_attempted: Optional[bool] = None
+    provider_attempts: list[dict[str, Any]] | None = None
+    replayed_from_model_call_id: str | None = None
     response_source: Optional[Literal["upstream", "local"]] = None
     upstream_status_code: Optional[int] = None
     local_response_reason: Optional[str] = None
@@ -1178,6 +1376,8 @@ def build_model_call_record(exchange: dict[str, Any], *, call_index: int) -> Mod
         upstream_attempted=exchange.get("upstream_attempted"),
         response_source=exchange.get("response_source"),
         upstream_status_code=exchange.get("upstream_status_code"),
+        provider_attempts=exchange.get("provider_attempts"),
+        replayed_from_model_call_id=exchange.get("replayed_from_model_call_id"),
         local_response_reason=exchange.get("local_response_reason"),
         started_at=exchange.get("started_at"),
         completed_at=exchange.get("completed_at"),
@@ -1352,8 +1552,10 @@ def make_capture_store(config: ModelCallCaptureConfig) -> Optional[CaptureStore]
     root = config.model_call_capture_dir
     assert root is not None  # enforced by ModelCallCaptureConfig
     try:
-        return CaptureStore(root)
+        return CaptureStore(root, provider_dispatch_guard=config.provider_dispatch_guard)
     except Exception:
+        if config.provider_dispatch_guard:
+            raise
         logger.warning("Could not initialize model-call capture at %s; disabling it.", root, exc_info=True)
         return None
 
@@ -1591,6 +1793,7 @@ def _record(
     ttft_ms: Optional[float] = None,
     response_raw: Optional[str] = None,
     execution: Optional[ModelExecutionOutcome] = None,
+    replay_response: Optional[dict] = None,
 ) -> None:
     """Append one exchange (success or failure). Best-effort: never raises."""
     request_body = None
@@ -1619,6 +1822,8 @@ def _record(
             "request": request_body,
             "response": response_body,
         }
+        if replay_response is not None:
+            exchange["replay_response"] = replay_response
         if client_session_id is not None:
             exchange["client_session_id"] = client_session_id
         if execution is not None:
@@ -1638,6 +1843,8 @@ def _record(
             store.mark_incomplete(rollout_id)
         except Exception:
             logger.warning("Could not mark rollout %s capture as incomplete.", rollout_id, exc_info=True)
+        if store.provider_dispatch_guard:
+            raise
 
 
 async def _fail_uncommitted_external_call(context: CaptureContext | None) -> None:
@@ -1694,6 +1901,7 @@ class _CaptureMiddleware:
         *,
         store: CaptureStore | None,
         model_server_name: str | None,
+        model_config_digest: str | None = None,
         token_store: Any = None,
         configured_sink: Any = None,
         lineage_store: LineageResolver | None = None,
@@ -1706,6 +1914,7 @@ class _CaptureMiddleware:
         self._app = app
         self._store = store
         self._model_server_name = model_server_name
+        self._model_config_digest = model_config_digest
         self._assistant_message_header: bytes | None = (
             assistant_message_header.lower() if assistant_message_header else None
         )
@@ -1728,6 +1937,85 @@ class _CaptureMiddleware:
         self._non_generating_requests = non_generating_requests
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        match = _ROLLOUT_PATH_RE.match(scope.get("path", ""))
+        if (
+            self._store
+            and self._store.provider_dispatch_guard
+            and match is None
+            and scope.get("path") in _OBSERVED_PATHS
+        ):
+            raise ValueError("provider_dispatch_guard requires a rollout-qualified model URL")
+        if not (
+            self._store and self._store.provider_dispatch_guard and match and match.group("rest") in _OBSERVED_PATHS
+        ):
+            await self._capture_call(scope, receive, send)
+            return
+        logical_call = _unique_request_header(scope.get("headers") or [], b"x-nemo-gym-logical-call-id")
+        agent_config = _unique_request_header(scope.get("headers") or [], b"x-nemo-gym-call-config-sha256")
+        if logical_call is None:
+            raise ValueError("provider_dispatch_guard requires a persisted logical-call ID from the harness")
+        if not agent_config or not re.fullmatch(r"[0-9a-f]{64}", agent_config) or not self._model_config_digest:
+            raise ValueError("stable provider replay requires agent and model configuration digests")
+        from nemo_gym.episode_types import EpisodeId
+
+        messages = []
+        body = bytearray()
+        while True:
+            message = await receive()
+            messages.append(message)
+            body.extend(message.get("body", b""))
+            if message.get("type") != "http.request" or not message.get("more_body", False):
+                break
+        binding = {
+            "logical_rollout": EpisodeId.from_capture_key(match.group("rollout_id")).rollout_id,
+            "logical_call": logical_call,
+            "agent_config": agent_config,
+            "model_config": self._model_config_digest,
+            "model_server": self._model_server_name,
+            "dialect": _OBSERVED_PATHS[match.group("rest")],
+            "request_sha256": hashlib.sha256(body).hexdigest(),
+        }
+        scope.setdefault("state", {})["provider_binding"] = binding
+
+        async def buffered_receive() -> dict:
+            return messages.pop(0) if messages else await receive()
+
+        async with self._store.bind_logical_call(binding) as saved:
+            if saved is not None:
+                source = saved
+                replay_id = uuid4().hex
+                target = match.group("rollout_id")
+                self._store.write_dispatch(target, replay_id, {"provider_attempts": [], "provider_binding": binding})
+                self._store.record(
+                    target,
+                    {
+                        **source,
+                        "model_call_id": replay_id,
+                        "provider_attempts": [],
+                        "replayed_from_model_call_id": source["model_call_id"],
+                        "upstream_attempted": False,
+                        "response_source": "local",
+                        "local_response_reason": "saved_response_replay",
+                        "started_at": time.time(),
+                        "completed_at": time.time(),
+                    },
+                )
+                self._store.clear_pending(target, replay_id)
+                saved = source["replay_response"]
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": saved["status"],
+                        "headers": [(key.encode("latin1"), value.encode("latin1")) for key, value in saved["headers"]],
+                    }
+                )
+                await send(
+                    {"type": "http.response.body", "body": base64.b64decode(saved["body_b64"]), "more_body": False}
+                )
+                return
+            await self._capture_call(scope, buffered_receive, send)
+
+    async def _capture_call(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -1903,6 +2191,7 @@ class _CaptureMiddleware:
             message_type = message.get("type")
             if message_type == "http.response.start":
                 state["status"] = message.get("status")
+                state["headers"] = message.get("headers") or []
                 content_type = _headers_content_type(message.get("headers") or [])
                 state["streaming"] = content_type.startswith(b"text/event-stream")
             elif message_type == "http.response.body":
@@ -1929,6 +2218,24 @@ class _CaptureMiddleware:
         # write time does not exist while the call is in flight, so a reader can look, see nothing
         # outstanding, and snapshot the rollout before the row lands.
         self._store.mark_pending(rollout_id, model_call_id)
+        dispatch_token = None
+        if self._store.provider_dispatch_guard:
+            dispatch_token = current_provider_dispatch.set(
+                ProviderDispatch(
+                    persist=lambda evidence: self._store.write_dispatch(
+                        rollout_id,
+                        model_call_id,
+                        {
+                            **evidence,
+                            **(
+                                {"provider_binding": request_state["provider_binding"]}
+                                if "provider_binding" in request_state
+                                else {}
+                            ),
+                        },
+                    )
+                )
+            )
         try:
             with rollout_context(rollout_id):
                 await self._app(scope, _receive, _send)
@@ -1966,9 +2273,12 @@ class _CaptureMiddleware:
             finally:
                 self._store.clear_pending(rollout_id, model_call_id)
                 await _fail_uncommitted_external_call(capture_context)
-                await _flush_deferred_response()
+                if not self._store.provider_dispatch_guard:
+                    await _flush_deferred_response()
             raise
         finally:
+            if dispatch_token is not None:
+                current_provider_dispatch.reset(dispatch_token)
             # The sink is only needed while the model server produces the response.
             await _fail_uncommitted_external_call(capture_context)
             if sink_token is not None:
@@ -2007,7 +2317,7 @@ class _CaptureMiddleware:
                 error_category = "stream_truncated"
             # A 2xx whose body we couldn't parse/reassemble isn't a clean success -- flag it so it
             # doesn't silently count as a success with null tokens in reliability/cost sums.
-            if error_category is None and body_bytes and response_body is None:
+            if error_category is None and (body_bytes or store.provider_dispatch_guard) and response_body is None:
                 error_category = "capture_parse_error"
             response_raw = (
                 body_bytes.decode("utf-8", errors="replace")
@@ -2033,22 +2343,36 @@ class _CaptureMiddleware:
                     ttft_ms=ttft_ms,
                     response_raw=response_raw,
                     execution=request_state.get("nemo_gym_model_execution"),
+                    replay_response={
+                        "status": status,
+                        "headers": [
+                            (key.decode("latin1"), value.decode("latin1")) for key, value in state.get("headers", [])
+                        ],
+                        "body_b64": base64.b64encode(body_bytes).decode("ascii"),
+                    }
+                    if error_category is None and "provider_binding" in request_state
+                    else None,
                 )
             finally:
                 store.clear_pending(rollout_id, model_call_id)
 
+        capture_succeeded = False
         try:
             # Shielded: cancellation here strands the queued write and the row is
             # lost silently -- no log line, no incomplete marker. The error path
             # above already treats CancelledError as recoverable; match it.
             await asyncio.shield(asyncio.to_thread(_parse_and_record))
+            capture_succeeded = True
         except asyncio.CancelledError:
             logger.warning("Model-call capture finalization was cancelled; the write continues detached.")
             raise
         except Exception:
             logger.warning("Model-call capture finalization failed.", exc_info=True)
+            if store.provider_dispatch_guard:
+                raise
         finally:
-            await _flush_deferred_response()
+            if not store.provider_dispatch_guard or capture_succeeded:
+                await _flush_deferred_response()
 
 
 def install_model_call_capture(
@@ -2056,6 +2380,7 @@ def install_model_call_capture(
     config: ModelCallCaptureConfig,
     *,
     model_server_name: str | None = None,
+    model_config_digest: str | None = None,
     assistant_message_header: bytes | None = None,
     global_config_dict: Any = None,
     num_workers: int | None = None,
@@ -2091,6 +2416,10 @@ def install_model_call_capture(
                 "over the same backend used by the token sink"
             )
     external_staging = capture_settings is not None and capture_settings.token_id_capture.external_staging
+    if config.provider_dispatch_guard and capture_settings is not None and capture_settings.enabled:
+        raise ValueError(
+            "provider_dispatch_guard is for evaluation capture, not training-token staging or generation cuts"
+        )
     if external_staging:
         if lineage_store is None:
             raise ValueError(
@@ -2139,9 +2468,12 @@ def install_model_call_capture(
                 await _close_capture_endpoints()
 
         app.router.lifespan_context = _capture_lifespan
+    store = make_capture_store(config)
+    app.state.provider_dispatch_store = store if config.provider_dispatch_guard else None
     app.add_middleware(
         _CaptureMiddleware,
-        store=make_capture_store(config),
+        store=store,
+        model_config_digest=model_config_digest,
         assistant_message_header=assistant_message_header,
         model_server_name=model_server_name,
         token_store=token_store,

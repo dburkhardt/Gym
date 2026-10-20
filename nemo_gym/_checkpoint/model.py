@@ -117,6 +117,50 @@ class ModelRecord(CheckpointRecord):
 
     rows: JsonPayload
     generation_cuts: list[GenerationCutRecord] = []
+    provider_calls: list[dict] = []
+    provider_store_identity: str | None = None
+
+
+class ProviderDispatchStore(Protocol):
+    """Process-shared evaluation evidence, separate from the training-token ledger."""
+
+    def identity(self) -> str: ...
+
+    def dispatch_records(self, rollout_id: str) -> list[dict]: ...
+
+    def assert_dispatch_reconciled(self, rollout_ids: list[str]) -> None: ...
+
+    def assert_restore_safe(self, rollout_ids: list[str]) -> None: ...
+
+
+def guard_provider_restore(
+    store: Optional[ProviderDispatchStore], records: list[CheckpointRecord], scope: list[EpisodeId]
+) -> None:
+    """Check live evidence as well as the snapshot; an old snapshot cannot erase a later send."""
+    if any(getattr(record, "provider_store_identity", None) for record in records) and store is None:
+        raise ControlError("provider checkpoint requires its durable capture store")
+    if store is not None:
+        store.assert_restore_safe([episode.capture_key for episode in scope])
+    if store is not None:
+        identified = {record.episode_id for record in records if record.provider_store_identity is not None}
+        if any(episode not in identified for episode in scope):
+            raise ControlError(
+                "checkpoint predates guarded provider capture identity; explicit reconciliation required"
+            )
+    for record in records:
+        if record.provider_store_identity is not None and (
+            store is None or record.provider_store_identity != store.identity()
+        ):
+            raise ControlError("checkpoint capture-store identity does not match durable recovery store")
+        for call in getattr(record, "provider_calls", []):
+            if any(attempt.get("outcome") not in {"captured", "rejected"} for attempt in call["provider_attempts"]):
+                raise ControlError("checkpoint contains unresolved provider dispatch; reconcile before restore")
+            # A saved model response is not automatically delivered by token-ledger restore.
+            # Refuse instead of repeating it until response replay is explicitly wired.
+            if not call.get("replayable") and any(
+                attempt.get("outcome") == "captured" for attempt in call["provider_attempts"]
+            ):
+                raise ControlError("checkpoint contains completed provider calls; saved-response replay is required")
 
 
 @runtime_checkable
@@ -601,10 +645,11 @@ def merge_reports(reports: Iterable[GateReport]) -> PrepareReport:
 
 
 def export_model_records(
-    ledger: CheckpointableLedger,
+    ledger: Optional[CheckpointableLedger],
     episode_ids: Optional[list[EpisodeId]],
     snapshots: Iterable[GateSnapshot],
     restored_cuts: Mapping[str, GenerationCutRecord],
+    provider_store: Optional[ProviderDispatchStore] = None,
 ) -> list[ModelRecord]:
     """The rows and cuts of each continued episode, leaving out every undelivered call of every process.
 
@@ -613,6 +658,8 @@ def export_model_records(
     """
     if episode_ids is None:
         raise ControlError("model commit needs the episode_ids the controller continues from this checkpoint")
+    if provider_store is not None:
+        provider_store.assert_dispatch_reconciled([episode.capture_key for episode in episode_ids])
     snapshots = list(snapshots)
     undelivered = {call_id for snapshot in snapshots for call_id in snapshot.undelivered}
     # One cut per episode: when a client retried a call the server was still running,
@@ -626,14 +673,25 @@ def export_model_records(
     records = []
     for episode_id in episode_ids:
         key = episode_id.capture_key
-        rows = [row for row in ledger.export_rows(key) if row.get("model_call_id") not in undelivered]
+        rows = (
+            [row for row in ledger.export_rows(key) if row.get("model_call_id") not in undelivered] if ledger else []
+        )
+        provider_calls = provider_store.dispatch_records(key) if provider_store else []
         cuts = list(cuts_by_key.get(key, []))
         # A restored cut that no re-issued call has consumed yet is still this episode's prefix,
         # unless a newer call of the episode was cut since.
         if key in restored_cuts and not cuts:
             cuts.append(restored_cuts[key])
-        if rows or cuts:
-            records.append(ModelRecord(episode_id=episode_id, rows=rows, generation_cuts=cuts))
+        if rows or cuts or provider_calls or provider_store is not None:
+            records.append(
+                ModelRecord(
+                    episode_id=episode_id,
+                    rows=rows,
+                    generation_cuts=cuts,
+                    provider_calls=provider_calls,
+                    provider_store_identity=provider_store.identity() if provider_store else None,
+                )
+            )
     return records
 
 
@@ -710,7 +768,7 @@ def import_model_records(
     Each staged row keeps the capture key it was staged under,
     so a receipt of the next attempt verifies those calls against their own staged data.
     """
-    if records and ledger is None:
+    if any(record.rows for record in records) and ledger is None:
         raise ControlError("checkpoint holds capture-ledger rows but this model server has no capture ledger")
     targets = [
         (record, next_attempt(record.episode_id).capture_key, _with_capture_key(record.rows, record.episode_id))
@@ -725,7 +783,8 @@ def import_model_records(
             import_many({target: rows for _, target, rows in targets})
         else:
             for _, target, rows in targets:
-                ledger.import_rows(target, rows)
+                if ledger is not None:
+                    ledger.import_rows(target, rows)
     except ValueError as error:
         raise ControlError(f"capture ledger refused the restore: {error}") from error
     return {target: record.generation_cuts[0] for record, target, _ in targets if record.generation_cuts}
@@ -757,8 +816,10 @@ class PolicyModelParticipant(CheckpointParticipant):
         *,
         server_name: str = "policy",
         cut_requester: Optional[CutRequester] = None,
+        provider_store: Optional[ProviderDispatchStore] = None,
     ) -> None:
         super().__init__()
+        self.provider_store = provider_store
         self.ledger = ledger
         self._local_cuts = LocalRestoredCuts()
         self.gate = PolicyGate(
@@ -809,16 +870,20 @@ class PolicyModelParticipant(CheckpointParticipant):
         self._restored_cuts.pop(key, None)
 
     def export_records(self, episode_ids: Optional[list[EpisodeId]]) -> list[CheckpointRecord]:
-        if self.ledger is None:
+        if self.ledger is None and self.provider_store is None:
             return []
-        return export_model_records(self.ledger, episode_ids, [self.gate.snapshot()], self._restored_cuts)
+        return export_model_records(
+            self.ledger, episode_ids, [self.gate.snapshot()], self._restored_cuts, self.provider_store
+        )
 
     async def export(self, episode_ids: Optional[list[EpisodeId]]) -> list[CheckpointRecord]:
-        if self.ledger is None:
+        if self.ledger is None and self.provider_store is None:
             return []
         # Snapshot on the event loop, then read every episode's ledger off it.
         snapshots, restored = [self.gate.snapshot()], dict(self._restored_cuts)
-        return await asyncio.to_thread(export_model_records, self.ledger, episode_ids, snapshots, restored)
+        return await asyncio.to_thread(
+            export_model_records, self.ledger, episode_ids, snapshots, restored, self.provider_store
+        )
 
     def restore_records(self, records: list[CheckpointRecord]) -> None:
         raise NotImplementedError("the policy participant restores through install(), which needs the restore scope")
@@ -826,6 +891,7 @@ class PolicyModelParticipant(CheckpointParticipant):
     async def install(self, records: list[CheckpointRecord], scope: list[EpisodeId]) -> None:
         if self.gate.served:
             raise ControlError("model restore requires a freshly started model server; this one has served calls")
+        await asyncio.to_thread(guard_provider_restore, self.provider_store, records, scope)
         self._restored_cuts.update(
             await asyncio.to_thread(import_model_records, self.ledger, with_scope(records, scope, self.ledger))
         )

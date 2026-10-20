@@ -20,6 +20,7 @@ from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass
 from time import perf_counter, time
 from typing import Any
+from uuid import uuid4
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -64,6 +65,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponseUsage,
     accumulate_response_usage,
 )
+from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.rollout_observability import (
     AgentInvocation,
     AgentObservationBundle,
@@ -101,6 +103,7 @@ class SimpleAgentLoopState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     step: int
+    generation_session_id: str | None = None
     pending_tools: bool
     new_outputs: list[dict[str, Any]]
     usage: dict[str, Any] | None
@@ -320,6 +323,10 @@ class SimpleAgent(SimpleResponsesAPIAgent):
         new_outputs = []
         usage = None
         step = 0
+        call_config_digest = configuration_digest(self.config.model_dump(mode="json"))
+        global_config = getattr(self.server_client, "global_config_dict", None)
+        guard_enabled = isinstance(global_config, Mapping) and bool(global_config.get("provider_dispatch_guard"))
+        generation_session_id = uuid4().hex if guard_enabled else None
         invocation_status = "completed"
         model_server_cookies = None
         # A restored boundary after a model response resumes with that response's tool calls.
@@ -344,6 +351,7 @@ class SimpleAgent(SimpleResponsesAPIAgent):
                 # The fields of SimpleAgentLoopState, built as JSON directly: a restore validates them.
                 return {
                     "step": at_step,
+                    "generation_session_id": generation_session_id,
                     "pending_tools": tools_pending,
                     "new_outputs": [_to_json(item) for item in outputs],
                     "usage": _to_json(at_usage) if at_usage is not None else None,
@@ -362,6 +370,7 @@ class SimpleAgent(SimpleResponsesAPIAgent):
         if activation is not None and activation.continuation is not None:
             restored = SimpleAgentLoopState.model_validate(activation.continuation)
             step = restored.step
+            generation_session_id = restored.generation_session_id
             pending_tools = restored.pending_tools
             new_outputs = _INPUT_ITEMS_ADAPTER.validate_python(restored.new_outputs)
             usage = NeMoGymResponseUsage.model_validate(restored.usage) if restored.usage is not None else None
@@ -396,6 +405,16 @@ class SimpleAgent(SimpleResponsesAPIAgent):
                         url_path=model_url_path,
                         json=new_body,
                         cookies=model_server_cookies,
+                        **(
+                            {
+                                "headers": {
+                                    "x-nemo-gym-logical-call-id": f"{generation_session_id}:{step}",
+                                    "x-nemo-gym-call-config-sha256": call_config_digest,
+                                }
+                            }
+                            if guard_enabled and generation_session_id is not None
+                            else {}
+                        ),
                     ),
                 )
                 # We raise for status here since we expect model calls to always work.

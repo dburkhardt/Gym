@@ -3062,3 +3062,27 @@ async def test_a_skip_verification_run_parks_at_its_return_boundary_until_resume
     # Restored at its return step: no seed, model call, tool call, or verification runs again.
     assert calls == []
     assert result.reward == 0.25 and result.response.output == first.response.output
+
+
+async def test_provider_call_identity_survives_explicit_continuation_but_not_fresh_episode():
+    server, client = _make_agent(False)
+    client.global_config_dict = {"provider_dispatch_guard": True}
+    headers = []
+
+    async def post(*, server_name, url_path, **kwargs):
+        headers.append(kwargs["headers"])
+        return _mock_response(_FINAL_RESPONSE)
+
+    client.post = AsyncMock(side_effect=post)
+    body = NeMoGymResponseCreateParamsNonStreaming(input="same task")
+    original = _RecordingActivation()
+    await server._create_episode(body, model_url_path="/v1/responses", activation=original)
+    boundary = original.boundaries[0]
+    assert headers[0]["x-nemo-gym-logical-call-id"] == f"{boundary['generation_session_id']}:1"
+    await server._create_episode(
+        body, model_url_path="/v1/responses", activation=_RecordingActivation(continuation=boundary)
+    )
+    await server._create_episode(body, model_url_path="/v1/responses", activation=_RecordingActivation())
+    assert headers[0] == headers[1]
+    assert headers[2]["x-nemo-gym-logical-call-id"] != headers[0]["x-nemo-gym-logical-call-id"]
+    assert headers[2]["x-nemo-gym-call-config-sha256"] == headers[0]["x-nemo-gym-call-config-sha256"]

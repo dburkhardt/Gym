@@ -53,9 +53,11 @@ from nemo_gym._checkpoint.model import (
     GenerationCutRecord,
     ModelRecord,
     PolicyGate,
+    ProviderDispatchStore,
     _Ticket,
     covers,
     export_model_records,
+    guard_provider_restore,
     import_model_records,
     merge_reports,
     retained_staging_keys,
@@ -245,9 +247,16 @@ class CoordinatedPolicyParticipant(CheckpointParticipant):
     kind = "model"
     record_model = ModelRecord
 
-    def __init__(self, ledger: Optional[CheckpointableLedger], *, expected_workers: int) -> None:
+    def __init__(
+        self,
+        ledger: Optional[CheckpointableLedger],
+        *,
+        expected_workers: int,
+        provider_store: Optional[ProviderDispatchStore] = None,
+    ) -> None:
         super().__init__()
         self.ledger = ledger
+        self.provider_store = provider_store
         self.expected_workers = expected_workers
         self.workers: dict[int, _Worker] = {}
         self.accepting = True
@@ -417,7 +426,7 @@ class CoordinatedPolicyParticipant(CheckpointParticipant):
         raise NotImplementedError("the coordinated policy participant exports asynchronously; use export()")
 
     async def export(self, episode_ids: Optional[list[EpisodeId]]) -> list[CheckpointRecord]:
-        if self.ledger is None:
+        if self.ledger is None and self.provider_store is None:
             return []
         # Workers are closed, so what they hold is stable: fetch it once, then read the ledgers off the loop.
         replies = await self._broadcast("snapshot", {}, timeout=_MESSAGE_TIMEOUT_SECONDS)
@@ -430,7 +439,7 @@ class CoordinatedPolicyParticipant(CheckpointParticipant):
             )
         snapshots = [GateSnapshot.model_validate(reply) for reply in replies.values()]
         return await asyncio.to_thread(
-            export_model_records, self.ledger, episode_ids, snapshots, dict(self.restored_cuts)
+            export_model_records, self.ledger, episode_ids, snapshots, dict(self.restored_cuts), self.provider_store
         )
 
     def restore_records(self, records: list[CheckpointRecord]) -> None:
@@ -438,6 +447,7 @@ class CoordinatedPolicyParticipant(CheckpointParticipant):
 
     async def install(self, records: list[CheckpointRecord], scope: list[EpisodeId]) -> None:
         self._check_restorable()
+        await asyncio.to_thread(guard_provider_restore, self.provider_store, records, scope)
         imported = await asyncio.to_thread(import_model_records, self.ledger, with_scope(records, scope, self.ledger))
         self.restored_cuts.update(imported)
         self.restored_targets = {next_attempt(episode_id).capture_key for episode_id in scope}
@@ -497,8 +507,11 @@ class PolicyCoordinator:
         instance_name: str,
         lease_grace_seconds: float,
         socket_path: str,
+        provider_store: Optional[ProviderDispatchStore] = None,
     ) -> None:
-        self.participant = CoordinatedPolicyParticipant(ledger, expected_workers=expected_workers)
+        self.participant = CoordinatedPolicyParticipant(
+            ledger, expected_workers=expected_workers, provider_store=provider_store
+        )
         self.controller = ParticipantControlPlane(
             self.participant, instance_name=instance_name, lease_grace_seconds=lease_grace_seconds
         )
