@@ -993,7 +993,17 @@ class CaptureStore:
     def clear_pending(self, rollout_id: str, model_call_id: str) -> None:
         if self.provider_dispatch_guard:
             try:
-                self.assert_dispatch_reconciled([rollout_id])
+                # A completed call can settle while sibling calls are still in flight.
+                # Keep rollout-wide reconciliation for restore, not per-call cleanup.
+                records = [
+                    row for row in self.dispatch_records(rollout_id) if row.get("model_call_id") == model_call_id
+                ]
+                if not records or any(
+                    attempt.get("outcome") not in {"captured", "rejected"}
+                    for row in records
+                    for attempt in row["provider_attempts"]
+                ):
+                    return
             except Exception:
                 return
         try:

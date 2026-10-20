@@ -640,3 +640,26 @@ async def test_judge_http_process_restart_replays_saved_response(tmp_path, monke
             process.stderr.close()
     assert paths[0] == paths[1]
     assert (tmp_path / "upstream-count").read_text().splitlines() == ["sent"]
+
+
+def test_completed_call_clears_while_sibling_is_unresolved(tmp_path):
+    store = store_at(tmp_path)
+    completed = dispatch_at(store, call="complete")
+    sibling = dispatch_at(store, call="inflight")
+    completed.before_send()
+    sibling.before_send()
+    completed.response_headers(200)
+    store.record("episode", {"model_call_id": "complete", "response": {"id": "saved"}})
+    store.clear_pending("episode", "complete")
+    assert not store.pending_path_for("episode", "complete").exists()
+    assert store.pending_path_for("episode", "inflight").exists()
+    with pytest.raises(ControlError, match="unresolved provider"):
+        store.assert_dispatch_reconciled(["episode"])
+    store.clear_pending("episode", "inflight")
+    assert store.pending_path_for("episode", "inflight").exists()
+    sibling.response_headers(200)
+    store.record("episode", {"model_call_id": "inflight", "response": {"id": "second"}})
+    store.clear_pending("episode", "inflight")
+    assert not store.has_pending("episode")
+    with pytest.raises(ControlError, match="saved-response replay"):
+        store.assert_restore_safe(["episode"])
