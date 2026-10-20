@@ -5,7 +5,9 @@
 import asyncio
 import hashlib
 import json
+import os
 import shutil
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,9 +27,39 @@ class ManagedOracleConfig(BaseModel):
     source_dir: Path
     source_sha256: str
     data_dir: Path
+    data_sha256: str
     artifact_dir: Path
     startup_timeout_seconds: float = Field(default=180, gt=0)
     lifetime_seconds: int = Field(default=900, gt=0)
+
+
+def _publish(path: Path, value: dict) -> None:
+    """Durably publish a complete recovery receipt before continuing."""
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(json.dumps(value, indent=2).encode())
+        handle.flush()
+        os.fsync(handle.fileno())
+    try:
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _data_hash(root: Path) -> str:
+    manifest = "".join(
+        f"{p.relative_to(root)} {hashlib.sha256(p.read_bytes()).hexdigest()}\n"
+        for p in sorted(root.rglob("*"))
+        if p.is_file() and not p.name.startswith("._")
+    )
+    if not manifest:
+        raise ValueError("Empty native oracle dataset")
+    return hashlib.sha256(manifest.encode()).hexdigest()
 
 
 async def _settle(task: asyncio.Task):
@@ -57,6 +89,9 @@ async def managed_oracle(config: ManagedOracleConfig):
     source_hash = hashlib.sha256(source_manifest.encode()).hexdigest()
     if not source_files or source_hash != config.source_sha256:
         raise ValueError("Pinned native oracle Python source hash mismatch")
+    data_hash = await asyncio.to_thread(_data_hash, config.data_dir)
+    if data_hash != config.data_sha256:
+        raise ValueError("Pinned native oracle dataset hash mismatch")
     identity = uuid4().hex
     artifacts = config.artifact_dir.resolve() / identity
     artifacts.mkdir(parents=True, exist_ok=False)
@@ -65,6 +100,7 @@ async def managed_oracle(config: ManagedOracleConfig):
     shutil.copyfile(service, artifacts / "serve.py")
     proof = {
         "source_sha256": source_hash,
+        "data_sha256": data_hash,
         "image": PINNED_IMAGE,
         "service_sha256": hashlib.sha256(service.read_bytes()).hexdigest(),
         "variant": "CPU PyScreener/Vina1.1.2",
@@ -72,7 +108,7 @@ async def managed_oracle(config: ManagedOracleConfig):
         "cleanup_confirmed": False,
     }
     receipt = artifacts / "lifecycle.json"
-    receipt.write_text(json.dumps(proof, indent=2))
+    _publish(receipt, proof)
     spec = SandboxSpec(
         image=PINNED_IMAGE,
         ttl_s=config.lifetime_seconds,
@@ -94,13 +130,13 @@ async def managed_oracle(config: ManagedOracleConfig):
     try:
         await asyncio.shield(start)
         proof["sandbox"] = await sandbox.serialize()
-        receipt.write_text(json.dumps(proof, indent=2))
+        _publish(receipt, proof)
         launch = await sandbox.exec("python /control/serve.py > /control/service.log 2>&1 &", timeout_s=15)
         if launch.return_code:
             raise RuntimeError(f"Oracle launch failed: {launch.stderr}")
         endpoint = (await sandbox.endpoint(37000)).endpoint
         proof["endpoint"] = endpoint
-        receipt.write_text(json.dumps(proof, indent=2))
+        _publish(receipt, proof)
         deadline = time.monotonic() + config.startup_timeout_seconds
         while True:
             if time.monotonic() >= deadline:
@@ -125,4 +161,4 @@ async def managed_oracle(config: ManagedOracleConfig):
         finally:
             await _settle(asyncio.create_task(sandbox.stop()))
             proof["cleanup_confirmed"] = True
-            receipt.write_text(json.dumps(proof, indent=2))
+            _publish(receipt, proof)

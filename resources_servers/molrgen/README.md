@@ -14,7 +14,7 @@ The creator's published Docker image `fransou/molgendata:latest` could not be pu
 
 Set `managed_oracle` instead of `creator_url` to run a separate task-owned Docker
 sandbox for each verification. Required fields are `source_dir`, `source_sha256`,
-`data_dir`, and `artifact_dir`. The source digest is SHA-256 of the sorted lines
+`data_dir`, `data_sha256`, and `artifact_dir`. The source digest is SHA-256 of the sorted lines
 `relative_python_path sha256_of_file\n`, excluding Apple `._` files. The preserved
 campaign instrumented source digest is
 `8df235f5ed9187868d3dccbc8ccbffb8f66e3e8447af4a2a964488e1c54758aa`.
@@ -22,8 +22,11 @@ campaign instrumented source digest is
 The image is pinned by immutable ID in `managed_oracle.py`. Each invocation uses
 2 CPUs, 3 GiB RAM, 256 MiB shared memory, a dynamically published localhost port,
 and Gym ownership labels. Keep evaluation concurrency at one on an 8 GiB worker.
-Source and data mounts are read-only. Provision the creator dataset separately;
-this wrapper does not download or certify all receptor files. CPU Vina1.1.2,
+Source and data mounts are read-only. Provision the creator dataset separately.
+The required data digest hashes sorted `relative_path sha256_of_file\n` lines for
+every dataset file, excluding Apple `._` files. It is checked before each container.
+Preserved campaign data digest:
+`f9ca645d73b3b4cf816f639a137c5fa599f871c2a33a20279721380505d5b35a`. CPU Vina1.1.2,
 boxed parsing, property reward, rescaling, and exhaustiveness 8 match the preserved
 native CPU service. This is not the published AutoDock-GPU protocol.
 

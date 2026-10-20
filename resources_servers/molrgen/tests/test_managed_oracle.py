@@ -12,7 +12,7 @@ from resources_servers.molrgen import managed_oracle as module
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["none", "timeout", "cancelled"])
+@pytest.mark.parametrize("failure", ["none", "timeout", "cancelled", "cleanup"])
 async def test_owned_cleanup_and_resources(tmp_path, monkeypatch, failure):
     sandbox = SimpleNamespace(
         start=AsyncMock(),
@@ -21,6 +21,8 @@ async def test_owned_cleanup_and_resources(tmp_path, monkeypatch, failure):
         exec=AsyncMock(return_value=SimpleNamespace(return_code=0)),
         endpoint=AsyncMock(return_value=SimpleNamespace(endpoint="http://127.0.0.1:49153")),
     )
+    if failure == "cleanup":
+        sandbox.stop.side_effect = RuntimeError("owned cleanup failed")
     specs = []
     monkeypatch.setattr(module, "AsyncSandbox", lambda provider, spec: specs.append(spec) or sandbox)
     received = AsyncMock()
@@ -31,19 +33,27 @@ async def test_owned_cleanup_and_resources(tmp_path, monkeypatch, failure):
     (tmp_path / "native.py").write_text("native")
     digest = hashlib.sha256(f"native.py {hashlib.sha256(b'native').hexdigest()}\n".encode()).hexdigest()
     cfg = module.ManagedOracleConfig(
-        source_sha256=digest, source_dir=tmp_path, data_dir=tmp_path, artifact_dir=tmp_path / "artifacts"
+        source_sha256=digest,
+        data_sha256=module._data_hash(tmp_path),
+        source_dir=tmp_path,
+        data_dir=tmp_path,
+        artifact_dir=tmp_path / "artifacts",
     )
 
     async def use():
         async with module.managed_oracle(cfg) as (endpoint, artifacts):
             assert endpoint.endswith("49153")
-            if failure == "timeout":
+            if failure in {"timeout", "cleanup"}:
                 raise TimeoutError()
             if failure == "cancelled":
                 raise asyncio.CancelledError()
 
     if failure == "none":
         await use()
+    elif failure == "cleanup":
+        with pytest.raises(RuntimeError) as caught:
+            await use()
+        assert isinstance(caught.value.__context__, TimeoutError)
     else:
         with pytest.raises(TimeoutError if failure == "timeout" else asyncio.CancelledError):
             await use()
@@ -52,7 +62,8 @@ async def test_owned_cleanup_and_resources(tmp_path, monkeypatch, failure):
     assert specs[0].ports == (37000,) and specs[0].ttl_s == 900
     assert specs[0].metadata["workload"] == "molrgen-oracle"
     proof = json.loads(next((tmp_path / "artifacts").glob("*/lifecycle.json")).read_text())
-    assert proof["cleanup_confirmed"] and proof["sandbox"] == {"id": "owned"}
+    assert proof["cleanup_confirmed"] == (failure != "cleanup")
+    assert proof["sandbox"] == {"id": "owned"}
 
 
 @pytest.mark.asyncio
@@ -69,7 +80,11 @@ async def test_cancel_during_creation_waits_and_cleans(tmp_path, monkeypatch):
     (tmp_path / "native.py").write_text("native")
     digest = hashlib.sha256(f"native.py {hashlib.sha256(b'native').hexdigest()}\n".encode()).hexdigest()
     cfg = module.ManagedOracleConfig(
-        source_sha256=digest, source_dir=tmp_path, data_dir=tmp_path, artifact_dir=tmp_path / "artifacts"
+        source_sha256=digest,
+        data_sha256=module._data_hash(tmp_path),
+        source_dir=tmp_path,
+        data_dir=tmp_path,
+        artifact_dir=tmp_path / "artifacts",
     )
 
     async def use():
