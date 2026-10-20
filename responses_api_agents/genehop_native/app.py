@@ -14,6 +14,7 @@ from fastapi import Request, Response
 from pydantic import PrivateAttr
 
 from benchmarks.genehop.native_loop import MODEL, NativeLoop
+from benchmarks.genehop.source_identity import validate_source
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
@@ -107,6 +108,7 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
             raise ValueError("Question mismatch")
         model_call = None
         if self.config.model_server is not None:
+            validate_source(self.config.upstream_repo)
             event_loop = asyncio.get_running_loop()
 
             def model_call(payload, turn):
