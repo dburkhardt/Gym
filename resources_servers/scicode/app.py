@@ -19,16 +19,17 @@ Runs the agent's accumulated per-sub-step Python solutions against each sub-step
 (targets loaded from test_data.h5) and returns a binary reward: 1.0 iff every sub-step passes.
 Per-sub-step counts are also returned so sub-step accuracy can be computed downstream.
 
-Each sub-step is executed in a subprocess in this server's own process (instead of a
-Docker sandbox), so the subprocess inherits this server's interpreter and dependencies.
+Each sub-step executes in an owned, network-disabled scientific sandbox. Generated code
+never inherits this server's interpreter, environment variables, or provider credentials.
 """
 
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from pydantic import ConfigDict
-from scicode_integration.runner import build_test_program, run_substep, sanitize_test
+from pydantic import ConfigDict, Field
+from scicode_integration.runner import build_test_program, sanitize_test
 
 from nemo_gym import PARENT_DIR
 from nemo_gym.base_resources_server import (
@@ -38,6 +39,7 @@ from nemo_gym.base_resources_server import (
     BaseVerifyResponse,
     SimpleResourcesServer,
 )
+from resources_servers.scicode.managed_execution import execute_substep
 
 
 # Agent sentinel for a sub-step it could not generate (ran out of context); always fails.
@@ -45,9 +47,14 @@ _OUT_OF_CONTEXT = "_ran_out_of_context_"
 
 
 class ScicodeResourcesServerConfig(BaseResourcesServerConfig):
-    num_processes: int = 20
+    num_processes: int = Field(default=2, ge=1)
+    sandbox_image: str | None = None
+    sandbox_cpu: float = Field(default=1.0, gt=0)
+    sandbox_memory_mib: int = Field(default=4096, ge=128)
+    execution_artifact_dir: str = "artifacts/scicode-execution"
+    test_data_sha256: str = "48b0272a88b17dbd29777c217e1b4fb2b019b92e11cc2add847409db9541b890"
     # Per-sub-step execution timeout
-    timeout_secs: float = 30.0
+    timeout_secs: float = Field(default=30.0, gt=0)
     # Local path to SciCode's test_data.h5 (staged manually)
     test_data_fpath: Optional[str] = None
 
@@ -73,6 +80,7 @@ class ScicodeVerifyResponse(BaseVerifyResponse):
     # sub_steps/solutions are intentionally not carried through to keep rollout rows small.
     problem_id: str = ""
     step_results: List[bool] = []
+    step_execution: List[dict] = []
     num_steps_passed: int = 0
     num_steps_total: int = 0
     problem_accuracy: bool = False
@@ -87,6 +95,7 @@ class ScicodeResourcesServer(SimpleResourcesServer):
 
     def model_post_init(self, context):
         self._semaphore = asyncio.Semaphore(value=self.config.num_processes)
+        self._validated_data = None
 
     def _resolve_test_data(self) -> str:
         if not self.config.test_data_fpath:
@@ -103,6 +112,14 @@ class ScicodeResourcesServer(SimpleResourcesServer):
                 f"SciCode test_data.h5 not found at {path}. Download and stage it "
                 "(see benchmarks/scicode/README.md) before running."
             )
+        stat = path.stat()
+        identity = (str(path.resolve()), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        if self._validated_data != identity:
+            with path.open("rb") as stream:
+                actual = hashlib.file_digest(stream, "sha256").hexdigest()
+            if actual != self.config.test_data_sha256:
+                raise ValueError("SciCode test_data.h5 SHA256 mismatch; refusing scoring")
+            self._validated_data = identity
         return str(path)
 
     async def verify(self, body: ScicodeVerifyRequest) -> ScicodeVerifyResponse:
@@ -121,8 +138,14 @@ class ScicodeResourcesServer(SimpleResourcesServer):
                 problem_accuracy=False,
             )
 
-        h5_path = self._resolve_test_data()
-        loop = asyncio.get_running_loop()
+        h5_path = await asyncio.to_thread(self._resolve_test_data)
+        if not self.config.sandbox_image:
+            raise RuntimeError("SciCode sandbox_image must name the pinned Python3.12 scientific runtime")
+        artifacts = Path(self.config.execution_artifact_dir).expanduser()
+        if not artifacts.is_absolute():
+            artifacts = PARENT_DIR / artifacts
+
+        execution_details = {}
 
         async def _run_substep(i: int) -> bool:
             sub_step = body.sub_steps[i]
@@ -130,9 +153,18 @@ class ScicodeResourcesServer(SimpleResourcesServer):
             if not code or code == _OUT_OF_CONTEXT:
                 return False
             sanitized = [sanitize_test(tc) for tc in sub_step["test_cases"]]
-            program = build_test_program(code, h5_path, sub_step["step_number"], sanitized)
+            program = build_test_program(code, "/data/test_data.h5", sub_step["step_number"], sanitized)
             async with self._semaphore:
-                result = await loop.run_in_executor(None, run_substep, program, self.config.timeout_secs)
+                result = await execute_substep(
+                    program=program,
+                    data_path=Path(h5_path),
+                    image=self.config.sandbox_image,
+                    artifact_dir=artifacts,
+                    timeout_secs=self.config.timeout_secs,
+                    cpu=self.config.sandbox_cpu,
+                    memory_mib=self.config.sandbox_memory_mib,
+                )
+            execution_details[i] = {"step_number": sub_step["step_number"], **result}
             return bool(result["passed"])
 
         step_results = list(await asyncio.gather(*[_run_substep(i) for i in scored]))
@@ -143,6 +175,7 @@ class ScicodeResourcesServer(SimpleResourcesServer):
             **body.model_dump(),
             reward=1.0 if all_passed else 0.0,
             step_results=step_results,
+            step_execution=[execution_details[i] for i in scored if i in execution_details],
             num_steps_passed=num_passed,
             num_steps_total=len(scored),
             problem_accuracy=all_passed,

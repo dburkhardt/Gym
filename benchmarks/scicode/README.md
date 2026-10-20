@@ -59,10 +59,14 @@ to write the next function directly.
 
 ## Dependencies
 
-The resources server executes generated SciCode solutions in its own venv, so its
-`requirements.txt` pins `scipy<1.14` — the last range that keeps `scipy.integrate.simps` (used by
-some test cases, removed in scipy 1.14) while still providing Python 3.12 wheels — plus `numpy`,
-`matplotlib`, `h5py`, and `sympy`.
+Generated code executes only in the shared managed Docker sandbox described in
+[`resources_servers/scicode/README.md`](../../resources_servers/scicode/README.md).
+Build its pinned `sandbox/Dockerfile`, then set `sandbox_image` to the immutable resulting image ID.
+The scientific runtime uses Python3.12/SciPy1.13.1 (retaining `scipy.integrate.simps`) and pinned
+NumPy, Matplotlib, HDF5 and SymPy packages. The host Gym interpreter remains separate.
+Configure the canonical H5 path and retain its SHA256 check. Missing images or mismatched data
+fail before scoring. Generated code has no network or host credentials, and all containers
+are removed after bounded execution, including timeout/cancellation.
 
 ## Running servers
 

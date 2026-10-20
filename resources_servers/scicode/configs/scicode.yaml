@@ -10,7 +10,10 @@ scicode:
       verified: false
       description: Multi-step scientific code generation; sub-step solutions executed against SciCode test cases
       value: Improve multi-step scientific code generation
-      num_processes: 20
+      num_processes: 2
+      sandbox_image: null
+      sandbox_cpu: 1.0
+      sandbox_memory_mib: 4096
       timeout_secs: 30.0
       test_data_fpath: null
 

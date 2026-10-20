@@ -12,9 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import hashlib
 import tempfile
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -31,7 +32,13 @@ from resources_servers.scicode.scicode_integration.runner import build_test_prog
 
 def _server(test_data_fpath=None):
     config = ScicodeResourcesServerConfig(
-        host="0.0.0.0", port=8080, entrypoint="", name="", test_data_fpath=test_data_fpath
+        host="0.0.0.0",
+        port=8080,
+        entrypoint="",
+        name="",
+        test_data_fpath=test_data_fpath,
+        test_data_sha256=hashlib.sha256(b"").hexdigest(),
+        sandbox_image="sha256:" + "a" * 64,
     )
     return ScicodeResourcesServer(config=config, server_client=MagicMock(spec=ServerClient))
 
@@ -71,7 +78,7 @@ def _request(solutions, n_steps=2):
 @contextmanager
 def _mock_substep(passed: bool):
     """Stub sub-step execution so verify() runs without executing code or reading test_data.h5."""
-    with patch.object(app, "run_substep", lambda *a, **k: {"passed": passed, "error": ""}):
+    with patch.object(app, "execute_substep", AsyncMock(return_value={"passed": passed, "error": ""})):
         yield
 
 
@@ -145,7 +152,7 @@ class TestApp:
 
     def test_config_defaults(self):
         config = _server().config
-        assert config.num_processes == 20
+        assert config.num_processes == 2
         assert config.timeout_secs == 30.0
         assert config.test_data_fpath is None
 
@@ -215,3 +222,11 @@ class TestApp:
         assert result.num_steps_passed == 1
         assert result.reward == 0.0
         assert result.subtask_accuracy == 0.5  # per-rollout sub-step pass fraction
+
+
+def test_h5_checksum_mismatch_fails_closed():
+    with tempfile.NamedTemporaryFile(suffix=".h5") as h5:
+        h5.write(b"not the canonical data")
+        h5.flush()
+        with pytest.raises(ValueError, match="SHA256 mismatch"):
+            _server(h5.name)._resolve_test_data()

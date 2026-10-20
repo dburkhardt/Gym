@@ -24,17 +24,13 @@ SciCode uses a **custom multi-step agent** — `simple_agent` will not work:
 The full wiring lives in `benchmarks/scicode/config.yaml`, which chains all three plus the dataset.
 The agent + its `example` dataset are defined in this server's own `configs/scicode.yaml`.
 
-## Execution (no Docker sandbox)
+## Managed scientific execution
 
-The agent sends a `solutions` dict — `{"<problem_id>.<step>": accumulated_code}` — to `/verify`. For
-each scored sub-step the server builds a program (`accumulated_code` + HDF5/compare helpers + the
-sub-step's sanitized test assertions) and runs it in a **Ray subprocess** (`scicode_integration/runner.py`);
-exit code 0 = pass. The HDF5 target-loading and comparison helpers (`process_hdf5_to_tuple`,
-`cmp_tuple_or_list`, …) are ported from nemo-skills' `scicode_utils.eval_prefix`; the only change is
-that the `test_data.h5` path is injected from config rather than hardcoded.
+The agent submits accumulated solutions to `/verify`. Each scored sub-step is executed in a fresh shared `AsyncSandbox` Docker sandbox, with no network, a read-only root, an unprivileged user, explicit CPU/memory limits, and only read-only program/test-data mounts. Generated code does not inherit resource-server credentials or its Python environment. Containers and descendants are removed after success, failure, timeout, or cancellation; durable lifecycle receipts remain under `execution_artifact_dir`.
 
-Because the generated code runs in this server's own venv, `requirements.txt` pins `scipy<1.14`
-(keeps `scipy.integrate.simps`, has Python 3.12 wheels) plus `numpy`, `matplotlib`, `h5py`, `sympy`.
+Build `sandbox/Dockerfile` and configure `sandbox_image` with its immutable image ID. The base image and scientific packages are pinned: Python3.12 and SciPy1.13.1 preserve `scipy.integrate.simps`. Host Gym still uses its required Python version. `sandbox/requirements.txt` is separate from the resource-server requirements. The default concurrency is2, with1CPU/4096MiB per active sub-step; execution retains the native30-second budget. Infrastructure failures raise instead of becoming incorrect answers.
+
+The HDF5 loading/comparison helper bytes and sanitized creator assertions remain unchanged. `test_data.h5` must match the configured SHA256 (default canonical creator digest); a missing or mismatched file fails before scoring. Positive/negative scoring controls and owned lifecycle tests must pass before live use. The old synchronous `run_substep` function remains only as a legacy isolated unit-test helper; the server never calls it.
 
 **Scoring notes** (mirroring nemo-skills):
 - Sub-steps absent from `solutions` (prefilled reference steps) are excluded from the denominator.
