@@ -8,3 +8,11 @@ gym eval run --benchmark ether0_benchmark --model-type openai_model --split benc
 ```
 
 The generation cap is a pilot setting, not a claimed creator setting. After reviewing smoke, run all20 and preserve failures. Inspect the campaign qa-integration-report.md for source pins, known scorer defects and incomplete protocol coverage.
+
+Native asset staging: after installing the resource environment, run
+`python -m resources_servers.ether0_benchmark.stage_assets` in that environment
+from the repository root. The creator wheel omits two BloomFilter files;
+missing files crash molbloom in native code. Staging downloads the exact pinned
+creator files and checks SHA256. The scorer checks both before invoking native
+code, and each verification runs in an isolated subprocess. Native failure or
+missing assets is a masked infrastructure failure, never a model zero.

@@ -31,7 +31,23 @@ class Verifier:
         import asyncio
 
         try:
-            result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
+            import json
+            import sys
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "resources_servers.ether0_benchmark.score_worker",
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            payload = json.dumps({"text": body.response.output_text or "", **body.verifier_metadata})
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(payload.encode()), timeout=120)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise RuntimeError("Creator scorer subprocess exceeded 120 seconds")
+            if process.returncode:
+                raise RuntimeError(f"Creator scorer subprocess exited {process.returncode}: " + stderr.decode(errors="replace")[-2000:])
+            result = json.loads(stdout)
         except RuntimeError as exc:
             return Response(
                 **body.model_dump(),
