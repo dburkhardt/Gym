@@ -96,7 +96,7 @@ class Transport:
 
         with self.lock:
             if self.failed:
-                raise RuntimeError("BLADE phase has unresolved provider failure; no resend")
+                raise RuntimeError("BLADE phase has an unusable prior call; no automatic resend")
             if payload.get("model") != MODEL:
                 raise ValueError("Only exact Nemotron model is authorized")
             ordinal = self.ordinal
@@ -224,7 +224,7 @@ def main() -> None:
     else:
         raise ValueError("Unknown native phase")
     if transport.failed:
-        raise RuntimeError("Native library swallowed provider failure; no valid result")
+        raise RuntimeError("Native library swallowed an unusable call; inspect outcome receipts")
 
 
 if __name__ == "__main__":
