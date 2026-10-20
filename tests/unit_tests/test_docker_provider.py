@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import shutil
 from pathlib import Path
 from typing import Any, Callable
@@ -883,3 +884,88 @@ async def test_connect_requires_a_sandbox_id(fake_binary: str) -> None:
 
     with pytest.raises(docker_provider.DockerCreateError, match="requires a sandbox_id"):
         await provider.connect({"image": "img:1"})
+
+
+@pytest.mark.asyncio
+async def test_create_ownership_allowlist(fake_binary: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, rec = _make_provider(monkeypatch, lambda argv: (0, "", ""), probe={"command": None})
+    handle = await provider.create(
+        SandboxSpec(image="img", metadata={"run": "campaign-1", "user": "daniel", "token": "secret"})
+    )
+    argv = rec.calls[0]["argv"]
+    assert _contains_seq(argv, ["--label", "nemo-gym.run=campaign-1"])
+    assert _contains_seq(argv, ["--label", "nemo-gym.user=daniel"])
+    assert not any("secret" in value for value in argv)
+    descriptor = await provider.serialize_handle(handle)
+    assert descriptor["ownership_labels"] == {"nemo-gym.run": "campaign-1", "nemo-gym.user": "daniel"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("observed", ["campaign-1", "other", None])
+async def test_close_checks_ownership_and_removes_immutable_id(
+    fake_binary: str, monkeypatch: pytest.MonkeyPatch, observed: str | None
+) -> None:
+    labels = {"nemo-gym.sandbox": "1", "nemo-gym.run": observed}
+    provider, rec = _make_provider(
+        monkeypatch, lambda argv: (0, json.dumps({"Id": "immutable-id", "Config": {"Labels": labels}}), "")
+    )
+    handle = _make_handle()
+    handle.raw.ownership_labels = {"nemo-gym.run": "campaign-1"}
+    if observed == "campaign-1":
+        await provider.close(handle)
+        assert rec.calls[-1]["argv"] == [FAKE_BINARY, "rm", "-f", "immutable-id"]
+    else:
+        with pytest.raises(RuntimeError, match="ownership mismatch"):
+            await provider.close(handle)
+        assert len(rec.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconnect_ownership_uses_immutable_identity(fake_binary: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(argv: list[str]) -> tuple[int, str, str]:
+        if "{{json .}}" in argv:
+            return (
+                0,
+                json.dumps(
+                    {"Id": "immutable-id", "Config": {"Labels": {"nemo-gym.sandbox": "1", "nemo-gym.run": "r"}}}
+                ),
+                "",
+            )
+        return 0, "true\timg", ""
+
+    provider, rec = _make_provider(monkeypatch, respond)
+    handle = await provider.connect({"sandbox_id": "old-name", "ownership_labels": {"nemo-gym.run": "r"}})
+    assert handle.sandbox_id == "immutable-id"
+    assert rec.calls[1]["argv"][-1] == "immutable-id"
+    assert (await provider.serialize_handle(handle))["ownership_labels"] == {"nemo-gym.run": "r"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result", [(1, "", "No such container"), (0, "not-json", ""), (0, '{"Id":"x","Config":{"Labels":[]}}', "")]
+)
+async def test_owned_cleanup_missing_or_invalid_inspection(
+    fake_binary: str, monkeypatch: pytest.MonkeyPatch, result: tuple[int, str, str]
+) -> None:
+    provider, rec = _make_provider(monkeypatch, lambda argv: result)
+    handle = _make_handle()
+    handle.raw.ownership_labels = {"nemo-gym.run": "r"}
+    if result[0] == 1:
+        await provider.close(handle)
+    else:
+        with pytest.raises(RuntimeError):
+            await provider.close(handle)
+    assert len(rec.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_rejects_foreign_ownership_without_removal(
+    fake_binary: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider, rec = _make_provider(
+        monkeypatch,
+        lambda argv: (0, '{"Id":"x","Config":{"Labels":{"nemo-gym.sandbox":"1","nemo-gym.run":"other"}}}', ""),
+    )
+    with pytest.raises(RuntimeError, match="ownership mismatch"):
+        await provider.connect({"sandbox_id": "x", "ownership_labels": {"nemo-gym.run": "r"}})
+    assert len(rec.calls) == 1

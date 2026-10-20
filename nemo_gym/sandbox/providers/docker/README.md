@@ -213,3 +213,18 @@ operation. A few tests exercise the real subprocess plumbing with harmless binar
 (`echo`, `cat`, `sleep`), each guarded with `@pytest.mark.skipif(shutil.which(...) is None)`;
 real end-to-end tests are additionally guarded on a reachable Docker daemon. Async tests need
 no decorator (`asyncio_mode = "auto"`).
+
+### Ownership attribution
+
+The Docker provider copies only `team`, `user`, `workload`, and `run` from
+`SandboxSpec.metadata` into `nemo-gym.<key>` Docker labels. Put non-secret
+identifiers in these fields; arbitrary metadata is not copied. Set an explicit
+run identifier when containers must be attributed across worker restarts.
+
+Serialized handles preserve these labels. Reconnecting or closing an attributed
+handle checks the recorded labels and the Gym sandbox label; a mismatch refuses
+the operation. Cleanup uses the inspected immutable container ID, so a reused
+container name does not redirect removal after inspection. Legacy handles without
+ownership labels retain their existing behavior. Labels are operational attribution,
+not authentication against another user with Docker daemon access. No blanket
+label-based cleanup is performed.

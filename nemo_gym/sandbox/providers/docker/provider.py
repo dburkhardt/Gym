@@ -17,6 +17,7 @@
 import asyncio
 import contextlib
 import ipaddress
+import json
 import logging
 import math
 import os
@@ -46,6 +47,7 @@ LOGGER = logging.getLogger(__name__)
 
 CONTAINER_NAME_PREFIX = "nemo-gym-"
 SANDBOX_LABEL = "nemo-gym.sandbox"
+OWNERSHIP_KEYS = frozenset({"team", "user", "workload", "run"})
 READY_PROBE_COMMAND = "printf docker-sandbox-ready"
 READY_PROBE_EXPECTED = "docker-sandbox-ready"
 SANDBOX_RUNTIME_RETURN_CODE = 125
@@ -182,6 +184,7 @@ class _DockerContainer:
     shell: str = "sh"
     env: dict[str, str] = field(default_factory=dict)
     published_ports: tuple[int, ...] = ()
+    ownership_labels: dict[str, str] = field(default_factory=dict)
 
 
 def _normalize_image(image: str) -> str:
@@ -308,6 +311,9 @@ class DockerProvider:
         volumes = _coerce_str_list(spec.provider_options.get("volumes"), "volumes")
         per_sandbox_args = _coerce_str_list(spec.provider_options.get("run_args"), "run_args")
 
+        ownership_labels = {
+            f"nemo-gym.{key}": value for key, value in spec.metadata.items() if key in OWNERSHIP_KEYS and value
+        }
         argv: list[str] = [self._binary, "run", "-d", "--name", name, "--label", f"{SANDBOX_LABEL}=1"]
         if cfg.use_init:
             argv.append("--init")
@@ -333,6 +339,10 @@ class DockerProvider:
         for vol in volumes:
             argv += ["-v", vol]
         argv += list(cfg.extra_run_args) + per_sandbox_args
+        # Other metadata may contain secrets; only explicit attribution is published.
+        argv += ["--label", f"{SANDBOX_LABEL}=1"]
+        for key, value in sorted(ownership_labels.items()):
+            argv += ["--label", f"{key}={value}"]
         # ttl_s (no custom entrypoint): keep-alive sleeps ttl_s, --rm self-removes when it exits.
         enforce_ttl = spec.ttl_s is not None and not spec.entrypoint
         if enforce_ttl:
@@ -362,6 +372,7 @@ class DockerProvider:
                 image=image,
                 env=dict(spec.env),
                 published_ports=tuple(spec.ports),
+                ownership_labels=ownership_labels,
             ),
         )
         try:
@@ -377,10 +388,14 @@ class DockerProvider:
 
         Docker recovers image and shell from the running container on connect,
         and ``docker exec`` runs inside the container's own environment, so the
-        id alone is enough; ``AsyncSandbox.serialize()`` layers the declared
-        ports on top. ``scope`` is unused by the Docker provider.
+        legacy descriptors need only the id. Attributed containers retain ownership
+        labels, checked on reconnect and close. ``AsyncSandbox.serialize()`` layers
+        the declared ports on top. ``scope`` is unused by the Docker provider.
         """
-        return {"sandbox_id": handle.sandbox_id}
+        descriptor: dict[str, Any] = {"sandbox_id": handle.sandbox_id}
+        if handle.raw.ownership_labels:
+            descriptor["ownership_labels"] = dict(handle.raw.ownership_labels)
+        return descriptor
 
     async def connect(self, descriptor: Mapping[str, Any]) -> SandboxHandle:
         """Create a handle for an existing running container, rediscovering its
@@ -393,6 +408,18 @@ class DockerProvider:
         name = descriptor.get("sandbox_id")
         if not name:
             raise DockerCreateError("docker connect requires a sandbox_id")
+
+        ownership_labels = descriptor.get("ownership_labels", {})
+        if not isinstance(ownership_labels, dict) or any(
+            key not in {f"nemo-gym.{k}" for k in OWNERSHIP_KEYS} or not isinstance(value, str) or not value
+            for key, value in ownership_labels.items()
+        ):
+            raise DockerCreateError("Invalid Docker ownership labels in descriptor")
+        if ownership_labels:
+            identity = await self._owned_container_id(str(name), ownership_labels)
+            if identity is None:
+                raise DockerCreateError("Owned Docker container no longer exists")
+            name = identity
 
         code, out, err = await self._run(
             [self._binary, "inspect", "--format", "{{.State.Running}}\t{{.Config.Image}}", str(name)],
@@ -412,6 +439,7 @@ class DockerProvider:
                 image=image,
                 shell=await self._resolve_shell(str(name)),
                 published_ports=tuple(descriptor.get("ports") or ()),
+                ownership_labels=dict(ownership_labels),
             ),
         )
 
@@ -583,11 +611,42 @@ class DockerProvider:
             host = self._create_config.publish_host
         return SandboxEndpoint(endpoint=_http_endpoint(host, host_port))
 
+    async def _owned_container_id(self, name: str, expected: dict[str, str]) -> str | None:
+        """Resolve immutable identity only when recorded ownership still matches."""
+        code, out, err = await self._run(
+            [self._binary, "inspect", "--format", "{{json .}}", name],
+            timeout_s=self._exec_config.default_timeout_s,
+        )
+        if code != 0:
+            if _is_missing_container(err):
+                return None
+            raise RuntimeError(f"Cannot inspect Docker ownership for {name!r}")
+        try:
+            info = json.loads(out)
+            labels = info["Config"].get("Labels") or {}
+            identity = info["Id"]
+        except (ValueError, KeyError, TypeError) as error:
+            raise RuntimeError(f"Invalid Docker ownership inspection for {name!r}") from error
+        if (
+            not isinstance(labels, dict)
+            or not isinstance(identity, str)
+            or not identity
+            or labels.get(SANDBOX_LABEL) != "1"
+            or any(labels.get(key) != value for key, value in expected.items())
+        ):
+            raise RuntimeError(f"Docker ownership mismatch for {name!r}; refusing cleanup or reconnect")
+        return identity
+
     async def close(self, handle: SandboxHandle) -> None:
         """Force-remove the container (already-gone counts as success)."""
         inst = handle.raw
+        target = inst.name
+        if inst.ownership_labels:
+            target = await self._owned_container_id(inst.name, inst.ownership_labels)
+            if target is None:
+                return
         code, _out, err = await self._run(
-            [self._binary, "rm", "-f", inst.name],
+            [self._binary, "rm", "-f", target],
             timeout_s=self._exec_config.default_timeout_s,
         )
         if code != 0 and not _is_missing_container(err):
