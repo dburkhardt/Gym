@@ -189,3 +189,24 @@ def test_budget_outputs_remain_in_automatic_score_denominator(tmp_path, status, 
     assert result["raw_creator_score"] == result["reward"] == expected
     assert not result["mask_sample"]
     assert result["failure_kind"] == "genehop_native:" + status
+
+
+def test_injected_model_transport_preserves_native_protocol(tmp_path):
+    from unittest.mock import Mock
+
+    transport = Mock(return_value=reply("Answer: x"))
+    loop = NativeLoop(tmp_path, tmp_path / "trial", "", "", model_call=transport)
+    with patch.object(loop, "header", return_value="Native header\n"), patch("urllib.request.urlopen") as direct:
+        result = loop.run("Question?")
+    assert result["answer"] == "Answer: x"
+    direct.assert_not_called()
+    payload, turn = transport.call_args.args
+    assert turn == 0
+    assert payload == {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Native header\nQuestion: Question?\n"}],
+        "temperature": 0.0,
+        "max_tokens": 16384,
+        "stop": ["->", "\n\nQuestion"],
+    }
+    assert json.loads((tmp_path / "trial/model-00.json").read_text())["request"] == payload
