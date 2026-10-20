@@ -1,0 +1,3 @@
+# GenomeQA
+
+Creator release https://github.com/ai4nucleome/GenomeQA pinned7ccc230e734fc11a365fd1963b593b5fd11e834d resolves earlier inaccessible anonymous repository. Includes all5200 records across five genomic tasks with binary and MCQ formats. Exact creator system prompt, question/options assembly and source extract_final_option parser are retained. Original option ordering/permutations remain unchanged; gold letter only verifier metadata. No external tool/retrieval wrapper introduced. Nested5/20/50 seeded samples,20gold/empty scorer controls. Native config/startup/preparation/collation tested. Per-example accuracy; report task aggregates separately rather than treating tiny pilot as population estimate.
