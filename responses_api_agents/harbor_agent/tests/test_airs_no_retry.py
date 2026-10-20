@@ -47,3 +47,17 @@ def test_native_agent_uses_no_retry_backend(tmp_path):
     )
     assert isinstance(agent._llm, NoRetryNemoGymLLM)
     assert agent._llm.failure_receipt_path == tmp_path / "llm-call-failure.json"
+
+
+def test_call_failure_reaches_native_agent_flags(tmp_path):
+    agent = AIRSNoRetryAgent(
+        logs_dir=tmp_path,
+        model_name="nvidia/nvidia/nemotron-3.5-super-vl",
+        api_base="http://127.0.0.1:1/v1",
+        model_info={"max_input_tokens": 49152, "max_output_tokens": 16384},
+        enable_summarize=False,
+    )
+    failure = {"exception_type": "ConnectionError", "message": "unknown dispatch", "retry_performed": False}
+    (tmp_path / "llm-call-failure.json").write_text(json.dumps(failure))
+    agent._write_agent_error_flags()
+    assert json.loads((tmp_path / "agent_error_flags.json").read_text())["llm_call_failure"] == failure

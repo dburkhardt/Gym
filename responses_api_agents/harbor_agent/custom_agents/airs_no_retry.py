@@ -51,3 +51,12 @@ class AIRSNoRetryAgent(Terminus2NemoGym):
 
     async def _query_llm(self, *args: Any, **kwargs: Any) -> LLMResponse:
         return await Terminus2._query_llm.__wrapped__(self, *args, **kwargs)
+
+    def _write_agent_error_flags(self) -> None:
+        super()._write_agent_error_flags()
+        failure = self.logs_dir / "llm-call-failure.json"
+        if failure.exists():
+            path = self.logs_dir / "agent_error_flags.json"
+            flags = json.loads(path.read_text()) if path.exists() else {}
+            flags["llm_call_failure"] = json.loads(failure.read_text())
+            path.write_text(json.dumps(flags))

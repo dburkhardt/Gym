@@ -274,6 +274,7 @@ def _harbor_run_mocks(
     trial_result: Optional[Dict[str, Any]] = None,
     trajectory: Optional[Dict[str, Any]] = None,
     side_effect: Optional[Exception] = None,
+    agent_error_flags: Optional[Dict[str, Any]] = None,
 ):
     """Patch external deps and wire up mocks for HarborAgent.run()."""
     with (
@@ -300,6 +301,10 @@ def _harbor_run_mocks(
                 agent_dir = Path(trial_dir) / "agent"
                 agent_dir.mkdir(parents=True, exist_ok=True)
                 (agent_dir / "trajectory.json").write_text(json.dumps(trajectory))
+        if trial_dir and agent_error_flags is not None:
+            agent_dir = Path(trial_dir) / "agent"
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "agent_error_flags.json").write_text(json.dumps(agent_error_flags))
         mock_ray.remote.side_effect = lambda *a, **k: _resolve_future()
         mock_ray.options.return_value.remote.side_effect = lambda *a, **k: _resolve_future()
 
@@ -462,6 +467,23 @@ class TestApp:
         assert response.failure_kind is None
         assert response.failure_reason is None
         assert response.metadata == trial_result
+        assert response.response.usage.total_tokens > 0
+
+    async def test_partial_nonzero_reward_after_llm_failure_is_masked(self):
+        server = _make_server()
+        failure = {"exception_type": "ConnectionError", "message": "uncertain dispatch", "retry_performed": False}
+        trial_result = {**DEFAULT_TRIAL_RESULT, "verifier_result": {"rewards": {"reward": 0.7}}}
+        with _harbor_run_mocks(
+            trial_result=trial_result,
+            trajectory=DEFAULT_TRAJECTORY,
+            agent_error_flags={"llm_call_failure": failure},
+        ):
+            response = await server.run(_make_run_request())
+        assert response.reward == 0.7
+        assert response.mask_sample is True
+        assert response.failure_kind == "agent_run_error"
+        assert "uncertain dispatch" in response.failure_reason
+        assert response.metadata["agent_error_flags"]["llm_call_failure"] == failure
         assert response.response.usage.total_tokens > 0
 
     @pytest.mark.parametrize(

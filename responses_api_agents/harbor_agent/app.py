@@ -314,6 +314,11 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
                 # Populate usage from trajectory final_metrics or agent_result
                 usage = HarborAgentUtils.extract_usage(trial_result, trajectory)
+                if llm_failure := agent_error_flags.get("llm_call_failure"):
+                    # A verifier may score a partial artifact after inference failed.
+                    # Preserve that raw score and usage, but exclude it from metrics.
+                    failure_reason = f"LLM call failed: {llm_failure}"
+                    trial_result = {**trial_result, "agent_error_flags": agent_error_flags}
 
             except Exception as e:
                 logger.exception("Error running Harbor job for %s", instance_id)
