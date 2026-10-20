@@ -15,7 +15,7 @@ import inspect
 _UPSTREAM_SEED_SHA256 = "149d426d2a23b72076eb64f595993a1f21a19c002f5edd0c01eb93ac0c333127"
 
 
-def _seed_preserving_links(self):
+def _seed_preserving_links(self) -> None:
     self._replay_recorded_outputs(
         step_name=None,
         declared_artifacts=[*self.task.config.artifacts, *self.config.artifacts],
@@ -23,7 +23,7 @@ def _seed_preserving_links(self):
     )
 
 
-def install_regrade_compat():
+def install_regrade_compat() -> None:
     """Install only on the reviewed upstream implementation; fail closed on drift."""
     from harbor.trial.regrade import RegradeTrial
 
