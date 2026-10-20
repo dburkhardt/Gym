@@ -21,6 +21,9 @@ from nemo_gym.server_utils import request
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
+_SCORER_OWNER = threading.Lock()
+CREATOR_REQUEST_TIMEOUT_S = 120
+
 SOURCE_COMMIT = "23e0a589321e449727c34aef107c49adcf977457"
 SOURCE_HASHES = {
     "evaluation/score.py": "57320c35099b6089305913ad3d72bf246ee7cb2814170a84d363853366b87d51",
@@ -30,10 +33,29 @@ SOURCE_HASHES = {
 }
 
 
+async def _send_guarded(endpoint, payload, headers):
+    # Match the creator's time_limit=120; include body read/parse in the bound.
+    async with asyncio.timeout(CREATOR_REQUEST_TIMEOUT_S):
+        response = await request(
+            "POST",
+            endpoint + "/chat/completions",
+            json=payload,
+            headers=headers,
+            _max_num_tries=1,
+            _max_connection_retries=0,
+            _resend_after_disconnect=False,
+        )
+        try:
+            response.raise_for_status()
+            return ChatCompletion.model_validate(await response.json())
+        finally:
+            response.release()
+
+
 class CriterionTransport:
     """One creator criterion; parser retries are distinct, transport retries are forbidden."""
 
-    def __init__(self, send, loop, lineage, index, digest):
+    def __init__(self, send, loop, lineage, index, digest, stop=None):
         self.send, self.loop = send, loop
         self.lineage, self.index, self.digest = lineage, index, digest
         self.attempt = 0
@@ -41,14 +63,18 @@ class CriterionTransport:
         self.pending = False
         self.failed = None
         self.requests = []
+        self.stop = stop or threading.Event()
+        self.settled = threading.Event()
+        self.settled.set()
 
     def create(self, **payload):
         with self.lock:
-            if self.pending or self.failed:
+            if self.stop.is_set() or self.pending or self.failed:
                 raise RuntimeError("Criterion transport unresolved; creator retry cannot resend")
             if payload.get("model") != MODEL:
                 raise ValueError("ResearchClaw judge requires authorized model")
             self.pending = True
+            self.settled.clear()
             ordinal = self.attempt
             self.attempt += 1
         headers = {
@@ -71,9 +97,29 @@ class CriterionTransport:
         finally:
             with self.lock:
                 self.pending = False
+                self.settled.set()
 
 
 async def score(source: Path, workspace: Path, endpoint: str, lineage: str, expected_task: str) -> dict:
+    # Creator module/env patching is process-global. Reject overlap, never race it.
+    if not _SCORER_OWNER.acquire(blocking=False):
+        raise RuntimeError("A ResearchClaw scorer already owns this process")
+    keys = ("JUDGE_MODEL_NAME", "JUDGE_API_KEY", "JUDGE_API_BASE")
+    old_env = {key: os.environ.get(key) for key in keys}
+    old_path = list(sys.path)
+    try:
+        return await _score_owned(source, workspace, endpoint, lineage, expected_task)
+    finally:
+        for key, value in old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        sys.path[:] = old_path
+        _SCORER_OWNER.release()
+
+
+async def _score_owned(source: Path, workspace: Path, endpoint: str, lineage: str, expected_task: str) -> dict:
     if "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
         raise ValueError("ResearchClaw requires guarded Gym model capture route")
     for name, digest in SOURCE_HASHES.items():
@@ -94,6 +140,7 @@ async def score(source: Path, workspace: Path, endpoint: str, lineage: str, expe
         raise ValueError("Unexpected creator module already imported")
     original_agent, original_threads = creator.LLMAgent, creator.multi_thread
     context = threading.local()
+    stop = threading.Event()
     transports, parsed = {}, {}
     loop = asyncio.get_running_loop()
     digest = configuration_digest(
@@ -107,20 +154,9 @@ async def score(source: Path, workspace: Path, endpoint: str, lineage: str, expe
     )
 
     async def send(payload, headers):
-        response = await request(
-            "POST",
-            endpoint + "/chat/completions",
-            json=payload,
-            headers=headers,
-            _max_num_tries=1,
-            _max_connection_retries=0,
-            _resend_after_disconnect=False,
-        )
-        try:
-            response.raise_for_status()
-            return ChatCompletion.model_validate(await response.json())
-        finally:
-            response.release()
+        if stop.is_set():
+            raise RuntimeError("ResearchClaw scorer stopped before provider dispatch")
+        return await _send_guarded(endpoint, payload, headers)
 
     class BoundAgent:
         def __init__(self, **settings):
@@ -128,7 +164,7 @@ async def score(source: Path, workspace: Path, endpoint: str, lineage: str, expe
 
         def __call__(self, *args, **kwargs):
             index = context.index
-            transport = CriterionTransport(send, loop, lineage, index, digest)
+            transport = CriterionTransport(send, loop, lineage, index, digest, stop=stop)
             transports[index] = transport
             # Keep creator prompt construction, image encoding, timeout and parsing exactly in structai.
             agent = original_agent(**self.settings)
@@ -148,10 +184,39 @@ async def score(source: Path, workspace: Path, endpoint: str, lineage: str, expe
         return original_threads(inputs, bound, **kwargs)
 
     creator.LLMAgent, creator.multi_thread = BoundAgent, bound_threads
+    worker = asyncio.create_task(asyncio.to_thread(creator.score_workspace, workspace))
     try:
-        native = await asyncio.to_thread(creator.score_workspace, workspace)
+        native = await asyncio.shield(worker)
     finally:
-        creator.LLMAgent, creator.multi_thread = original_agent, original_threads
+        original_error = sys.exception()
+        stop.set()  # No new parser retry may dispatch after cancellation/return.
+
+        async def finish_owned():
+            try:
+                await worker
+            finally:
+                # structai may return on its timeout while its API thread finishes.
+                for transport in list(transports.values()):
+                    await asyncio.to_thread(transport.settled.wait)
+                creator.LLMAgent, creator.multi_thread = original_agent, original_threads
+
+        cleanup = asyncio.create_task(finish_owned())
+        interrupted = None
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError as error:
+                interrupted = error
+            except BaseException:
+                break
+        failure = cleanup.exception()
+        if failure is not None:
+            if original_error is None:
+                raise failure
+            if failure is not original_error:
+                original_error.add_note(f"Creator worker settled with: {failure}")
+        if interrupted is not None and original_error is None:
+            raise interrupted
     failures = {}
     for index in range(len(checklist)):
         value = parsed.get(index)

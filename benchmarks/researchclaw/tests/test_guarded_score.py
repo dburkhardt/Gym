@@ -122,3 +122,169 @@ async def test_actual_pinned_creator_weighting_and_parser(tmp_path, monkeypatch,
         assert result["native"]["total_score"] == 75
         assert result["reward"] == 0.75 and not result["failures"]
         assert len(calls) == 4 and len({key for key, _ in calls}) == 4
+
+
+@pytest.mark.asyncio
+async def test_cancel_settles_creator_before_restoring_globals(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "_meta.json").write_text(json.dumps({"task_id": "Life_002"}))
+    refs = tmp_path / "tasks/Life_002/target_study"
+    refs.mkdir(parents=True)
+    (refs / "checklist.json").write_text(json.dumps([{"weight": 1}]))
+    entered, release = threading.Event(), threading.Event()
+    original_agent, original_threads = object(), object()
+    creator = SimpleNamespace(
+        __file__=str(tmp_path / "evaluation/score.py"), LLMAgent=original_agent, multi_thread=original_threads
+    )
+
+    def native(workspace):
+        entered.set()
+        release.wait(5)
+        assert creator.LLMAgent is not original_agent
+        return {"items": []}
+
+    creator.score_workspace = native
+    monkeypatch.setattr(scoring, "SOURCE_HASHES", {})
+    monkeypatch.setattr(scoring.importlib.metadata, "version", lambda name: "0.1.23")
+    monkeypatch.setattr(scoring.importlib, "import_module", lambda name: creator)
+    call = asyncio.create_task(
+        scoring.score(tmp_path, workspace, "http://localhost/ng-rollout/test/v1", "lineage", "Life_002")
+    )
+    await asyncio.to_thread(entered.wait)
+    call.cancel()
+    await asyncio.sleep(0.01)
+    call.cancel()
+    assert not call.done()
+    assert creator.LLMAgent is not original_agent
+    with pytest.raises(RuntimeError, match="already owns"):
+        await scoring.score(tmp_path, workspace, "http://localhost/ng-rollout/test/v1", "other", "Life_002")
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    assert creator.LLMAgent is original_agent and creator.multi_thread is original_threads
+    assert not scoring._SCORER_OWNER.locked()
+
+
+@pytest.mark.asyncio
+async def test_stopped_transport_never_dispatches():
+    import threading
+
+    stop = threading.Event()
+    stop.set()
+    calls = []
+
+    async def send(*args):
+        calls.append(args)
+
+    transport = scoring.CriterionTransport(send, asyncio.get_running_loop(), "lineage", 0, "digest", stop=stop)
+    with pytest.raises(RuntimeError, match="unresolved"):
+        await asyncio.to_thread(transport.create, model=scoring.MODEL)
+    assert not calls and transport.settled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_http_body_read_is_bounded_and_released(monkeypatch):
+    released = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            await asyncio.Event().wait()
+
+        def release(self):
+            released.append(True)
+
+    async def request(*args, **kwargs):
+        assert kwargs["_max_num_tries"] == 1 and not kwargs["_resend_after_disconnect"]
+        return Response()
+
+    monkeypatch.setattr(scoring, "request", request)
+    monkeypatch.setattr(scoring, "CREATOR_REQUEST_TIMEOUT_S", 0.01)
+    with pytest.raises(TimeoutError):
+        await scoring._send_guarded("http://localhost/ng-rollout/test/v1", {"model": scoring.MODEL}, {})
+    assert released == [True]
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_pending_transport_cleanup_restores_state(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "_meta.json").write_text(json.dumps({"task_id": "Life_002"}))
+    refs = tmp_path / "tasks/Life_002/target_study"
+    refs.mkdir(parents=True)
+    (refs / "checklist.json").write_text(json.dumps([{"weight": 1}]))
+    entered = threading.Event()
+    release = asyncio.Event()
+    worker_returned = threading.Event()
+    threads = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            return completion('{"score":50}').model_dump()
+
+        def release(self):
+            pass
+
+    async def request(*args, **kwargs):
+        entered.set()
+        await release.wait()
+        return Response()
+
+    class Agent:
+        def __init__(self, **kwargs):
+            self.client = SimpleNamespace(close=lambda: None)
+
+        def __call__(self, *args, **kwargs):
+            thread = threading.Thread(target=lambda: self.client.chat.completions.create(model=scoring.MODEL))
+            threads.append(thread)
+            thread.start()
+            entered.wait(5)
+            return {"score": 50}  # Mimics creator timeout returning while API thread is active.
+
+    def multi(inputs, function, **kwargs):
+        return [function(i, item) for i, item in enumerate(inputs)]
+
+    creator = SimpleNamespace(__file__=str(tmp_path / "evaluation/score.py"), LLMAgent=Agent, multi_thread=multi)
+
+    def native(workspace):
+        try:
+            creator.multi_thread([{}], lambda **kwargs: creator.LLMAgent()())
+        except RuntimeError:
+            pass
+        worker_returned.set()
+        return {"items": []}
+
+    creator.score_workspace = native
+    monkeypatch.setattr(scoring, "SOURCE_HASHES", {})
+    monkeypatch.setattr(scoring.importlib.metadata, "version", lambda name: "0.1.23")
+    monkeypatch.setattr(scoring.importlib, "import_module", lambda name: creator)
+    monkeypatch.setattr(scoring, "request", request)
+    monkeypatch.setenv("JUDGE_API_BASE", "original-base")
+    before = list(sys.path)
+    call = asyncio.create_task(
+        scoring.score(tmp_path, workspace, "http://localhost/ng-rollout/test/v1", "id", "Life_002")
+    )
+    await asyncio.to_thread(worker_returned.wait)
+    call.cancel()
+    await asyncio.sleep(0.01)
+    assert not call.done() and creator.LLMAgent is not Agent
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    for thread in threads:
+        thread.join(1)
+        assert not thread.is_alive()
+    assert creator.LLMAgent is Agent and creator.multi_thread is multi
+    assert os.environ["JUDGE_API_BASE"] == "original-base" and sys.path == before
