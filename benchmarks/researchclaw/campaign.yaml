@@ -19,7 +19,7 @@ harbor_agent:
     harbor_agent:
       entrypoint: app.py
       domain: agent
-      description: Pinned scientific Harbor pilot with deterministic upstream scoring.
+      description: Native checklist LLM judging with separate artifact capture.
       verified: false
       concurrency: 1
       harbor_datasets:

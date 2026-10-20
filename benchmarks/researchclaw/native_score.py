@@ -20,6 +20,21 @@ def score(source,workspace,output):
         def __init__(self,*a,**kw):
             assert kw['model_version']==MODEL
             self.agent=original(*a,**kw)
+            # Disable SDK retries; creator's explicit max_try2 remains observable.
+            if hasattr(self.agent, 'client'):
+                self.agent.client.max_retries=0
+                create=self.agent.client.chat.completions.create
+                def guarded(**request):
+                    if request.get('model') != MODEL: raise ValueError('Judge model request mismatch')
+                    response=create(**request)
+                    with lock:
+                        with open(output+'.provider.jsonl','a') as receipt:
+                            receipt.write(json.dumps({'request':request,'response':response.model_dump()})+'\n')
+                    if response.model != MODEL: raise ValueError('Judge returned model mismatch')
+                    if not response.choices or response.choices[0].finish_reason != 'stop' or not response.choices[0].message.content:
+                        raise ValueError('Judge incomplete or empty response')
+                    return response
+                self.agent.client.chat.completions.create=guarded
         def __call__(self,*a,**kw):
             result=self.agent(*a,**kw)
             with lock:
