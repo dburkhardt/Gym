@@ -4,6 +4,8 @@
 
 from typing import ClassVar
 
+from pydantic import Field
+
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
     BaseVerifyRequest,
@@ -20,6 +22,7 @@ from resources_servers.ctbench.grading import creator, parse_and_score
 class Config(BaseResourcesServerConfig):
     judge_model_server: ModelServerRef | None = None
     creator_root: str
+    judge_max_output_tokens: int = Field(default=1000, gt=0)
     REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
 
 
@@ -62,7 +65,7 @@ class Verifier:
             ],
             model="nvidia/nvidia/nemotron-3.5-super-vl",
             temperature=0,
-            max_output_tokens=1000,
+            max_output_tokens=self.config.judge_max_output_tokens,
         )
         judged = await call_judge(
             self.server_client,

@@ -73,3 +73,12 @@ def test_native(monkeypatch):
     )
     assert result.status_code == 200, result.text
     assert result.json()["reward"] == 1
+
+
+def test_explicit_judge_budget_variant():
+    from resources_servers.ctbench.app import Config
+    kwargs = dict(host="127.0.0.1", port=8080, entrypoint="app.py", name="ctbench", domain="knowledge", creator_root="/unused")
+    assert Config(**kwargs).judge_max_output_tokens == 1000
+    assert Config(**kwargs, judge_max_output_tokens=4096).judge_max_output_tokens == 4096
+    with pytest.raises(ValueError):
+        Config(**kwargs, judge_max_output_tokens=0)
