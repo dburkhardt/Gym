@@ -88,3 +88,23 @@ def test_admission_routing_retains_native_no_retry(tmp_path,monkeypatch):
     assert captured['max_retries']==0
     monkeypatch.setenv('MOOSE_ADMISSION_URL','https://unapproved.invalid')
     with pytest.raises(AssertionError):native.RecordedClient(stage='evaluate',trace=tmp_path/'trace',base_url='http://127.0.0.1:49180/v1',api_key='mock')
+
+def test_source_asset_drift_rejected(tmp_path):
+    import hashlib
+    from benchmarks.moosechem.remaining_two import validate_source
+    p=tmp_path/'prompt';p.write_text('exact creator prompt');pins={'prompt':hashlib.sha256(p.read_bytes()).hexdigest()}
+    validate_source(tmp_path,pins);p.write_text('changed')
+    with pytest.raises(AssertionError):validate_source(tmp_path,pins)
+
+def test_parent_interruption_child_is_discoverable_without_execution(tmp_path):
+    from benchmarks.moosechem.child_entry import hold_then_exec
+    import os
+    calls=[];ident=lambda pid:{'pid':pid,'pgid':pid,'start_ticks':123,'boot_id':'boot','command_hex':'aa'}
+    assert hold_then_exec(tmp_path,['native-command'],identity_fn=ident,execute=lambda *x:calls.append(x),timeout=0)==75
+    saved=json.loads((tmp_path/'child-identity.json').read_text());assert saved['pid']==os.getpid() and saved['start_ticks']==123 and saved['boot_id']=='boot'
+    assert calls==[] and saved['status']=='awaiting-parent-release'
+
+def test_runtime_drift_rejected(monkeypatch):
+    from benchmarks.moosechem.remaining_two import validate_runtime
+    monkeypatch.setattr(native.subprocess if hasattr(native,'subprocess') else __import__('subprocess'),'check_output',lambda *a,**k:'{"python_version":"changed"}')
+    with pytest.raises(AssertionError):validate_runtime('fake-python',{'python_version':'pinned'})

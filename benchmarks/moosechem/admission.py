@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Exact16k text-only MOOSE admission. No source/scorer changes or retries."""
-import asyncio,json,os,time,uuid
+import asyncio,json,os,time,uuid,hashlib
 from pathlib import Path
 import aiohttp
 from aiohttp import web
+CODE_SHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 MODEL='nvidia/nvidia/nemotron-3.5-super-vl'
 BASE=Path('/home/ubuntu/projects/broad-eval-campaign')
 OUT=BASE/'moosechem/remaining2-admission'
@@ -38,7 +39,7 @@ def gate(receipts,now,reserve):
 
 async def handle(request):
  global held
- if request.path=='/health':return web.json_response({'held':held or (OUT/'held.json').exists(),'model':MODEL})
+ if request.path=='/health':return web.json_response({'held':held or (OUT/'held.json').exists(),'model':MODEL,'code_sha256':CODE_SHA256})
  if request.method!='POST' or request.path!='/v1/chat/completions':raise web.HTTPNotFound()
  body=await request.json()
  if body.get('model')!=MODEL or body.get('stream') or request.headers.get('X-Campaign-Benchmark')!='MOOSE-Chem':raise web.HTTPForbidden()

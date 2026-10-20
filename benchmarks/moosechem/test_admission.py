@@ -46,6 +46,10 @@ class ProxyHTTP(unittest.IsolatedAsyncioTestCase):
  async def test_oversized_request_fails_without_waiting(self):
   self.assertEqual((await self.send(messages=[{'role':'user','content':'x'*100000}]))[0],400)
   self.assertEqual(self.calls,0)
+ async def test_health_attests_running_code(self):
+  import hashlib
+  async with self.client.get(self.proxy.make_url('/health')) as r:body=await r.json()
+  self.assertEqual(body['code_sha256'],hashlib.sha256(Path(p.__file__).read_bytes()).hexdigest())
  async def test_exact_success_and_durable_intent(self):
   self.status=200;self.payload={'model':p.MODEL,'usage':{'total_tokens':100}}
   self.assertEqual((await self.send())[0],200)
