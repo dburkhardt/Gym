@@ -1,1 +1,2 @@
+nemo-gym[server] @ file://../..
 ether0 @ git+https://github.com/Future-House/ether0@b77e0d8eb06f62c8528da72bff22d4c7fee11371
