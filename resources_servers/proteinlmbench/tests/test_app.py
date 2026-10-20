@@ -80,23 +80,33 @@ async def test_fixture():
 
 def test_prepare_checksum_and_count(tmp_path, monkeypatch):
     import hashlib
-    import io
 
     from benchmarks.proteinlmbench import prepare as module
 
     row = {"question": "synthetic", "options": ["option 1: a", "option 2: b"], "answer": "option 2"}
     payload = json.dumps([row] * 944).encode()
-    monkeypatch.setattr(module, "urlopen", lambda *args, **kwargs: io.BytesIO(payload))
+    cached = tmp_path / "cached.json"
+    cached.write_bytes(payload)
+
+    def download(**kwargs):
+        assert kwargs["revision"] == module.REVISION
+        assert kwargs["repo_type"] == "dataset"
+        return str(cached)
+
+    monkeypatch.setattr(module, "hf_hub_download", download)
     monkeypatch.setattr(module, "OUTPUT", tmp_path / "tasks.jsonl")
-    monkeypatch.setattr(module, "SHA256", "wrong")
-    with pytest.raises(ValueError, match="checksum"):
+    monkeypatch.setattr(module, "SHA256", "0" * 64)
+    with pytest.raises(ValueError, match="SHA-256|checksum"):
         module.prepare()
     monkeypatch.setattr(module, "SHA256", hashlib.sha256(payload).hexdigest())
     assert len(module.prepare().read_text().splitlines()) == 944
+    previous = module.OUTPUT.read_bytes()
     payload = b"[]"
+    cached.write_bytes(payload)
     monkeypatch.setattr(module, "SHA256", hashlib.sha256(payload).hexdigest())
     with pytest.raises(ValueError, match="944"):
         module.prepare()
+    assert module.OUTPUT.read_bytes() == previous
 
 
 def test_bad_metadata():

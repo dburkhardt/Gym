@@ -6,7 +6,11 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from urllib.request import urlopen
+from tempfile import TemporaryDirectory
+
+from huggingface_hub import hf_hub_download
+
+from nemo_gym.dataset_staging import stage_file
 
 
 REVISION = "f1397963c7f727a4a2f00cdd691e6e219c36e992"
@@ -49,8 +53,17 @@ def convert(source: list[dict]) -> list[dict]:
 
 def prepare() -> Path:
     """Download, checksum, validate, and write 944 deterministic evaluation tasks."""
-    with urlopen(URL, timeout=120) as response:
-        payload = response.read()
+    cached = Path(
+        hf_hub_download(
+            repo_id="tsynbio/ProteinLMBench",
+            repo_type="dataset",
+            filename="ProteinLMBench.json",
+            revision=REVISION,
+        )
+    )
+    source_path = OUTPUT.parent / "sources" / REVISION / "ProteinLMBench.json"
+    stage_file(cached, source_path, expected_sha256=SHA256)
+    payload = source_path.read_bytes()
     if hashlib.sha256(payload).hexdigest() != SHA256:
         raise ValueError("ProteinLMBench checksum mismatch; refusing changed source")
     source = json.loads(payload)
@@ -58,7 +71,11 @@ def prepare() -> Path:
         raise ValueError("Expected 944 public evaluation questions")
     rows = convert(source)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+    # Conversion is deterministic; publish only a complete, validated task file.
+    with TemporaryDirectory(dir=OUTPUT.parent) as temporary:
+        converted = Path(temporary) / "tasks.jsonl"
+        converted.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+        stage_file(converted, OUTPUT)
     return OUTPUT
 
 
