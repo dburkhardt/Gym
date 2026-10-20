@@ -37,6 +37,7 @@ def stage(source: Path, destination: Path) -> Path:
     expected_solver.update(
         f"blade_bench/datasets/{dataset}/{name}" for dataset in manifest["selected_datasets"] for name in PUBLIC_DATA
     )
+    expected_solver.add("blade_bench/datasets/fertility/info.json")
     solver_root = destination / "solver"
     for path in solver_root.rglob("*"):
         if path.is_symlink():
@@ -67,7 +68,9 @@ def stage(source: Path, destination: Path) -> Path:
         )
     for relative, checksum in files.items():
         parts = Path(relative).parts
-        if relative.startswith("blade_bench/datasets/"):
+        if relative == "blade_bench/datasets/fertility/info.json":
+            target = destination / "solver" / relative
+        elif relative.startswith("blade_bench/datasets/"):
             # Every dataset is explicitly selected; no hidden reference files in solver context.
             if len(parts) != 4 or parts[2] not in manifest["selected_datasets"]:
                 continue

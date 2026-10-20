@@ -33,7 +33,9 @@ def validate_staged(root: Path) -> None:
     expected = {}
     for relative, sha in manifest["files"].items():
         parts = Path(relative).parts
-        if relative.startswith("blade_bench/datasets/"):
+        if relative == "blade_bench/datasets/fertility/info.json":
+            role = "solver"
+        elif relative.startswith("blade_bench/datasets/"):
             if len(parts) != 4 or parts[2] not in DATASETS:
                 continue
             role = "solver" if parts[3] in ("data.csv", "info.json") else "references"

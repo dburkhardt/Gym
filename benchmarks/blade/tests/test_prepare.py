@@ -26,6 +26,9 @@ def test_native_source_staging_and_reference_isolation(tmp_path):
         ).read_bytes()
         assert row["verifier_metadata"]["native_info"] == json.loads((public / "info.json").read_text())
         assert (destination / "references/blade_bench/datasets" / dataset / "annotations.csv").is_file()
+    example = destination / "solver/blade_bench/datasets/fertility"
+    assert {p.name for p in example.iterdir() if not p.name.startswith(".")} == {"info.json"}
+    assert (example / "info.json").read_bytes() == (SOURCE / "blade_bench/datasets/fertility/info.json").read_bytes()
     before = output.read_bytes()
     assert stage(SOURCE, destination).read_bytes() == before
 
