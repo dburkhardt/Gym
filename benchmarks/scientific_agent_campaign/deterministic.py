@@ -691,10 +691,16 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     if kind == "qcbench":
         scorer = module(repo / "eval.py")
         parsed = scorer.extract_boxed(answer)
+        reference_self_score = scorer.is_numeric_equal_pro(meta["answer"], meta["answer"])
         return {
             "reward": scorer.is_numeric_equal_pro(meta["answer"], parsed),
             "parsed": parsed,
             "metric": "creator_numeric",
+            "reference_self_score": reference_self_score,
+            "measurement_valid": reference_self_score == 1,
+            "measurement_invalid_reason": (
+                None if reference_self_score == 1 else "Creator numeric scorer rejects its own reference answer"
+            ),
         }
     if kind == "genehop":
         if meta["category"] != "Disease gene location":
