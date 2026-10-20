@@ -31,3 +31,12 @@ def test_ms1_ms2_native_controls_and_counts():
    # Creator release omits s1/s2 columns: a correct answer has validity zero.
    assert positive['creator_metrics']['valid_choice']==0
    assert score(REPO,meta,'')['creator_metrics']['valid_choice']==1
+
+def test_all_released_editing_reference_and_empty_controls():
+ from benchmarks.molbench.adapter import prepare_editing_rows
+ rows=prepare_editing_rows(REPO);assert len(rows)==39
+ assert {r['verifier_metadata']['subtask'] for r in rows}=={'add','delete','sub'}
+ for row in rows:
+  meta=row['verifier_metadata'];reference=json.loads(meta['sample']['meta'])['reference']
+  assert score(REPO,meta,'<answer>'+reference+'</answer>')['reward']==1
+  assert score(REPO,meta,'')['reward']==0

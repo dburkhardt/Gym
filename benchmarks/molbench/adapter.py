@@ -15,6 +15,17 @@ def modules(repo):
 
 def score(repo,meta,answer):
  loaders,metrics=modules(repo)
+ if meta.get('stratum')=='mo-edit':
+  dependency=Path(repo)/'molbench/eval/ChemCoTBench/baseline_and_eval'
+  expected=json.loads(Path(__file__).with_name('editing-source-sha256.json').read_text())
+  for relative,sha in expected.items():
+   assert hashlib.sha256((Path(repo)/relative).read_bytes()).hexdigest()==sha,relative
+  loader=loaders.ChemCoTBenchMolEditLoader();subtask=meta['subtask'];parsed=loader.parse_agent_result({'action_history':[{'finish':answer}]},subtask);entry=loader.build_pred_entry(meta['sample'],parsed,answer,subtask)
+  with tempfile.TemporaryDirectory(prefix='molbench-edit-') as temporary:
+   directory=Path(temporary);predictions=directory/'preds';predictions.mkdir();path=predictions/(subtask+'.json');path.write_text(json.dumps([entry]))
+   aggregate=metrics.ChemCoTBenchMolEditEval().run(str(predictions),str(directory/'results'),str(dependency))
+   native=json.loads(path.read_text())[0]['metrics']
+  return {'reward':native['correct_rate'],'metric':'creator_edit_correct_rate','creator_metrics':native,'creator_aggregate':aggregate,'parsed':parsed,'source_condition':'tool-free editing baseline; native chemical substructure checks'}
  if meta.get('stratum') in ('ms-1','ms-2'):
   kind=meta['stratum'];loader=loaders.RdkitBenchLoader() if kind=='ms-1' else loaders.ACNetCuratedLoader();subtask='rdkit_bench' if kind=='ms-1' else 'qa'
   parsed=loader.parse_agent_result({'action_history':[{'finish':answer}]},subtask)
@@ -62,5 +73,15 @@ def prepare_screening_rows(repo,kind,seed=20261020):
   hint=templates.RDKIT_ANSWER_HINT if kind=='ms-1' else templates.ANSWER_OUTPUT_HINT
   messages=[{'role':'system','content':templates.SYSTEM_PROMPT_MINIMAL},{'role':'user','content':query+'\n\n'+hint}]
   rows.append({'uuid':kind+'-'+str(i),'stratum':kind,'responses_create_params':{'input':messages},'verifier_metadata':{'stratum':kind,'sample':sample}})
+ random.Random(seed).shuffle(rows)
+ return rows
+
+
+def prepare_editing_rows(repo,seed=20261020):
+ repo=Path(repo);loaders,_=modules(repo);templates=load(repo/'molclaw_run/templates/template.py','molbench_creator_template');loader=loaders.ChemCoTBenchMolEditLoader();rows=[]
+ for subtask in loader.get_subtasks():
+  for sample in loader.load_data(str(repo/'molbench/data/molbench-mo'),subtask):
+   messages=[{'role':'system','content':templates.SYSTEM_PROMPT_MINIMAL},{'role':'user','content':loader.get_query(sample,subtask)+'\n\n'+templates.ANSWER_OUTPUT_HINT}]
+   rows.append({'uuid':'mo-edit-'+sample['id'],'stratum':'mo-edit-'+subtask,'responses_create_params':{'input':messages},'verifier_metadata':{'stratum':'mo-edit','subtask':subtask,'sample':sample}})
  random.Random(seed).shuffle(rows)
  return rows
