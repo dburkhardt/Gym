@@ -116,6 +116,11 @@ class RecordedClient:
     def __init__(self, *, stage, trace, replay=None, output_token_budget=8192, **kwargs):
         from openai import OpenAI
         assert kwargs['base_url'] == 'http://127.0.0.1:49180/v1'
+        admission = os.environ.get('MOOSE_ADMISSION_URL')
+        if admission:
+            assert admission == 'http://127.0.0.1:49394/v1'
+            kwargs['base_url'] = admission
+            kwargs['default_headers'] = dict(kwargs.get('default_headers') or {}, **{'X-Campaign-Benchmark':'MOOSE-Chem'})
         self.inner = OpenAI(**kwargs, max_retries=0, timeout=600)
         self.stage, self.trace, self.replay = stage, Path(trace), replay
         assert output_token_budget in (8192,16384)

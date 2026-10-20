@@ -68,3 +68,23 @@ def test_interrupt_retains_unknown_outcome(tmp_path,interrupt):
     r=json.loads(c.trace.read_text())
     assert r['outcome']=='unknown' and r['requires_reconciliation']
     assert 'response' not in r
+
+def test_remaining_two_excludes_completed38(tmp_path):
+    from benchmarks.moosechem.remaining_two import tasks_from_sample
+    p=tmp_path/'sample.jsonl';p.write_text('\n'.join(json.dumps({'id':i}) for i in [18,26,38,0,33]))
+    assert tasks_from_sample(p)==[0,33]
+    p.write_text('\n'.join(json.dumps({'id':i}) for i in [18,26,0,38,33]))
+    with pytest.raises(AssertionError):tasks_from_sample(p)
+
+def test_admission_routing_retains_native_no_retry(tmp_path,monkeypatch):
+    import openai
+    captured={}
+    def fake(**kwargs):captured.update(kwargs);return SimpleNamespace()
+    monkeypatch.setattr(openai,'OpenAI',fake)
+    monkeypatch.setenv('MOOSE_ADMISSION_URL','http://127.0.0.1:49394/v1')
+    native.RecordedClient(stage='evaluate',trace=tmp_path/'trace',base_url='http://127.0.0.1:49180/v1',api_key='mock')
+    assert captured['base_url']=='http://127.0.0.1:49394/v1'
+    assert captured['default_headers']['X-Campaign-Benchmark']=='MOOSE-Chem'
+    assert captured['max_retries']==0
+    monkeypatch.setenv('MOOSE_ADMISSION_URL','https://unapproved.invalid')
+    with pytest.raises(AssertionError):native.RecordedClient(stage='evaluate',trace=tmp_path/'trace',base_url='http://127.0.0.1:49180/v1',api_key='mock')
