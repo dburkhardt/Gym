@@ -1,0 +1,6 @@
+bioagent_agent:
+  responses_api_agents:
+    bioagent_native:
+      entrypoint: app.py
+      trace_path: ${oc.env:BIOAGENT_NATIVE_TRACE}
+      provider_trace: ${oc.env:BIOAGENT_PROVIDER_TRACE}
