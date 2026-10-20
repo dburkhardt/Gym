@@ -104,3 +104,60 @@ def test_native_judge_contract(name, metadata, judge_answer, tmp_path, monkeypat
     assert result.json()["reward"] == 1.0
     assert judge.call_args.kwargs["json"].model == "nvidia/nvidia/nemotron-3.5-super-vl"
     assert result.json()["diagnostics"]["judge_response"]["model"] == "nvidia/nvidia/nemotron-3.5-super-vl"
+
+
+@pytest.mark.parametrize("name", ["biomaze", "fdarxbench", "ctbench"])
+@pytest.mark.parametrize("condition", ["incomplete", "empty", "wrong_model"])
+def test_judge_failure_receipt(name, condition, tmp_path, monkeypatch):
+    import os
+
+    from nemo_gym.openai_utils import NeMoGymResponse
+
+    mod = importlib.import_module(f"resources_servers.{name}.app")
+    template = tmp_path / "judge.txt"
+    template.write_text("{question} {target} {predicted_answer}")
+    extra = (
+        {"creator_root": os.environ["CTBENCH_SOURCE"]} if name == "ctbench" else {"judge_prompt_file": str(template)}
+    )
+    cfg = mod.Config(
+        host="127.0.0.1",
+        port=8080,
+        entrypoint="app.py",
+        name=name,
+        domain="knowledge",
+        judge_model_server={"type": "responses_api_models", "name": "policy_model"},
+        **extra,
+    )
+    receipt = response("")
+    if condition == "incomplete":
+        receipt["status"] = "incomplete"
+        receipt["incomplete_details"] = {"reason": "max_output_tokens"}
+    elif condition == "wrong_model":
+        receipt["model"] = "unauthorized-model"
+    monkeypatch.setattr(mod, "call_judge", AsyncMock(return_value=NeMoGymResponse.model_validate(receipt)))
+    metadata = {
+        "protocol": "openended",
+        "question": "q",
+        "answer": "r",
+        "reference": "`Age`",
+        "trial_context": "Trial",
+    }
+    server = mod.Server(config=cfg, server_client=MagicMock(spec=ServerClient))
+    with TestClient(server.setup_webserver()) as client:
+        body = {
+            "responses_create_params": {"input": [{"role": "user", "content": "fixture"}]},
+            "response": response("candidate"),
+            "verifier_metadata": metadata,
+        }
+        if condition == "wrong_model":
+            with pytest.raises(RuntimeError, match="allowlist"):
+                client.post("/verify", json=body)
+            return
+        result = client.post("/verify", json=body)
+    assert result.status_code == 200, result.text
+    data = result.json()
+    assert data["mask_sample"] is True
+    assert data["failure_kind"] == "judge_failed"
+    assert data["reward"] == 0
+    assert data["diagnostics"]["judge_response"]["status"] == receipt["status"]
+    assert data["diagnostics"]["reward_is_serialization_placeholder"] is True

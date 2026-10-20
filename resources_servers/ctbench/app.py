@@ -32,6 +32,21 @@ class Response(BaseVerifyResponse, Request):
 
 
 class Verifier:
+    def judge_failure(self, body: Request, judged: NeMoGymResponse, reason: str) -> Response:
+        return Response(
+            **body.model_dump(),
+            reward=0.0,
+            mask_sample=True,
+            failure_kind="judge_failed",
+            failure_reason=reason,
+            diagnostics={
+                "judge_response": judged.model_dump(),
+                "failure_reason": reason,
+                "reward_is_serialization_placeholder": True,
+                "denominator_policy": "Retain attempted item; report judge failure separately from performance",
+            },
+        )
+
     async def verify(self, body: Request) -> Response:
         if not self.config.judge_model_server:
             raise RuntimeError("CTBench requires Nemotron judge")
@@ -59,8 +74,13 @@ class Verifier:
         if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
             raise RuntimeError("Judge model is outside benchmark allowlist")
         if judged.status != "completed":
-            raise RuntimeError("Judge did not complete; preserve as grader failure")
-        scores = parse_and_score(judged.output_text or "", references, candidates, functions)
+            return self.judge_failure(body, judged, f"Judge status {judged.status}: {judged.incomplete_details}")
+        if not (judged.output_text or "").strip():
+            return self.judge_failure(body, judged, "Judge returned empty text")
+        try:
+            scores = parse_and_score(judged.output_text or "", references, candidates, functions)
+        except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
+            return self.judge_failure(body, judged, f"Creator scorer or judge structure failure: {exc}")
         return Response(
             **body.model_dump(),
             reward=float(scores["f1"]),

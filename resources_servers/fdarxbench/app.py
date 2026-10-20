@@ -33,6 +33,21 @@ class Response(BaseVerifyResponse, Request):
 
 
 class Verifier:
+    def judge_failure(self, body: Request, judged: NeMoGymResponse, reason: str) -> Response:
+        return Response(
+            **body.model_dump(),
+            reward=0.0,
+            mask_sample=True,
+            failure_kind="judge_failed",
+            failure_reason=reason,
+            diagnostics={
+                "judge_response": judged.model_dump(),
+                "failure_reason": reason,
+                "reward_is_serialization_placeholder": True,
+                "denominator_policy": "Retain attempted item; report judge failure separately from performance",
+            },
+        )
+
     async def verify(self, body: Request) -> Response:
         if not self.config.judge_model_server or not self.config.judge_prompt_file:
             raise RuntimeError("FDARx requires Nemotron judge and pinned creator judge prompt")
@@ -62,13 +77,19 @@ class Verifier:
         if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
             raise RuntimeError("Judge model is outside benchmark allowlist")
         if judged.status != "completed":
-            raise RuntimeError("Judge did not complete; preserve as grader failure")
+            return self.judge_failure(body, judged, f"Judge status {judged.status}: {judged.incomplete_details}")
+        if not (judged.output_text or "").strip():
+            return self.judge_failure(body, judged, "Judge returned empty text")
+        try:
+            label = parse_judge(judged.output_text or "")
+        except ValueError as exc:
+            return self.judge_failure(body, judged, str(exc))
         return Response(
             **body.model_dump(),
-            reward=float(parse_judge(judged.output_text or "") == "A"),
+            reward=float(label == "A"),
             diagnostics={
                 "protocol": "FDARx Nemotron judge variant",
-                "judge_label": parse_judge(judged.output_text or ""),
+                "judge_label": label,
                 "judge_response": judged.model_dump(),
                 "deviation": "Nemotron judge replaces reported judge; exact creator rubric retained",
             },
