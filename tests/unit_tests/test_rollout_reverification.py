@@ -3590,6 +3590,7 @@ async def test_guarded_reverify_coordinator_lease_blocks_other_owner(tmp_path, m
     from nemo_gym.config_types import ConfigError
     from nemo_gym.rollout_reverification import RolloutReverificationHelper
 
+    monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
     monkeypatch.setattr("nemo_gym.rollout_reverification._prepare_atif_payloads", lambda *args: [])
     monkeypatch.setattr("nemo_gym.rollout_reverification._guard_atif_preflight", AsyncMock())
     started, release = asyncio.Event(), asyncio.Event()
@@ -3665,6 +3666,7 @@ async def test_guarded_corrupt_identity_preserves_existing_results(tmp_path, mon
     from nemo_gym.rollout_reverification import RolloutReverificationHelper
 
     output = tmp_path / "out.jsonl"
+    monkeypatch.setattr("nemo_gym.rollout_reverification._validate_reverification_guard", lambda expected: None)
     monkeypatch.setattr("nemo_gym.rollout_reverification._prepare_atif_payloads", lambda *args: [])
     monkeypatch.setattr("nemo_gym.rollout_reverification._guard_atif_preflight", AsyncMock())
     output.write_text("previous results\n")
@@ -3750,3 +3752,35 @@ async def test_guarded_rejected_fresh_run_never_publishes_identity(tmp_path):
         await RolloutReverificationHelper().run_from_config(config)
     assert output.read_text() == "legacy results\n"
     assert not output.with_name(output.name + ".reverify-identity.json").exists()
+
+
+async def test_guard_mismatch_preflight_preserves_existing_history(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from nemo_gym.config_types import ConfigError
+    from nemo_gym.rollout_reverification import RolloutReverificationHelper, _verification_run_identity
+
+    output = tmp_path / "out.jsonl"
+    output.write_text("old results\n")
+    original = _verification_run_identity(output, resume=False, overwrite=False, append=False)
+    monkeypatch.setattr("nemo_gym.rollout_reverification._prepare_atif_payloads", lambda *args: [])
+    monkeypatch.setattr("nemo_gym.rollout_reverification._guard_atif_preflight", AsyncMock())
+    monkeypatch.setattr(
+        "nemo_gym.rollout_reverification.setup_server_client",
+        lambda: SimpleNamespace(global_config_dict={"provider_dispatch_guard": False}),
+    )
+    config = SimpleNamespace(
+        output_jsonl_fpath=str(output),
+        provider_dispatch_guard=True,
+        input_format="atif",
+        materialized_inputs_jsonl_fpath="unused",
+        atif_manifest_jsonl_fpath="unused",
+        limit=None,
+        resume_from_cache=False,
+        overwrite=True,
+        append=False,
+    )
+    with pytest.raises(ConfigError, match="must match"):
+        await RolloutReverificationHelper().run_from_config(config)
+    assert output.read_text() == "old results\n"
+    assert _verification_run_identity(output, resume=True, overwrite=False, append=False) == original

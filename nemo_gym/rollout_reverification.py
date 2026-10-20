@@ -732,6 +732,14 @@ def _prepare_atif_payloads(
     ]
 
 
+def _validate_reverification_guard(expected: bool) -> None:
+    server_guard = bool(setup_server_client().global_config_dict.get("provider_dispatch_guard", False))
+    if server_guard != expected:
+        raise ConfigError(
+            "reverification guard configuration must match model servers; persisted run lineage required"
+        )
+
+
 @contextmanager
 def _verification_output_lease(output: Path):
     """One coordinator owns output preparation, lineage and dispatch until completion."""
@@ -1127,6 +1135,7 @@ class RolloutReverificationHelper(BaseModel):
                     config.limit,
                     retry_terminal_timeouts=config.retry_terminal_timeouts,
                 )
+            _validate_reverification_guard(True)
             # Validate persisted identity before output preparation can unlink results.
             identity = _verification_run_identity(
                 output, resume=config.resume_from_cache, overwrite=config.overwrite, append=config.append
