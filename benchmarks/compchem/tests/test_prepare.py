@@ -103,3 +103,22 @@ def test_scorer_controls_replace_plural_native_agents_without_model_route():
     assert original["agents"][0]["import_path"] == "Terminus2NemoGym"
     with pytest.raises(ValueError):
         control_config(original, "terminus-2")
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [
+        [{"name": "terminus-2"}],
+        [{"name": "nop", "import_path": "Terminus2NemoGym"}],
+        [{"name": "nop", "model_name": "Nemotron"}],
+        [{"name": "nop", "kwargs": {"api_base": "live-provider"}}],
+    ],
+)
+def test_resolved_control_rejects_solver_or_model_configuration(agents):
+    from types import SimpleNamespace
+
+    from benchmarks.compchem.controls import validate_control
+
+    resolved = SimpleNamespace(model_dump=lambda **kwargs: {"agents": agents})
+    with pytest.raises(ValueError):
+        validate_control(resolved, "nop")
