@@ -821,3 +821,71 @@ async def test_a_restart_episode_keeps_running_through_a_checkpoint_without_a_cr
     assert continued.json()["result"]["reward"] == 1.0
     assert restarted.json()["result"]["reward"] == 1.0
     assert restarted.json()["episode_id"]["attempt"] == 0
+
+
+@POLICY_WORKERS
+async def test_guarded_completed_inference_survives_native_checkpoint_restart(
+    deploy, tmp_path: Path, policy_workers: int
+):
+    """Real server crash/restore through native coordination, with evaluation capture instead of token ledger."""
+    capture_dir = tmp_path / "provider-capture"
+    deployment = deploy(
+        "slow",
+        checkpoint_verify="replay",
+        policy_workers=policy_workers,
+        extra_config={
+            "provider_dispatch_guard": True,
+            "observability_enabled": True,
+            "model_call_capture_dir": str(capture_dir),
+        },
+    )
+    deployment.slow_verify_flag.touch()
+    async with GymHTTP(deployment.url("environment"), timeout=120) as http:
+        first = asyncio.create_task(http.post("/run", json=weather_episode("guarded-native")))
+        await wait_until(lambda: deployment.verifications() == 1)
+        before = len(deployment.backend_calls())
+        assert before == 2
+        await checkpoint(deployment, tmp_path / "guarded-checkpoint", ["guarded-native"])
+        model_files = list((tmp_path / "guarded-checkpoint").rglob("*.jsonl"))
+        persisted = "\n".join(p.read_text() for p in model_files)
+        assert "provider_store_identity" in persisted
+        assert environment_record(tmp_path / "guarded-checkpoint")["boundary"]["next"] == "verify"
+        await crash_and_restore(deployment, tmp_path / "guarded-checkpoint", ["guarded-native"])
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        replacement = await http.post("/run", json=weather_episode("guarded-native", attempt=1))
+    assert replacement.status_code == 200
+    assert replacement.json()["result"]["reward"] == 1.0
+    assert len(deployment.backend_calls()) == before
+    records = [json.loads(line) for p in capture_dir.glob("*.capture.jsonl") for line in p.read_text().splitlines()]
+    assert sum(len(r.get("provider_attempts", [])) for r in records) == 2
+    assert all(a["outcome"] == "captured" for r in records for a in r.get("provider_attempts", []))
+
+
+async def test_guarded_native_checkpoint_refuses_accepted_unresolved_dispatch(deploy, tmp_path: Path):
+    deployment = deploy(
+        "native",
+        extra_config={
+            "provider_dispatch_guard": True,
+            "observability_enabled": True,
+            "model_call_capture_dir": str(tmp_path / "provider-capture"),
+        },
+    )
+    deployment.backend("/_ctl/hold", {"after_calls": 0})
+    async with GymHTTP(deployment.url("environment"), timeout=120) as http:
+        first = asyncio.create_task(http.post("/run", json=weather_episode("guarded-unknown")))
+        await wait_for_calls(deployment, 1)
+        participants = await deployment.participants()
+        prepared = await coordination.prepare(participants, "uncertain", deadline_ts=deadline())
+        assert prepared.prepared
+        with pytest.raises(Exception, match="unresolved provider"):
+            await coordination.commit(
+                participants,
+                "uncertain",
+                str(tmp_path / "unsafe-checkpoint"),
+                [EpisodeId(rollout_id="guarded-unknown")],
+                deadline_ts=deadline(),
+            )
+        assert len(deployment.backend_calls()) == 1
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
