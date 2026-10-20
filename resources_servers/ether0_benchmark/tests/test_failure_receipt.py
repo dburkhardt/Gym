@@ -96,3 +96,13 @@ def test_score_worker_keeps_creator_prints_off_json_stdout(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert json.loads(captured.out.removeprefix("ETHER0_RESULT_JSON:")) == {"reward": 1.0}
     assert "creator diagnostic" in captured.err
+
+
+def test_missing_creator_package_is_explicit_runtime_failure(monkeypatch):
+    import importlib.util
+
+    from resources_servers.ether0_benchmark.grading import grade
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(RuntimeError, match="creator package is not installed"):
+        grade("CCO", solution="fg_eval!:!x")

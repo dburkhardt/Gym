@@ -10,10 +10,16 @@ def grade(text: str, *, solution: str, **metadata: object) -> dict:
         raise RuntimeError("This task requires the creator chemical oracle service; not configured")
     # The creator wheel omits these native BloomFilter inputs. Missing files
     # cause molbloom to segfault rather than raising FileNotFoundError.
-    import importlib.util
     import hashlib
+    import importlib.util
     from pathlib import Path
-    package = Path(importlib.util.find_spec("ether0").origin).parent
+
+    spec = importlib.util.find_spec("ether0")
+    if spec is None or spec.origin is None:
+        raise RuntimeError(
+            "Pinned ether0 creator package is not installed; install resource requirements before scoring"
+        )
+    package = Path(spec.origin).parent
     hashes = {
         "fingerprints.bloom": "f9267f986c512f26131eb0219170c12e07ded9c1574c75233da5e3d5f3f00278",
         "rings.bloom": "b1b81b5dc5e59d2068742aafb0c217067e951260f56527998e902d37ac177a25",
