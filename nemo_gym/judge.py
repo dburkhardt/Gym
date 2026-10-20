@@ -33,12 +33,14 @@ exception it sees, so covering a whole ``verify()`` would misfile ordinary bugs
 
 import functools
 import re
+from collections.abc import Mapping
 from typing import Any, Awaitable, Callable, Type, TypeVar
 
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.server_utils import ServerClient, get_response_json, raise_for_status
 
 
@@ -75,6 +77,9 @@ async def call_judge(
     url_path: str,
     json: Any,
     response_model: Type[ResponseT],
+    verification_id: str | None = None,
+    call_id: str | None = None,
+    scorer_identity: dict | None = None,
 ) -> ResponseT:
     """POST to a judge model server and parse the reply; raise JudgeError on failure.
 
@@ -85,7 +90,20 @@ async def call_judge(
     """
 
     async def _call() -> ResponseT:
-        http_response = await server_client.post(server_name=server_name, url_path=url_path, json=json)
+        headers = {}
+        global_config = getattr(server_client, "global_config_dict", None)
+        if isinstance(global_config, Mapping) and global_config.get("provider_dispatch_guard", False):
+            if not verification_id or not call_id or not scorer_identity:
+                raise JudgeError(
+                    "guarded judge requires persisted verification_id, explicit call_id and scorer_identity"
+                )
+            headers = {
+                "x-nemo-gym-logical-call-id": f"judge:{verification_id}:{call_id}",
+                "x-nemo-gym-call-config-sha256": configuration_digest({"role": "judge", "scorer": scorer_identity}),
+            }
+        http_response = await server_client.post(
+            server_name=server_name, url_path=url_path, json=json, **({"headers": headers} if headers else {})
+        )
         await raise_for_status(http_response)
         return response_model.model_validate(await get_response_json(http_response))
 

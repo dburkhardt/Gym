@@ -3555,3 +3555,73 @@ class TestVerifyAggregationRoutingConsistency:
         await _call_aggregate_metrics(results, rows, tmp_path / "out.jsonl")
 
         assert posted == ["math_rs"]
+
+
+def test_guarded_reverify_identity_is_durable_and_explicitly_fresh(tmp_path):
+    from nemo_gym.config_types import ConfigError
+    from nemo_gym.global_config import ROLLOUT_INDEX_KEY_NAME, TASK_INDEX_KEY_NAME
+    from nemo_gym.rollout_reverification import _bind_verification_payloads, _verification_run_identity
+
+    output = tmp_path / "regraded.jsonl"
+    first = _verification_run_identity(output, resume=False, overwrite=False, append=False)
+    resumed = _verification_run_identity(output, resume=True, overwrite=False, append=False)
+    assert first == resumed
+    with pytest.raises(ConfigError, match="already exists"):
+        _verification_run_identity(output, resume=False, overwrite=False, append=False)
+    fresh = _verification_run_identity(output, resume=False, overwrite=True, append=False)
+    assert fresh != first
+    with pytest.raises(ConfigError, match="without its persisted"):
+        _verification_run_identity(tmp_path / "missing.jsonl", resume=True, overwrite=False, append=False)
+    rows = [{TASK_INDEX_KEY_NAME: 1, ROLLOUT_INDEX_KEY_NAME: 0}, {TASK_INDEX_KEY_NAME: 2, ROLLOUT_INDEX_KEY_NAME: 0}]
+    _bind_verification_payloads(rows, first)
+    original = [row["verification_id"] for row in rows]
+    assert original[0] != original[1]
+    _bind_verification_payloads(rows, resumed)
+    assert [row["verification_id"] for row in rows] == original
+    _bind_verification_payloads(rows, fresh)
+    assert all(row["verification_id"] != previous for row, previous in zip(rows, original))
+
+
+@pytest.mark.parametrize("mode", ["fresh", "resume", "overwrite"])
+async def test_guarded_reverify_coordinator_lease_blocks_other_owner(tmp_path, mode, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from nemo_gym.config_types import ConfigError
+    from nemo_gym.rollout_reverification import RolloutReverificationHelper
+
+    started, release = asyncio.Event(), asyncio.Event()
+    entered = []
+
+    async def active(self, config):
+        entered.append(config)
+        started.set()
+        await release.wait()
+        return []
+
+    monkeypatch.setattr(RolloutReverificationHelper, "_run_from_config", active)
+    config = SimpleNamespace(
+        output_jsonl_fpath=str(tmp_path / "out.jsonl"),
+        provider_dispatch_guard=True,
+        resume_from_cache=mode == "resume",
+        overwrite=mode == "overwrite",
+    )
+    first = asyncio.create_task(RolloutReverificationHelper().run_from_config(config))
+    await started.wait()
+    try:
+        with pytest.raises(ConfigError, match="active coordinator"):
+            await RolloutReverificationHelper().run_from_config(config)
+        assert len(entered) == 1
+    finally:
+        release.set()
+        await first
+
+
+def test_guarded_reverify_incomplete_identity_cannot_resume(tmp_path):
+    from nemo_gym.config_types import ConfigError
+    from nemo_gym.rollout_reverification import _verification_run_identity
+
+    output = tmp_path / "out.jsonl"
+    output.with_name(output.name + ".reverify-identity.json").write_bytes(b"")
+    with pytest.raises(ConfigError):
+        _verification_run_identity(output, resume=True, overwrite=False, append=False)

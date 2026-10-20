@@ -13,14 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import fcntl
+import hashlib
 import json
+import os
 import warnings
 from asyncio import Future, Semaphore
 from collections import Counter, defaultdict
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from uuid import uuid4
 
 import orjson
 from omegaconf import DictConfig
@@ -62,6 +66,7 @@ from nemo_gym.rollout_collection import (
     is_terminal_failure,
     migrate_invalid_judge_main_rows,
 )
+from nemo_gym.rollout_correlation import rollout_context
 from nemo_gym.server_utils import (
     ServerClient,
     get_response_json,
@@ -95,6 +100,7 @@ _RECOVERY_TWO_SOURCES_WARNING = (
 
 
 class RolloutReverificationConfig(UploadRolloutsConfigMixin, BaseNeMoGymCLIConfig):
+    provider_dispatch_guard: bool = False
     input_format: Literal["gym", "atif"] = Field(
         default="gym",
         description=(
@@ -726,6 +732,74 @@ def _prepare_atif_payloads(
     ]
 
 
+@contextmanager
+def _verification_output_lease(output: Path):
+    """One coordinator owns output preparation, lineage and dispatch until completion."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.with_name(output.name + ".reverify-lease").open("a+b") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ConfigError("guarded reverification output has an active coordinator") from error
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _verification_run_identity(output: Path, *, resume: bool, overwrite: bool, append: bool) -> str:
+    """Durably bind one regrade run before dispatch; resume retains, overwrite replaces."""
+    path = output.with_name(output.name + ".reverify-identity.json")
+    existed = path.exists()
+    with path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.seek(0)
+            existing = handle.read()
+            if existing and (resume or append):
+                identity = orjson.loads(existing)["verification_run_id"]
+                if not isinstance(identity, str) or not identity:
+                    raise ConfigError("invalid verification run identity; reconcile before resuming")
+                os.fsync(handle.fileno())
+                directory = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+                return identity
+            if (existing or existed) and not overwrite:
+                raise ConfigError("verification run identity already exists; use resume or explicit overwrite")
+            if resume and not existing:
+                raise ConfigError("cannot resume guarded reverification without its persisted run identity")
+            identity = uuid4().hex
+            handle.seek(0)
+            handle.truncate()
+            handle.write(orjson.dumps({"verification_run_id": identity}))
+            handle.flush()
+            os.fsync(handle.fileno())
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            return identity
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _bind_verification_payloads(payloads: List[Dict], run_id: str) -> None:
+    """Give each task its explicit scoring lineage, independent of model response text."""
+    for row in payloads:
+        task = {
+            "task_index": row[TASK_INDEX_KEY_NAME],
+            "rollout_index": row[ROLLOUT_INDEX_KEY_NAME],
+            "task_source": row.get(TASK_SOURCE_KEY_NAME),
+            "agent_ref": row.get(AGENT_REF_KEY_NAME),
+        }
+        digest = hashlib.sha256(orjson.dumps(task, option=orjson.OPT_SORT_KEYS)).hexdigest()
+        row["verification_id"] = f"{run_id}:{digest}"
+
+
 def _run_verification_payloads(
     payloads: List[Dict],
     semaphore: Semaphore | nullcontext[None] | None = None,
@@ -738,7 +812,16 @@ def _run_verification_payloads(
         async with semaphore:
             rs_name = _rs_for_row(row, agent_to_rs, server_client.global_config_dict)
             request_row = {key: value for key, value in row.items() if key != ATIF_PROVENANCE_KEY}
-            res = await server_client.post(server_name=rs_name, url_path="/verify", json=request_row)
+            # A regrade has its own persisted lineage rather than inheriting the
+            # original generation attempt or an incidental launcher context.
+            verification_id = row.get("verification_id")
+            context = (
+                rollout_context("reverify-" + hashlib.sha256(verification_id.encode()).hexdigest())
+                if verification_id
+                else nullcontext()
+            )
+            with context:
+                res = await server_client.post(server_name=rs_name, url_path="/verify", json=request_row)
             try:
                 await raise_for_status(
                     res
@@ -1002,6 +1085,12 @@ def _load_reverified_results(output_fpath: Path) -> Tuple[List[Dict], List[Dict]
 
 class RolloutReverificationHelper(BaseModel):
     async def run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
+        output = _resolve_under_cwd_or_install(config.output_jsonl_fpath)
+        lease = _verification_output_lease(output) if config.provider_dispatch_guard else nullcontext()
+        with lease:
+            return await self._run_from_config(config)
+
+    async def _run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
         force_warning: Optional[str] = None
         output_name_prefix = ""
         if config.input_format != "atif":
@@ -1065,6 +1154,15 @@ class RolloutReverificationHelper(BaseModel):
                 rollout_predicate=rollout_predicate,
                 retry_terminal_timeouts=config.retry_terminal_timeouts,
             )
+
+        if config.provider_dispatch_guard:
+            verification_run_id = _verification_run_identity(
+                output_fpaths.output,
+                resume=config.resume_from_cache,
+                overwrite=config.overwrite,
+                append=config.append,
+            )
+            _bind_verification_payloads(payloads_to_reverify, verification_run_id)
 
         semaphore = nullcontext()
         if config.num_samples_in_parallel is not None:

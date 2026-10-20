@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
+from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar
 
@@ -74,6 +75,14 @@ class Verifier:
                 url_path="/v1/responses",
                 json=params,
                 response_model=NeMoGymResponse,
+                verification_id=body.verification_id,
+                call_id="conclusion",
+                scorer_identity={
+                    "protocol": "biomaze-conclusion-judge-v1",
+                    "prompt_sha256": sha256(Path(self.config.judge_prompt_file).read_bytes()).hexdigest(),
+                    "scorer_sha256": sha256(Path(__file__).with_name("openended.py").read_bytes()).hexdigest(),
+                    "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                },
             )
             if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
                 raise RuntimeError("Judge model is outside benchmark allowlist")

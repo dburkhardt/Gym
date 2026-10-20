@@ -150,3 +150,40 @@ class TestJudgeFailsafe:
         assert len(data["failure_reason"]) == 2000
         assert data["_ng_failure_judge_error"] == data["failure_reason"]
         assert request.model_dump() == original
+
+
+@pytest.mark.asyncio
+async def test_guarded_judge_requires_explicit_scoring_lineage():
+    client = _client(status=200, body=b'{"verdict":"CORRECT"}')
+    client.global_config_dict = {"provider_dispatch_guard": True}
+    with pytest.raises(JudgeError, match="persisted verification_id"):
+        await _call(client)
+    client.post.assert_not_awaited()
+    for verification_id in ("run-a:task-1", "run-a:task-1", "run-b:task-1"):
+        await call_judge(
+            client,
+            server_name="judge",
+            url_path="/v1/responses",
+            json={},
+            response_model=_Verdict,
+            verification_id=verification_id,
+            call_id="conclusion",
+            scorer_identity={"version": "v1"},
+        )
+    headers = [call.kwargs["headers"] for call in client.post.await_args_list]
+    assert headers[0] == headers[1]
+    assert headers[0]["x-nemo-gym-logical-call-id"] != headers[2]["x-nemo-gym-logical-call-id"]
+    await call_judge(
+        client,
+        server_name="judge",
+        url_path="/v1/responses",
+        json={},
+        response_model=_Verdict,
+        verification_id="run-a:task-1",
+        call_id="conclusion",
+        scorer_identity={"version": "v2"},
+    )
+    assert (
+        client.post.await_args.kwargs["headers"]["x-nemo-gym-call-config-sha256"]
+        != headers[0]["x-nemo-gym-call-config-sha256"]
+    )

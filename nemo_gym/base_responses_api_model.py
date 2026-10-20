@@ -1334,6 +1334,10 @@ def build_model_call_record(exchange: dict[str, Any], *, call_index: int) -> Mod
     response = raw_response if isinstance(raw_response, dict) else {}
     tokens = extract_token_stats(response.get("usage"))
     cache_hit, cached_tokens = _cache_signal(response.get("usage"))
+    if exchange.get("replayed_from_model_call_id"):
+        # Raw usage remains in response; these counters describe new provider work.
+        tokens = {key: 0 for key in tokens}
+        cache_hit, cached_tokens = False, 0
     tool_calls, reasoning_content = _tool_calls_and_reasoning(response)
     raw_request = exchange.get("request")
     request = raw_request if isinstance(raw_request, dict) else {}

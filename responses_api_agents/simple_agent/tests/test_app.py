@@ -2781,11 +2781,14 @@ async def test_an_indexed_reply_is_kept_unserialized_until_a_replay_or_an_export
     assert exported["response"] == original.json() == kept.model_dump(mode="json")
 
 
+@pytest.mark.parametrize("guarded", [False, True])
 async def test_a_checkpoint_of_a_legacy_run_parked_at_verify_holds_its_reply_once_and_a_restore_still_replies(
     tmp_path,
+    guarded,
 ) -> None:
     """The verify boundary holds the turn loop's reply, so the session no longer exports its own copy."""
     verifying, release = asyncio.Event(), asyncio.Event()
+    verification_ids = []
 
     def route(server: SimpleAgent, server_client: MagicMock) -> None:
         calls: list[str] = []
@@ -2799,6 +2802,7 @@ async def test_a_checkpoint_of_a_legacy_run_parked_at_verify_holds_its_reply_onc
                 reply.headers = {"x-ng-checkpoint-verify": "replay"}
                 return reply
             if url_path == "/verify":
+                verification_ids.append(kwargs["json"].get("verification_id"))
                 verifying.set()
                 await release.wait()
             return await answer(server_name=server_name, url_path=url_path, **kwargs)
@@ -2807,6 +2811,7 @@ async def test_a_checkpoint_of_a_legacy_run_parked_at_verify_holds_its_reply_onc
 
     def observed_agent() -> tuple[SimpleAgent, MagicMock, ParticipantControlPlane]:
         server, server_client = _make_agent(True)
+        server_client.global_config_dict["provider_dispatch_guard"] = guarded
         server._checkpoint_participant = AgentSessionParticipant(server)
         controller = ParticipantControlPlane(
             server.checkpoint_participant, instance_name="agent", lease_grace_seconds=60
@@ -2838,6 +2843,12 @@ async def test_a_checkpoint_of_a_legacy_run_parked_at_verify_holds_its_reply_onc
     assert json.dumps(record).count('"_ng_trajectory"') == 1
     assert result.response.output == first.response.output and result.reward == 1.0
     assert result.model_dump()["ng_trajectory"]["rollout_id"] == "0-0-a1"
+
+    if guarded:
+        assert verification_ids[0] == verification_ids[1] == record["episode"]["verification_id"]
+        assert verification_ids[0] is not None
+    else:
+        assert verification_ids == [None, None]
 
 
 class _WeatherResources(SimpleResourcesServer):

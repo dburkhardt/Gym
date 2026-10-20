@@ -805,6 +805,13 @@ class SimpleAgent(SimpleResponsesAPIAgent):
         # so a replacement attempt resumes at that step.
         continuation = (legacy_run.continuation if legacy_run is not None else None) or {}
         stage = continuation.get("next", "seed")
+        global_config = getattr(self.server_client, "global_config_dict", None)
+        guarded_judge = isinstance(global_config, Mapping) and bool(global_config.get("provider_dispatch_guard"))
+        verification_id = continuation.get("verification_id")
+        if guarded_judge and verification_id is None:
+            if stage == "verify":
+                raise ValueError("guarded judge cannot resume an old verify boundary without verification_id")
+            verification_id = uuid4().hex
         cookies: Any = continuation.get("cookies", request.cookies)
         # Whether the resources server's /verify may be replayed, as its seed reply reported.
         verify_mode: StepMode = continuation.get("verify_mode", "wait")
@@ -916,12 +923,15 @@ class SimpleAgent(SimpleResponsesAPIAgent):
             await boundary(
                 {
                     "next": "verify",
+                    **({"verification_id": verification_id} if verification_id else {}),
                     "response": boundary_response_json,
                     "cookies": _cookie_values(cookies),
                     "verify_mode": verify_mode,
                 }
             )
             verify_payload = body.model_dump() | {"response": model_response_json}
+            if verification_id is not None:
+                verify_payload["verification_id"] = verification_id
             async with step(verify_mode):
                 verify_response = await self.server_client.post(
                     server_name=self.config.resources_server.name,

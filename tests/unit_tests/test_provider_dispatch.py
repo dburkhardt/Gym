@@ -440,3 +440,104 @@ async def test_unresolved_headers_with_replay_bytes_are_not_replayed(tmp_path):
     with pytest.raises(ControlError, match="unresolved"):
         async with store.bind_logical_call(binding):
             pytest.fail("unresolved response must not reach replay")
+
+
+def test_replayed_capture_preserves_raw_usage_without_counting_new_inference():
+    from nemo_gym.base_responses_api_model import build_model_call_record
+
+    raw = {
+        "model_call_id": "replay",
+        "replayed_from_model_call_id": "original",
+        "upstream_attempted": False,
+        "response": {"id": "original-response", "usage": {"input_tokens": 20, "output_tokens": 5, "total_tokens": 25}},
+    }
+    record = build_model_call_record(raw, call_index=0)
+    assert record.response["usage"]["total_tokens"] == 25
+    assert record.tokens_total == record.tokens_in == record.tokens_out == 0
+
+
+@pytest.mark.asyncio
+async def test_judge_server_client_reverify_resume_replays(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    from urllib.parse import urlsplit
+
+    from omegaconf import OmegaConf
+    from pydantic import BaseModel
+
+    from nemo_gym.base_responses_api_model import _CaptureMiddleware
+    from nemo_gym.judge import call_judge
+    from nemo_gym.rollout_correlation import rollout_context
+    from nemo_gym.rollout_reverification import _verification_run_identity
+    from nemo_gym.server_utils import ServerClient
+
+    class Verdict(BaseModel):
+        id: str
+        output: list
+
+    calls = []
+    paths = []
+
+    async def app(scope, receive, send):
+        await receive()
+        dispatch = current_provider_dispatch.get()
+        dispatch.before_send()
+        calls.append(1)
+        dispatch.response_headers(200)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b'{"id":"verdict","output":[]}'})
+
+    async def transport(*, url, **kwargs):
+        paths.append(urlsplit(url).path)
+        middleware = _CaptureMiddleware(
+            app, store=store_at(tmp_path / "capture"), model_server_name="judge", model_config_digest="b" * 64
+        )
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": paths[-1],
+            "headers": [(k.encode(), v.encode()) for k, v in kwargs["headers"].items()],
+        }
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": json.dumps(kwargs["json"]).encode()}
+
+        async def send(message):
+            sent.append(message)
+
+        await middleware(scope, receive, send)
+        return SimpleNamespace(
+            status=200, ok=True, read=AsyncMock(return_value=sent[-1]["body"]), raise_for_status=lambda: None
+        )
+
+    monkeypatch.setattr("nemo_gym.server_utils.request", transport)
+    client = ServerClient(
+        head_server_config={"name": "head", "host": "localhost", "port": 10000},
+        global_config_dict=OmegaConf.create(
+            {
+                "provider_dispatch_guard": True,
+                "observability_enabled": True,
+                "judge": {"responses_api_models": {}, "host": "localhost", "port": 10001},
+            }
+        ),
+    )
+    client._server_base_urls["judge"] = "http://localhost:10001"
+    output = tmp_path / "out.jsonl"
+    for resume in (False, True):
+        run_id = _verification_run_identity(output, resume=resume, overwrite=False, append=False)
+        verification_id = run_id + ":task-1"
+        with rollout_context("reverify-" + hashlib.sha256(verification_id.encode()).hexdigest()):
+            response = await call_judge(
+                client,
+                server_name="judge",
+                url_path="/v1/responses",
+                json={"input": "grade"},
+                response_model=Verdict,
+                verification_id=verification_id,
+                call_id="conclusion",
+                scorer_identity={"version": "1"},
+            )
+        assert response.id == "verdict"
+    assert paths[0] == paths[1]
+    assert len(calls) == 1

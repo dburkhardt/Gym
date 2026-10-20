@@ -137,6 +137,11 @@ class BaseRunRequest(BaseModel):
 
 class BaseVerifyRequest(BaseRunRequest):
     response: NeMoGymResponse
+    verification_id: Optional[str] = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Persisted identity of this scoring operation; a fresh regrade receives a new identity.",
+    )
 
 
 class BaseVerifyResponse(BaseVerifyRequest):
