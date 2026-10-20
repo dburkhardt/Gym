@@ -27,6 +27,14 @@ class Native(unittest.TestCase):
         sys.modules.update(self.old_evaluation)
         self.env_patch.stop()
 
+    def test_unwritable_workspace_rejected_before_import_or_inference(self):
+        os.environ.update(JUDGE_MODEL_NAME=MODEL,JUDGE_API_BASE='http://not-called.invalid',JUDGE_API_KEY='control')
+        with patch('native_score.tempfile.NamedTemporaryFile', side_effect=PermissionError('write denied')), patch('native_score.importlib.import_module') as native_import:
+            with self.assertRaises(PermissionError):
+                score(SOURCE, '/unwritable-workspace', '/unused-score.json')
+            native_import.assert_not_called()
+            self.assertEqual(Fake.settings, [])
+
     def test_actual_native_valid_and_parse_failure(self):
         os.environ.update(JUDGE_MODEL_NAME=MODEL,JUDGE_API_BASE='http://not-called.invalid',JUDGE_API_KEY='control')
         for value,masked in [({'score':50,'reasoning':'control'},False),(None,True),({},True)]:
