@@ -50,3 +50,11 @@ pytest responses_api_agents/promptbio_bench/tests
 ```
 
 Tests check reference exclusion, path traversal, exact score preservation, malformed/missing grading, and durable budget refusal. The external engine has `resources_server: null`; fixture-based `gym env test NAME` and `gym env publish NAME` are unsupported. Use the component tests and real paired rollouts instead. Synthetic tests are not benchmark results. Full scientific-task support and published-result reproduction have not been established; leave the manifest experimental.
+
+## Broad campaign: Nemotron-only variant
+
+Use `python -m responses_api_agents.promptbio_bench.campaign`, **not** the historical paid-judge CLI above. Required arguments are `--selection` (JSON with seeded `task_ids`), `--key-file`, `--cache`, `--output`, `--scorer`, `--scorer-python`, `--image`, and optional `--limit 5`. This entrypoint fixes solver and every grading role to `nvidia/nvidia/nemotron-3.5-super-vl` through `http://127.0.0.1:49180/v1`; it has no paid judge route. Full solver and judge request/response receipts are saved, and wrong returned identities fail closed.
+
+The upstream `--model` argument does not propagate to every nested format-detection call. `campaign_scorer.py` therefore explicitly overrides LangChain model initialization for **all** roles, logs the original requested model, and forces the same local proxy with a 16,384-token ceiling. Creator matching, detection, recommendation, and comparison code remains pinned/unmodified. This is a Nemotron judge and minimal-shell-agent variant, not published-agent reproduction. Completed structured tool-call judge responses are accepted; empty/incomplete judge responses fail rather than becoming valid scores.
+
+Historical CRISPR task `a-13-1` has a demonstrated scorer mismatch (identical required guide pairs can receive different scores). LC-MS `a-8-1` has an unspecified signed-ppm convention. Preserve both regressions and raw scores; neither is repaired by model substitution. The fresh uniformly seeded sample may expose unsupported dependencies or large downloads, which must be inspected before runtime. Local contract tests do not establish live evaluator compatibility.

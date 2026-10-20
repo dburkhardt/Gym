@@ -192,6 +192,11 @@ def solve(
                 {"model": model, "messages": messages, "tools": TOOLS, "temperature": 0, "max_tokens": max_tokens},
                 timeout=min(600, remaining),
             )
+            with (run / "model-responses.jsonl").open("a") as receipt_stream:
+                receipt_stream.write(json.dumps({"request": {"model": model, "messages": messages, "tools": TOOLS, "temperature": 0, "max_tokens": max_tokens}, "response": result}) + "\n")
+            if model == "nvidia/nvidia/nemotron-3.5-super-vl" and result.get("model") != model:
+                (run / "unexpected-model-response.json").write_text(json.dumps(result, indent=2))
+                raise ValueError("Unexpected returned solver model")
             usage.append(result.get("usage"))
             message = result["choices"][0]["message"]
             messages.append(message)
@@ -273,8 +278,13 @@ def grade(
     judge_key_file: Path,
     budget_ledger: Path,
     budget_usd: float = 100,
+    judge_base_url: str | None = None,
 ) -> list[float]:
     """Grade all model outputs in one upstream invocation (shared Detect/Recommend)."""
+    if judge_base_url is not None:
+        from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL, GATEWAY
+        if judge_model != MODEL or judge_base_url.rstrip("/") != GATEWAY:
+            raise ValueError("Campaign judge must use exact Super and gateway")
     if command(["git", "-C", str(scorer_dir), "rev-parse", "HEAD"]).strip() != SCORER_REVISION:
         raise ValueError("Evaluator must be at pinned upstream revision")
     if command(["git", "-C", str(scorer_dir), "status", "--porcelain", "--untracked-files=no"]).strip():
@@ -288,6 +298,7 @@ def grade(
     paths = [output / f"{task_dir.name}_{label}.json" for label in labels]
     signature = {
         "judge_model": judge_model,
+        "judge_base_url": judge_base_url,
         "scorer": SCORER_REVISION,
         "dataset": DATA_REVISION,
         "run_receipts": [hashlib.sha256((run / "receipt.json").read_bytes()).hexdigest() for run in runs],
@@ -314,9 +325,16 @@ def grade(
             "--model",
             judge_model,
         ]
+        if judge_base_url is not None:
+            argv = [python, str(Path(__file__).with_name("campaign_scorer.py")), *argv[1:]]
         from responses_api_agents.promptbio_bench.budget_proxy import proxy
 
-        with proxy(key_file=judge_key_file, ledger=budget_ledger, limit=budget_usd, model=judge_model) as url:
+        if judge_base_url is not None:
+            from responses_api_agents.promptbio_bench.nemotron_proxy import proxy as campaign_proxy
+            context = campaign_proxy(key_file=judge_key_file, ledger=budget_ledger, model=judge_model, base_url=judge_base_url)
+        else:
+            context = proxy(key_file=judge_key_file, ledger=budget_ledger, limit=budget_usd, model=judge_model)
+        with context as url:
             env = {**os.environ, "OPENAI_API_KEY": "metered-local-proxy", "OPENAI_BASE_URL": url}
             with (output / "evaluator.log").open("w") as log:
                 subprocess.run(
