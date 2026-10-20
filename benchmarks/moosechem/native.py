@@ -16,6 +16,27 @@ MODEL = 'nvidia/nvidia/nemotron-3.5-super-vl'
 PIN = 'f8cda98a3bed30b0f0d85fba625e343d688461ab'
 
 
+class TransportAbort(BaseException):
+    """Escape creator's nested `except Exception` retry loops without editing source.
+
+    Only API transport/status errors use this boundary. KeyboardInterrupt and
+    SystemExit retain their original behavior and are never caught here.
+    """
+    def __init__(self, original):
+        self.error_type = type(original).__name__
+        self.http_status = getattr(original, 'status_code', None)
+        super().__init__(f'{self.error_type}; HTTP status {self.http_status}; transport retries disabled')
+
+
+def write_failure(out, exc):
+    Path(out, 'failure.json').write_text(json.dumps({
+        'type': type(exc).__name__, 'message': str(exc),
+        'underlying_error_type': getattr(exc, 'error_type', None),
+        'http_status': getattr(exc, 'http_status', None),
+        'transport_policy': 'abort_on_first_API_error_no_native_transport_retry',
+    }, indent=2))
+
+
 def creator_defaults(path):
     parser = argparse.ArgumentParser()
     calls = [n for n in ast.walk(ast.parse(Path(path).read_text()))
@@ -90,6 +111,9 @@ class RecordedClient:
         except Exception as exc:
             record['error_type'] = type(exc).__name__
             record['http_status'] = getattr(exc, 'status_code', None)
+            from openai import APIError
+            if isinstance(exc, APIError):
+                raise TransportAbort(exc) from exc
             raise
         finally:
             record['elapsed_seconds'] = time.time() - started
@@ -144,6 +168,7 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_to
                          if_load_from_saved=0,if_with_gdth_hyp_annotation=1)
     evaluator = modules[2].Evaluate(args[2]); evaluator.run()
     return {'scope':'creator_full_pipeline_150_corpus_Nemotron_all_roles_variant',
+            'transport_policy':'abort_on_first_API_error_no_native_transport_retry',
             'evaluation':json.loads((out/'evaluation.json').read_text()),
             'replay_source':str(replay_path) if replay_path else None,
             'reused_successful_responses':sum(1 for _ in (out/'replay-receipts.jsonl').open()) if (out/'replay-receipts.jsonl').exists() else 0,
@@ -163,6 +188,6 @@ if __name__ == '__main__':
     try:
         result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path,output_token_budget=args.output_token_budget,allow_transport_tail=args.allow_transport_tail)
         (args.output/'result.json').write_text(json.dumps(result,indent=2))
-    except Exception as exc:
-        (args.output/'failure.json').write_text(json.dumps({'type':type(exc).__name__,'message':str(exc)},indent=2))
+    except (Exception, TransportAbort) as exc:
+        write_failure(args.output, exc)
         raise

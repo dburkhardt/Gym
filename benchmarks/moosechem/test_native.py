@@ -102,3 +102,26 @@ def test_transport_tail_requires_opt_in_and_exact_identity(tmp_path):
     assert replay.index==0
     assert replay.consume(row['stage'],row['request']) is None
     assert replay.index==1
+
+def test_transport_abort_escapes_creator_retry_and_preserves_receipts(tmp_path):
+    import json,httpx
+    from openai import APIConnectionError
+    from types import SimpleNamespace
+    from benchmarks.moosechem.native import RecordedClient,MODEL,TransportAbort,write_failure
+    calls=[]
+    def create(**kwargs):
+        calls.append(kwargs)
+        raise APIConnectionError(request=httpx.Request('POST','http://local-control/v1/chat/completions'))
+    client=object.__new__(RecordedClient);client.stage='control';client.trace=tmp_path/'trace.jsonl';client.replay=None;client.output_token_budget=16384
+    client.inner=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with pytest.raises(TransportAbort) as caught:
+        for _ in range(3):
+            try:client.create(model=MODEL,max_tokens=8192,messages=[])
+            except Exception:continue  # creator retry policy must not catch transport abort
+    write_failure(tmp_path,caught.value)
+    assert len(calls)==1
+    receipts=[json.loads(x) for x in client.trace.read_text().splitlines()]
+    assert len(receipts)==1 and receipts[0]['error_type']=='APIConnectionError'
+    failure=json.loads((tmp_path/'failure.json').read_text())
+    assert failure['type']=='TransportAbort' and failure['underlying_error_type']=='APIConnectionError'
+    assert not issubclass(TransportAbort,Exception)
