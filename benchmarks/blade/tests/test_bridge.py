@@ -7,8 +7,8 @@ from pathlib import Path
 import aiohttp
 import pytest
 
-from benchmarks.blade import scoped_bridge
 from benchmarks.blade.native_phase import MODEL, post_json
+from nemo_gym.sandbox import model_bridge as scoped_bridge
 
 
 @pytest.mark.asyncio
