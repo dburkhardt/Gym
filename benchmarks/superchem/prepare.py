@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Copy audited campaign rows, never download an unpinned dataset implicitly."""
+"""Stage frozen rows with a native task identity and provenance receipt."""
 
-import os
 from pathlib import Path
 
-from nemo_gym.dataset_staging import stage_file
+from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
+
+
+def prepare() -> Path:
+    return prepare_sample(Path(__file__).resolve().parents[2] / "resources_servers/superchem/data/benchmark.jsonl")
 
 
 if __name__ == "__main__":
-    source = Path(os.environ["CAMPAIGN_SAMPLE_JSONL"])
-    destination = Path(__file__).resolve().parents[2] / "resources_servers/superchem/data/benchmark.jsonl"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    stage_file(source, destination)
+    print(prepare())

@@ -63,7 +63,10 @@ def test_preparation_preserves_existing_dataset_after_interruption(name, tmp_pat
     assert len(destinations) == 1
     destination = destinations[0]
     old_bytes = destination.read_bytes()
-    assert old_bytes == source.read_bytes()
+    assert json.loads(old_bytes) == {**row, "task_id": row["uuid"]}
+    assert json.loads(source.read_bytes()) == row
+    receipt = json.loads(destination.with_suffix(".source.json").read_text())
+    assert receipt["task_ids"] == [row["uuid"]]
     row["uuid"] = "frozen-2"
     source.write_text(json.dumps(row) + "\n")
     copy = dataset_staging.shutil.copyfileobj
@@ -79,4 +82,6 @@ def test_preparation_preserves_existing_dataset_after_interruption(name, tmp_pat
     assert dataset_staging.shutil.copyfileobj is copy
     assert destination.read_bytes() == old_bytes
     runpy.run_path(str(script), run_name="__main__")
-    assert destination.read_bytes() == source.read_bytes()
+    assert json.loads(destination.read_bytes()) == {**row, "task_id": row["uuid"]}
+    assert json.loads(source.read_bytes()) == row
+    assert json.loads(destination.with_suffix(".source.json").read_text())["task_ids"] == [row["uuid"]]
