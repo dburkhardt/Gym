@@ -20,6 +20,10 @@ def stage_control(native_tasks: Path, destination: Path, *, correct: bool) -> Pa
     solution = destination / "solution"
     solution.mkdir()
     payload = shlex.quote(json.dumps(report))
-    (solution / "solve.sh").write_text("#!/bin/bash\nset -eu\nprintf %s " + payload + " > /workspace/report.json\n")
+    (solution / "solve.sh").write_text(
+        '#!/bin/bash\nset -eu\ntest ! -e /tests/answers.json\ntest ! -e /workspace/answers.json\ntest -z "$(find /workspace/capsule-9070543/results -type f -print -quit)"\nprintf %s '
+        + payload
+        + ' > /workspace/report.json\nprintf "reference isolation passed\\n" > /workspace/control-isolation.txt\n'
+    )
     (solution / "solve.sh").chmod(0o755)
     return destination

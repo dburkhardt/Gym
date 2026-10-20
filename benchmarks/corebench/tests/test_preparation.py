@@ -79,6 +79,8 @@ def test_oracle_controls_keep_reference_outside_build_context(assets, tmp_path):
         stage_control(prepared / "tasks", destination, correct=correct)
         script = (destination / "solution/solve.sh").read_text()
         assert "/workspace/report.json" in script
+        assert "test ! -e /tests/answers.json" in script
+        assert "reference isolation passed" in script
         assert not list((destination / "environment").rglob("answers.json"))
         assert not list((destination / "environment").rglob("solve.sh"))
         assert ("deliberately incorrect control" in script) is (not correct)
