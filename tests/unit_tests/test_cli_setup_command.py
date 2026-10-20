@@ -515,12 +515,22 @@ class TestCLISetupCommandRunCommand:
             "my command",
             executable="/bin/bash",
             shell=True,
-            env={"PYTHONPATH": "/root/resources_servers/my_server:/root", "UV_CACHE_DIR": "default uv cache dir"},
+            env={
+                "PYTHONPATH": "/root/resources_servers/my_server:/root",
+                "NEMO_GYM_EXTRA_ROOTS": "/root",
+                "UV_CACHE_DIR": "default uv cache dir",
+            },
             stdout="stdout",
             stderr="stderr",
         )
         actual_args = Popen_mock.call_args
         assert expected_args == actual_args
+
+    def test_project_root_preserves_explicit_component_overrides(self, monkeypatch: MonkeyPatch) -> None:
+        popen, _ = self._setup(monkeypatch)
+        monkeypatch.setattr(nemo_gym.cli.setup_command, "environ", {"NEMO_GYM_EXTRA_ROOTS": "/plugin"})
+        run_command("my command", Path("/root/resources_servers/server"), project_root=Path("/root"))
+        assert popen.call_args.kwargs["env"]["NEMO_GYM_EXTRA_ROOTS"] == "/plugin:/root"
 
     def test_custom_uv_cache_dir(self, monkeypatch: MonkeyPatch) -> None:
         Popen_mock, get_global_config_dict_mock = self._setup(monkeypatch)

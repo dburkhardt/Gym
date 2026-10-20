@@ -1,1 +1,1 @@
-nemo-gym[server] @ file://../..
+nemo-gym[server] @ ../../

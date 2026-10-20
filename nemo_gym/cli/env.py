@@ -623,7 +623,13 @@ class RunHelper:  # pragma: no cover
                 # starting a private cluster in each of its processes.
                 extra_env[RAY_ENABLE_AUTO_CONNECT_ENV_VAR_NAME] = "0"
             extra_env |= self._startup.server_env(top_level_path, first_key)
-            process = run_command(command, dir_path, server_name=top_level_path, extra_env=extra_env)
+            process = run_command(
+                command,
+                dir_path,
+                server_name=top_level_path,
+                extra_env=extra_env,
+                project_root=PARENT_DIR if (PARENT_DIR / "pyproject.toml").is_file() else None,
+            )
             self._processes[top_level_path] = process
             # In dry run mode, wait for each setup command to finish before starting the next.
             # This installs uv virtual environments serially, which significantly reduces uv

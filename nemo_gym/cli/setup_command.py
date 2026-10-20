@@ -25,7 +25,7 @@ from typing import IO, Any, Mapping
 
 from omegaconf import DictConfig
 
-from nemo_gym import PARENT_DIR
+from nemo_gym import NEMO_GYM_EXTRA_ROOTS_ENV_VAR_NAME, PARENT_DIR
 from nemo_gym.global_config import (
     HEAD_SERVER_CONSTRAINTS_KEY_NAME,
     HEAD_SERVER_DEPS_KEY_NAME,
@@ -269,6 +269,13 @@ def run_command(
     py_path_entries = [work_dir]
     if project_root is not None:
         py_path_entries.append(f"{project_root.absolute()}")
+        # Editable environments may retain another checkout on sys.path. Gym's
+        # component resolver must prefer the explicitly selected source root.
+        roots = [entry for entry in custom_env.get(NEMO_GYM_EXTRA_ROOTS_ENV_VAR_NAME, "").split(os.pathsep) if entry]
+        root = str(project_root.absolute())
+        if root not in roots:
+            roots.append(root)
+        custom_env[NEMO_GYM_EXTRA_ROOTS_ENV_VAR_NAME] = os.pathsep.join(roots)
     existing_py_path = custom_env.get("PYTHONPATH")
     if existing_py_path:
         py_path_entries.append(existing_py_path)
