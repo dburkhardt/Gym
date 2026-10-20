@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Creator DockerAgent with explicit answer-isolation and transport repairs."""
 import argparse,copy,hashlib,importlib.util,json,os,pathlib,sys,time,uuid
 from types import SimpleNamespace
