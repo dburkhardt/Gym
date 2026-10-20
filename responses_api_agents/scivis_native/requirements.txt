@@ -1,0 +1,5 @@
+nemo-gym
+huggingface-hub==0.34.3
+PyYAML
+# Native Napari/MCP server dependencies are isolated from Gym's SDK/MCP pins.
+# See benchmarks/scivisagentbench/README.md for the Python3.10 RAM runtime.
