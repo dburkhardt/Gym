@@ -51,8 +51,8 @@ async def run_native(source: Path, config: dict, task: dict, output: Path, sende
     provenance = validate_source(source)
     if config.get('model') != MODEL or config.get('provider') != 'openai':
         raise ValueError('exact Super OpenAI-compatible configuration required')
-    if not config.get('servers'):
-        raise ValueError('native MCP servers must be preflighted')
+    if not config.get('servers') or any(s.get('type') != 'stdio' or not s.get('config', {}).get('command') for s in config['servers']):
+        raise ValueError('native MCP servers require preflighted type/config stdio schema')
     output.mkdir(parents=True, exist_ok=False)
     (output/'source-provenance.json').write_text(json.dumps(provenance,indent=2))
     sys.path.insert(0, str(source/'benchmark'))
@@ -77,6 +77,8 @@ async def run_native(source: Path, config: dict, task: dict, output: Path, sende
     task_config = {}
     try:
         agent = module.NapariMCPAgent(config)
+        if task.get('agent_mode') and agent.agent_mode != task['agent_mode']:
+            raise ValueError('native_agent_mode_mismatch')
         task_config = case.get_task_config(agent.agent_mode)
         await agent.setup()
         await agent.prepare_task(case.get_task_config(agent.agent_mode))
