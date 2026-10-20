@@ -26,7 +26,7 @@ def prepare(source, output):
         prompt=template.format(workspace='/workspace',task_desc=info.get('task',''),data_text='\n'.join(parts) or 'No specific data files.')
         (task/'instruction.md').write_text(prompt); (ws/'INSTRUCTIONS.md').write_text(prompt)
         (ws/'_meta.json').write_text(json.dumps({'run_id':f'calibration-{name}','task_id':name,'agent_name':MODEL}))
-        (env/'Dockerfile').write_text('FROM researchclaw-tools:campaign\nCOPY workspace /workspace\nRUN chmod -R a-w /workspace/data /workspace/related_work && chown -R 65534:65534 /workspace/code /workspace/outputs /workspace/report\nUSER 65534:65534\nWORKDIR /workspace\n')
+        (env/'Dockerfile').write_text('FROM researchclaw-tools:campaign\nCOPY workspace /workspace\nRUN chmod -R a-w /workspace/data /workspace/related_work && chown -R 65534:65534 /workspace/code /workspace/outputs /workspace/report\nENV XDG_CONFIG_HOME=/tmp/researchclaw-config\nENV ASCIINEMA_CONFIG_HOME=/tmp/researchclaw-asciinema\nUSER 65534:65534\nWORKDIR /workspace\n')
         (task/'task.toml').write_text('version = "1.0"\n[agent]\ntimeout_sec = 7200\n[verifier]\ntimeout_sec = 600\n[environment]\ncpus = 2\nmemory_mb = 4096\nstorage_mb = 4096\nallow_internet = false\n')
         tests=task/'tests'; tests.mkdir()
         shutil.copy2(Path(__file__).with_name('capture.py'),tests/'capture.py')
