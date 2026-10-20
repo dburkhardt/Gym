@@ -44,6 +44,7 @@ def convert(source: list[dict]) -> list[dict]:
         rows.append(
             {
                 "id": f"proteinlmbench-{i:04d}",
+                "task_id": f"proteinlmbench-{i:04d}",
                 "responses_create_params": {"input": [{"role": "user", "content": prompt}]},
                 "verifier_metadata": {"expected_answer": expected, "option_count": len(options)},
             }
@@ -53,15 +54,19 @@ def convert(source: list[dict]) -> list[dict]:
 
 def prepare() -> Path:
     """Download, checksum, validate, and write 944 deterministic evaluation tasks."""
-    cached = Path(
-        hf_hub_download(
-            repo_id="tsynbio/ProteinLMBench",
-            repo_type="dataset",
-            filename="ProteinLMBench.json",
-            revision=REVISION,
-        )
-    )
     source_path = OUTPUT.parent / "sources" / REVISION / "ProteinLMBench.json"
+    # Gym may select a different HF cache than direct preparation. Reuse only
+    # the verified published source, independent of that cache location.
+    cached = source_path
+    if not source_path.is_file() or hashlib.sha256(source_path.read_bytes()).hexdigest() != SHA256:
+        cached = Path(
+            hf_hub_download(
+                repo_id="tsynbio/ProteinLMBench",
+                repo_type="dataset",
+                filename="ProteinLMBench.json",
+                revision=REVISION,
+            )
+        )
     stage_file(cached, source_path, expected_sha256=SHA256)
     payload = source_path.read_bytes()
     if hashlib.sha256(payload).hexdigest() != SHA256:

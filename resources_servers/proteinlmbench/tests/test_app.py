@@ -51,6 +51,7 @@ def test_preparation_and_hidden_gold():
     rows = convert(source)
     assert rows == convert(source)
     assert rows[0]["id"] == "proteinlmbench-0000"
+    assert rows[0]["task_id"] == rows[0]["id"]
     prompt = rows[0]["responses_create_params"]["input"][0]["content"]
     assert "SECRET" not in prompt
     assert "option 2: b" in prompt
@@ -100,6 +101,10 @@ def test_prepare_checksum_and_count(tmp_path, monkeypatch):
         module.prepare()
     monkeypatch.setattr(module, "SHA256", hashlib.sha256(payload).hexdigest())
     assert len(module.prepare().read_text().splitlines()) == 944
+    # The published pinned source is reusable even when the HF cache moves.
+    monkeypatch.setattr(module, "hf_hub_download", lambda **kwargs: pytest.fail("unexpected download"))
+    assert len(module.prepare().read_text().splitlines()) == 944
+    monkeypatch.setattr(module, "hf_hub_download", download)
     previous = module.OUTPUT.read_bytes()
     payload = b"[]"
     cached.write_bytes(payload)
