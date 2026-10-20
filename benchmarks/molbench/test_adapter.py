@@ -40,3 +40,8 @@ def test_all_released_editing_reference_and_empty_controls():
   meta=row['verifier_metadata'];reference=json.loads(meta['sample']['meta'])['reference']
   assert score(REPO,meta,'<answer>'+reference+'</answer>')['reward']==1
   assert score(REPO,meta,'')['reward']==0
+
+def test_editing_native_reward_does_not_certify_scaffold_preservation():
+ from benchmarks.molbench.adapter import prepare_editing_rows
+ row=next(r for r in prepare_editing_rows(REPO) if r['uuid']=='mo-edit-fc5d76e6-7c65-4a6e-86b0-e8099c4da911')
+ assert score(REPO,row['verifier_metadata'],'<answer>CC#N</answer>')['reward']==1
