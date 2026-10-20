@@ -17,3 +17,10 @@ biomaze_simple_agent:
       model_server:
         type: responses_api_models
         name: policy_model
+biomaze_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: biomaze_simple_agent
