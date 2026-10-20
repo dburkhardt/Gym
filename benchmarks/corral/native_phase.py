@@ -5,12 +5,21 @@ Caller owns the isolated runtime, guarded agent transport, and DB snapshot.
 This module deliberately does not construct an unguarded model client.
 """
 
+import asyncio
 import json
 from dataclasses import asdict
 from pathlib import Path
 
 
-async def phase(*, task_id: str, execution_id: str, root: Path, agent=None, saved_state: dict | None = None):
+async def phase(
+    *,
+    task_id: str,
+    execution_id: str,
+    root: Path,
+    agent=None,
+    saved_state: dict | None = None,
+    benchmark_run_id: str | None = None,
+):
     from corral.observability.base import NoOpObserver
     from corral.orchestration.evaluation import evaluate_task
     from corral.orchestration.models import EvaluateTaskInput, RetryPolicy, RunTaskInput
@@ -29,7 +38,7 @@ async def phase(*, task_id: str, execution_id: str, root: Path, agent=None, save
         raise ValueError("Solver phase requires an explicitly guarded creator agent")
     if saved_state is not None and (saved_state["execution_id"] != execution_id or agent is not None):
         raise ValueError("Regrade requires matching saved execution and no solver agent")
-    store = ShardedCommitStore(root / "state")
+    store = ShardedCommitStore(root / "state", benchmark_run_id=benchmark_run_id)
     registry = RuntimeRegistry(
         agents={"react": agent} if agent is not None else {},
         environments={task_id: environments[task_id]},
@@ -75,7 +84,7 @@ async def phase(*, task_id: str, execution_id: str, root: Path, agent=None, save
         except BaseException as error:
             cleanup_error = error
         try:
-            await store.aclose()
+            await _close_store(store)
         except BaseException as error:
             if cleanup_error is None:
                 cleanup_error = error
@@ -84,3 +93,19 @@ async def phase(*, task_id: str, execution_id: str, root: Path, agent=None, save
                 original_error.add_note(f"Corral native cleanup failed: {cleanup_error!r}")
             else:
                 raise cleanup_error
+
+
+async def _close_store(store):
+    """Settle creator persistence before propagating cancellation."""
+    task = asyncio.create_task(store.aclose())
+    cancelled = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:
+            cancelled = error
+        except BaseException:
+            break
+    task.result()
+    if cancelled is not None:
+        raise cancelled
