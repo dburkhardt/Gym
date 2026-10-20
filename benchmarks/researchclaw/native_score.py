@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Wrap creator score_workspace without replacing its metric or parser."""
-import importlib, json, os, sys, threading, math
+import importlib, json, os, sys, threading, math, tempfile
 from pathlib import Path
 MODEL='nvidia/nvidia/nemotron-3.5-super-vl'
 def annotate(native, calls, expected_count=None, capture_omissions=None):
@@ -14,6 +14,9 @@ def annotate(native, calls, expected_count=None, capture_omissions=None):
 def score(source,workspace,output):
     if os.environ.get('JUDGE_MODEL_NAME') != MODEL: raise ValueError('Exact Super judge required before imports/calls')
     if not os.environ.get('JUDGE_API_BASE') or not os.environ.get('JUDGE_API_KEY'): raise ValueError('Explicit isolated judge transport required')
+    # Creator writes _score.json here after judging: fail before any paid/API work.
+    with tempfile.NamedTemporaryFile(prefix='.native-score-write-control-', dir=workspace):
+        pass
     sys.path.insert(0,str(Path(source).resolve()))
     module=importlib.import_module('evaluation.score'); original=module.LLMAgent; calls=[]; lock=threading.Lock()
     class Capturing:
