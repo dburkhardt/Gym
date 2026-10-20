@@ -300,3 +300,17 @@ the copyright holder never filled in. Since Apache-2.0 conveys only the rights
 the licensor holds, that grant may not cover the derived content. Shipping no
 benchmark rows keeps this repository clear of the question; clear it with Legal
 before redistributing any real case.
+
+## Explicit scoring modes
+
+The resource-server config accepts `scoring_mode: native_strict_components`
+(default, preserving the existing three documented deviations) or
+`scoring_mode: creator_63bb79f`. The latter uses copied Apache-2.0 creator
+functions at revision `63bb79f912f0b2de593996b80ffeea894f6f1a59`, including
+the creator parser, invalid-component dropping and unsplit gold products.
+The upstream license is retained in `CREATOR_LICENSE`. Each response records
+the scoring mode; creator mode additionally retains raw creator metrics and
+a qualification that chemical validity is not certified by this score.
+Malformed structures that make the creator implementation raise remain errors,
+not silently converted to zero. This switch does not change sample selection,
+prompts, generation settings or the benchmark's eight-repeat default.

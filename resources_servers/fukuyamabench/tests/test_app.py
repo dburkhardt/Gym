@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app import (
+    FukuyamaBenchConfig,
     FukuyamaBenchResourcesServer,
     FukuyamaBenchStatus,
     FukuyamaBenchVerifyRequest,
@@ -31,7 +32,6 @@ from app import (
 from metrics import canonical_smiles, canonical_species, compare_step_products, score_pathway, strip_atom_mapping
 from task_data import TaskData
 
-from nemo_gym.base_resources_server import BaseResourcesServerConfig
 from nemo_gym.openai_utils import NeMoGymResponse
 from nemo_gym.reward_profile import compute_aggregate_metrics
 from nemo_gym.server_utils import ServerClient
@@ -62,7 +62,7 @@ CHECKPOINTS = [[1], [3]]
 
 
 def _make_server() -> FukuyamaBenchResourcesServer:
-    config = BaseResourcesServerConfig(host="0.0.0.0", port=8080, entrypoint="", name="")
+    config = FukuyamaBenchConfig(host="0.0.0.0", port=8080, entrypoint="", name="")
     return FukuyamaBenchResourcesServer(config=config, server_client=MagicMock(spec=ServerClient))
 
 
@@ -608,3 +608,47 @@ class TestAlternativeStepShapes:
     def test_a_step_with_no_recognised_product_field_scores_nothing(self) -> None:
         result = score_pathway([{"step_id": 1, "reaction_type": "addition"}], self.GT, [[1]])
         assert result["exact_match"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prediction,expected",
+    [("CO.not_smiles((", 1.0), ("CO.CO", 1.0), ("OC", 1.0), ("[He]", 0.0), ("not_smiles((", 0.0)],
+)
+async def test_creator_mode_retains_raw_and_qualification(prediction, expected):
+    server = _make_server()
+    server.config.scoring_mode = "creator_63bb79f"
+    result = await server.verify(
+        _make_request(_fenced([{"product_smiles": prediction}]), gt_pathway=[{"products": ["CO"]}], checkpoints=[[1]])
+    )
+    assert result.reward == expected
+    assert result.scoring_mode == "creator_63bb79f"
+    assert result.raw_creator_metrics["exact_match"] == bool(expected)
+    assert "do not certify" in result.scorer_qualification
+
+
+@pytest.mark.asyncio
+async def test_creator_empty_and_default_mode():
+    server = _make_server()
+    assert server.config.scoring_mode == "native_strict_components"
+    server.config.scoring_mode = "creator_63bb79f"
+    result = await server.verify(_make_request(""))
+    assert result.status == "empty_output"
+    assert result.scoring_mode == "creator_63bb79f"
+    assert result.raw_creator_metrics is None
+
+
+@pytest.mark.asyncio
+async def test_creator_partial_keeps_fraction_and_raw_metrics():
+    server = _make_server()
+    server.config.scoring_mode = "creator_63bb79f"
+    result = await server.verify(
+        _make_request(
+            _fenced([{"product_smiles": "CO"}]),
+            gt_pathway=[{"products": ["CO"]}, {"products": ["CC"]}],
+            checkpoints=[[1], [2]],
+        )
+    )
+    assert result.reward == 0
+    assert result.checkpoint_accuracy == 0.5
+    assert result.raw_creator_metrics["checkpoints_correct"] == 1

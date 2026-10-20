@@ -17,7 +17,7 @@ import json
 import logging
 import re
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from metrics import score_pathway
 
@@ -65,10 +65,17 @@ class FukuyamaBenchVerifyResponse(BaseVerifyResponse):
     any_checkpoint_correct: Optional[bool] = None
     pred_length: Optional[float] = None
     gt_steps: Optional[float] = None
+    scoring_mode: str = "native_strict_components"
+    raw_creator_metrics: Optional[dict[str, Any]] = None
+    scorer_qualification: Optional[str] = None
+
+
+class FukuyamaBenchConfig(BaseResourcesServerConfig):
+    scoring_mode: Literal["native_strict_components", "creator_63bb79f"] = "native_strict_components"
 
 
 class FukuyamaBenchResourcesServer(SimpleResourcesServer):
-    config: BaseResourcesServerConfig
+    config: FukuyamaBenchConfig
 
     def compute_metrics(self, tasks: list[list[dict]]) -> dict:
         """Report each difficulty tier separately.
@@ -95,6 +102,8 @@ class FukuyamaBenchResourcesServer(SimpleResourcesServer):
         return {**means, **tiers}
 
     async def verify(self, body: FukuyamaBenchVerifyRequest) -> FukuyamaBenchVerifyResponse:
+        mode = getattr(self.config, "scoring_mode", "native_strict_components")
+        body = body.model_copy(update={"scoring_mode": mode})
         meta = body.verifier_metadata or {}
         case_id = meta.get("case_id")
         case_set = meta.get("case_set")
@@ -109,10 +118,28 @@ class FukuyamaBenchResourcesServer(SimpleResourcesServer):
         if not text:
             return _response(body, FukuyamaBenchStatus.EMPTY_OUTPUT, None, case_id, case_set)
 
-        pred_pathway = _extract_pathway(text)
+        if mode == "creator_63bb79f":
+            from creator_metrics import extract_pathway_from_response
+
+            pred_pathway = extract_pathway_from_response(text)
+        else:
+            pred_pathway = _extract_pathway(text)
         if pred_pathway is None:
             return _response(body, FukuyamaBenchStatus.NO_PATHWAY, None, case_id, case_set)
 
+        if mode == "creator_63bb79f":
+            from creator_metrics import compare_pathways_with_checkpoints
+
+            raw = compare_pathways_with_checkpoints(
+                pred_pathway, gt_pathway, checkpoints, lenient=meta.get("lenient", DEFAULT_LENIENT)
+            )
+            scores = dict(
+                raw,
+                any_checkpoint_correct=raw["checkpoints_correct"] > 0,
+                gt_steps=len(gt_pathway),
+                raw_creator_metrics=raw,
+            )
+            return _response(body, FukuyamaBenchStatus.SCORED, scores, case_id, case_set)
         scores = score_pathway(
             pred_pathway,
             gt_pathway,
@@ -132,6 +159,13 @@ def _response(
     scores = scores or {}
     extra = {
         "status": status.value,
+        "scoring_mode": getattr(body, "scoring_mode", "native_strict_components"),
+        "raw_creator_metrics": scores.get("raw_creator_metrics"),
+        "scorer_qualification": (
+            "Pinned creator semantics: unparseable components are dropped; scores do not certify chemical validity"
+            if getattr(body, "scoring_mode", None) == "creator_63bb79f"
+            else None
+        ),
         "case_id": case_id,
         "case_set": case_set,
         # Left None when nothing was scored, so an unscored rollout is never read
