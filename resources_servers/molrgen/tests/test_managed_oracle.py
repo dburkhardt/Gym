@@ -123,3 +123,18 @@ async def test_changed_assets_rejected_before_container_creation(tmp_path, monke
         async with module.managed_oracle(cfg):
             pass
     assert not cfg.artifact_dir.exists()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_cancellation_waits_but_is_not_swallowed():
+    release = asyncio.Event()
+    stop = asyncio.create_task(release.wait())
+    settling = asyncio.create_task(module._settle(stop))
+    await asyncio.sleep(0)
+    settling.cancel()
+    await asyncio.sleep(0)
+    assert not stop.done() and not settling.done()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await settling
+    assert stop.done() and not stop.cancelled()

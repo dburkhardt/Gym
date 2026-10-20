@@ -69,12 +69,16 @@ def _data_hash(root: Path) -> str:
 
 async def _settle(task: asyncio.Task):
     """Let bounded Docker creation/cleanup finish even under repeated cancellation."""
+    cancelled = False
     while not task.done():
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:
-            continue
-    return task.result()
+            cancelled = True
+    result = task.result()
+    if cancelled:
+        raise asyncio.CancelledError()
+    return result
 
 
 @asynccontextmanager
