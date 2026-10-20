@@ -130,7 +130,10 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None):
                          if_load_from_saved=0,if_with_gdth_hyp_annotation=1)
     evaluator = modules[2].Evaluate(args[2]); evaluator.run()
     return {'scope':'creator_full_pipeline_150_corpus_Nemotron_all_roles_variant',
-            'evaluation':json.loads((out/'evaluation.json').read_text())}
+            'evaluation':json.loads((out/'evaluation.json').read_text()),
+            'replay_source':str(replay_path) if replay_path else None,
+            'reused_successful_responses':sum(1 for _ in (out/'replay-receipts.jsonl').open()) if (out/'replay-receipts.jsonl').exists() else 0,
+            'budget_protocol':'saved_8192_and_16384_prefix_then_16384_new_calls' if replay_path else 'creator_8192'}
 
 
 if __name__ == '__main__':
