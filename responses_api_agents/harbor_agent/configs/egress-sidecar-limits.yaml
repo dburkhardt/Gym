@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Native Harbor extra_docker_compose overlay. Does not override scientific task budgets.
+services:
+  harbor-docker-egress-control-sidecar:
+    cpus: 0.25
+    mem_limit: 128m

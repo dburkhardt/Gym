@@ -31,7 +31,9 @@ harbor_agent:
           max_output_tokens: 16384
       harbor_environment_type: docker
       harbor_environment_import_path: null
-      harbor_environment_kwargs: {}
+      harbor_environment_kwargs:
+        extra_docker_compose:
+        - responses_api_agents/harbor_agent/configs/egress-sidecar-limits.yaml
       harbor_no_delete: false
       model_server:
         type: responses_api_models
