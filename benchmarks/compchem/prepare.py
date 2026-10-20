@@ -67,7 +67,16 @@ def stage(checkout: Path, prepared: Path, destination: Path, *, limit: int = 5) 
         for relative, checksum in task["validated_files"].items():
             src = prepared / "tasks" / task["task"] / relative
             dst = destination / "tasks" / task["task"] / relative
-            stage_file(src, dst, expected_sha256=checksum)
+            if relative == "task.toml":
+                # Native Harbor source-job regrade restores declared workspace artifacts.
+                content = 'artifacts = ["/workspace"]\n' + src.read_text()
+                with TemporaryDirectory() as temporary:
+                    overlay = Path(temporary) / "task.toml"
+                    overlay.write_text(content)
+                    stage_file(overlay, dst, expected_sha256=digest(overlay))
+                task["workspace_capture_config_sha256"] = digest(dst)
+            else:
+                stage_file(src, dst, expected_sha256=checksum)
             dst.chmod(src.stat().st_mode & 0o777)
     rows = [
         {
