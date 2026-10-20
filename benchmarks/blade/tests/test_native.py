@@ -166,3 +166,28 @@ async def test_phase_sandbox_scope_has_no_ip_network_or_solver_references(tmp_pa
         assert not any("annotations.csv" in volume for volume in volumes) if phase == "solver" else True
         assert any(volume.endswith(":/model-socket:ro") for volume in volumes)
         assert instance.spec.env["BLADE_TOKEN"] not in (tmp_path / phase / "lifecycle.json").read_text()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [0, 1])
+async def test_native_setup_creates_carrier_workspace(monkeypatch, tmp_path, code):
+    from types import SimpleNamespace
+
+    from benchmarks.blade import harbor_native
+
+    monkeypatch.setattr(harbor_native, "validate_staged", lambda root: None)
+    calls = []
+
+    class Environment:
+        async def exec(self, command, timeout_sec):
+            calls.append((command, timeout_sec))
+            return SimpleNamespace(return_code=code)
+
+    agent = object.__new__(harbor_native.BladeNativeAgent)
+    agent.root = tmp_path
+    if code:
+        with pytest.raises(RuntimeError, match="workspace setup"):
+            await agent.setup(Environment())
+    else:
+        await agent.setup(Environment())
+    assert calls == [("mkdir -p /workspace", 30)]

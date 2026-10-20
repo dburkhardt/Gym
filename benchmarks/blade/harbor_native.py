@@ -171,6 +171,9 @@ class BladeNativeAgent(BaseAgent):
 
     async def setup(self, environment: BaseEnvironment) -> None:
         validate_staged(self.root)
+        result = await environment.exec("mkdir -p /workspace", timeout_sec=30)
+        if result.return_code != 0:
+            raise RuntimeError("BLADE artifact workspace setup failed")
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         dataset = instruction.strip()

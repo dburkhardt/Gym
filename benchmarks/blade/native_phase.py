@@ -104,6 +104,28 @@ class Transport:
             return result
 
 
+def redirect_native_caches(output: Path, manifest: dict) -> dict:
+    """Relocate native eager caches; retain Cache behavior and native size limits."""
+    import importlib
+
+    relocated = {}
+    for name in ("blade_bench.llms.base", "blade_bench.baselines.agent.react_agent", "blade_bench.eval.convert"):
+        module = importlib.import_module(name)
+        path = Path(inspect.getfile(module)).resolve()
+        relative = str(path.relative_to("/opt/blade"))
+        if hashlib.sha256(path.read_bytes()).hexdigest() != manifest["files"].get(relative):
+            raise ValueError("Native cache module source mismatch")
+        target = output / "cache" / name.replace(".", "-")
+        factory = module.Cache
+
+        def owned_cache(directory=None, *args, _factory=factory, _target=target, **kwargs):
+            return _factory(str(_target), *args, **kwargs)
+
+        module.Cache = owned_cache
+        relocated[name] = str(target)
+    return relocated
+
+
 def main() -> None:
     from blade_bench.baselines.config import EvalConfig, MultiRunConfig
     from blade_bench.baselines.multirun import RunLLMMultiRun
@@ -123,6 +145,7 @@ def main() -> None:
     phase, dataset, output = sys.argv[1:]
     output = Path(output)
     publish(output / "imported-source.json", imported)
+    publish(output / "cache-locations.json", redirect_native_caches(output, manifest))
     transport = Transport(
         os.environ["BLADE_ENDPOINT"],
         os.environ["BLADE_LINEAGE"],
