@@ -87,3 +87,38 @@ async def test_runtime_failure_raises_instead_of_scoring_wrong(tmp_path, monkeyp
         )
     assert len(calls) == 2 and calls[-1] == "removed"
     assert not list(tmp_path.rglob("result.json"))
+
+
+@pytest.mark.asyncio
+async def test_signal_outcome_preserved_before_failure(tmp_path, monkeypatch):
+    class Sandbox:
+        def __init__(self, *args):
+            pass
+
+        async def start(self):
+            pass
+
+        async def serialize(self):
+            return {"sandbox_id": "owned"}
+
+        async def exec(self, command, **kwargs):
+            outcome = {"passed": False, "return_code": -9, "timed_out": False, "error": "saved stderr"}
+            return SimpleNamespace(return_code=0, stdout=json.dumps(outcome), stderr="")
+
+        async def stop(self):
+            pass
+
+    monkeypatch.setattr(execution, "AsyncSandbox", Sandbox)
+    with pytest.raises(RuntimeError, match="signal 9"):
+        await execution.execute_substep(
+            program="pass",
+            data_path=tmp_path / "data",
+            image="sha256:" + "a" * 64,
+            artifact_dir=tmp_path,
+            timeout_secs=1,
+            cpu=1,
+            memory_mib=512,
+        )
+    outcome = json.loads(next(tmp_path.rglob("result.json")).read_text())
+    assert outcome["return_code"] == -9 and outcome["error"] == "saved stderr"
+    assert json.loads(next(tmp_path.rglob("lifecycle.json")).read_text())["cleanup_confirmed"]

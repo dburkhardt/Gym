@@ -110,10 +110,13 @@ async def execute_substep(
         if result.return_code != 0:
             raise RuntimeError(f"SciCode sandbox execution failed: {result.stderr[-2000:]}")
         outcome = json.loads(result.stdout)
-        if outcome["return_code"] < 0 and not outcome["timed_out"]:
-            raise RuntimeError("SciCode generated process terminated by a signal; execution validity unresolved")
         outcome["receipt_path"] = str(receipt)
         _publish(directory / "result.json", outcome)
+        if outcome["return_code"] < 0 and not outcome["timed_out"]:
+            raise RuntimeError(
+                f"SciCode generated process terminated by signal {-outcome['return_code']}; "
+                "execution validity unresolved"
+            )
         return outcome
     except BaseException as error:
         original_error = error
