@@ -20,17 +20,19 @@ from the problem description, the code it generated for previous sub-steps, and 
 function header, calls the model, extracts the Python code, and accumulates it. After all
 sub-steps it sends the accumulated per-step solutions to the resources server's /verify endpoint.
 
-The full step loop — building each step's prompt, extracting the Python code block,
-prefilled-steps handling, context-window-exhaustion handling, and the accumulation/verify
-call — is not yet implemented (see run()).
-
-Templated on responses_api_agents/proof_refinement_agent (the multi-turn run() skeleton).
+Native checkpoint boundaries preserve the accumulated code, usage, and generation
+identity before each step. Guarded response replay can continue generation; verification
+is a wait boundary and does not claim continuation inside the execution sandbox.
 """
 
+import copy
 import logging
 import statistics
+from collections.abc import Mapping
+from contextlib import nullcontext
 from time import time
 from typing import Any, Dict, List
+from uuid import uuid4
 
 from fastapi import Request, Response
 from pydantic import ConfigDict
@@ -42,6 +44,7 @@ from step_utils import (
     process_problem_steps,
 )
 
+from nemo_gym._checkpoint.agent import LegacyRun, RestoredAgentSession
 from nemo_gym.base_resources_server import AggregateMetrics, AggregateMetricsRequest, BaseRunRequest
 from nemo_gym.base_responses_api_agent import (
     BaseResponsesAPIAgentConfig,
@@ -49,6 +52,7 @@ from nemo_gym.base_responses_api_agent import (
     SimpleResponsesAPIAgent,
 )
 from nemo_gym.config_types import ModelServerRef, ResourcesServerRef
+from nemo_gym.episode_types import EpisodeId
 from nemo_gym.global_config import ROLLOUT_INDEX_KEY_NAME
 from nemo_gym.openai_utils import (
     NeMoGymEasyInputMessage,
@@ -58,6 +62,7 @@ from nemo_gym.openai_utils import (
     accumulate_response_usage,
 )
 from nemo_gym.prompt import PromptConfig, load_prompt_config
+from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.rollout_observability import (
     AgentInvocation,
     ModelCallRef,
@@ -65,7 +70,7 @@ from nemo_gym.rollout_observability import (
     TrajectoryRecord,
     TrajectoryTurn,
 )
-from nemo_gym.server_utils import raise_for_status
+from nemo_gym.server_utils import raise_for_status, rollout_path_prefix
 
 
 LOG = logging.getLogger(__name__)
@@ -177,7 +182,22 @@ def _token_metrics(tasks: List[List[Dict[str, Any]]]) -> Dict[str, Any]:
 class ScicodeAgent(SimpleResponsesAPIAgent):
     """Agent that drives the SciCode per-sub-step generation + code-accumulation loop."""
 
+    checkpoint_sessions_supported = True
     config: ScicodeAgentConfig
+
+    async def export_agent_sessions(self, session_keys):
+        return {key: {} for key in session_keys}
+
+    async def restore_agent_sessions(self, sessions: list[RestoredAgentSession]):
+        if any(not session.session_key.startswith("scicode-run:") or session.session for session in sessions):
+            raise ValueError("Invalid SciCode checkpoint session")
+
+    async def retire_agent_session(self, session_key):
+        return None
+
+    def _guard_enabled(self):
+        config = getattr(self.server_client, "global_config_dict", None)
+        return isinstance(config, Mapping) and bool(config.get("provider_dispatch_guard"))
 
     def model_post_init(self, context):
         self._prompt: PromptConfig = load_prompt_config(self.config.prompt_fpath)
@@ -193,11 +213,19 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
         if isinstance(body.input, str):
             body.input = [NeMoGymEasyInputMessage(role="user", content=body.input)]
 
+        headers = {}
+        if self._guard_enabled():
+            for key in ("x-nemo-gym-logical-call-id", "x-nemo-gym-call-config-sha256"):
+                value = request.headers.get(key)
+                if not value:
+                    raise ValueError("Guarded SciCode responses require native run call identity")
+                headers[key] = value
         model_response = await self.server_client.post(
             server_name=self.config.model_server.name,
             url_path=self.url_path_for_request("/v1/responses", request),
             json=body.model_dump(exclude_unset=True, exclude_none=True),
             cookies=request.cookies,
+            **({"headers": headers} if headers else {}),
         )
         await raise_for_status(model_response)
         model_response_json = await model_response.json()
@@ -208,6 +236,17 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
         return NeMoGymResponse.model_validate(model_response_json)
 
     async def run(self, request: Request, body: ScicodeAgentRunRequest):
+        participant = self.checkpoint_participant
+        capture_key = self.rollout_id_from_run(body)
+        if participant is None:
+            return await self._run(request, body, legacy_run=None)
+        if not capture_key:
+            raise ValueError("SciCode checkpoint requires rollout identity")
+        episode = EpisodeId.from_capture_key(capture_key)
+        async with participant.legacy_run("scicode-run:" + episode.rollout_id, episode) as legacy:
+            return await self._run(request, body, legacy_run=legacy)
+
+    async def _run(self, request: Request, body: ScicodeAgentRunRequest, *, legacy_run: LegacyRun | None):
         """Generate code for each sub-step (accumulating prior code as context), then verify."""
         cookies = request.cookies
         sub_steps = body.sub_steps
@@ -232,7 +271,87 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
         response_create_params["model"] = body.responses_create_params.model or self.config.model_server.name
         response_create_params["tools"] = body.responses_create_params.tools
 
-        for cur_step in range(total):
+        guard = self._guard_enabled()
+        continuation = (legacy_run.continuation if legacy_run is not None else None) or {}
+        digest = configuration_digest(
+            {
+                "agent": self.config.model_dump(mode="json"),
+                "prompt": self._prompt.model_dump(mode="json"),
+                "problem_id": body.problem_id,
+                "sub_steps": sub_steps,
+                "required_dependencies": body.required_dependencies,
+                "generation": response_create_params,
+            }
+        )
+        generation_session_id = uuid4().hex if guard else None
+        capture_lineage = rollout_id
+        start_step = 0
+        if continuation:
+            if continuation.get("version") != 1 or continuation.get("config_digest") != digest:
+                raise ValueError("SciCode checkpoint version or scientific configuration mismatch")
+            if guard and not continuation.get("generation_session_id"):
+                raise ValueError("SciCode old checkpoint lacks durable generation identity")
+            generation_session_id = continuation.get("generation_session_id")
+            capture_lineage = continuation["capture_lineage"]
+            if continuation.get("next") not in {"generate", "verify", "return"}:
+                raise ValueError("Malformed SciCode checkpoint stage")
+            if (
+                guard
+                and EpisodeId.from_capture_key(capture_lineage).rollout_id
+                != EpisodeId.from_capture_key(rollout_id).rollout_id
+            ):
+                raise ValueError("SciCode checkpoint belongs to another rollout")
+            start_step = continuation["next_step"]
+            previous_llm_code = continuation["previous_llm_code"]
+            solutions = continuation["solutions"]
+            out_of_context = continuation["out_of_context"]
+            last_response_json = continuation["last_response"]
+            usage_complete = continuation["usage_complete"]
+            usage = NeMoGymResponseUsage.model_validate(continuation["usage"]) if continuation["usage"] else None
+            step_usage = continuation["step_usage"]
+            cookies = continuation["cookies"]
+            trajectory = (
+                TrajectoryRecord.model_validate(continuation["trajectory"]) if continuation["trajectory"] else None
+            )
+            invocation = AgentInvocation.model_validate(continuation["invocation"])
+            if (
+                not isinstance(start_step, int)
+                or not 0 <= start_step <= total
+                or len(previous_llm_code) != total
+                or len(step_usage) != start_step
+            ):
+                raise ValueError("Malformed SciCode checkpoint step cursor")
+            if continuation["next"] == "return":
+                return continuation["result"]
+        elif guard and (not rollout_id or EpisodeId.from_capture_key(rollout_id).attempt > 0):
+            raise ValueError("Guarded SciCode requires fresh rollout or explicit native checkpoint continuation")
+
+        async def boundary(next_step, stage="generate", result=None):
+            if legacy_run is None:
+                return
+            state = {
+                "version": 1,
+                "next": stage,
+                "next_step": next_step,
+                "config_digest": digest,
+                "generation_session_id": generation_session_id,
+                "capture_lineage": capture_lineage,
+                "previous_llm_code": previous_llm_code,
+                "solutions": solutions,
+                "out_of_context": out_of_context,
+                "last_response": last_response_json,
+                "usage_complete": usage_complete,
+                "usage": usage.model_dump() if usage else None,
+                "step_usage": step_usage,
+                "cookies": {str(k): str(getattr(v, "value", v)) for k, v in cookies.items()},
+                "trajectory": trajectory.model_dump(mode="json") if trajectory else None,
+                "invocation": invocation.model_dump(mode="json"),
+                "result": result,
+            }
+            await legacy_run.boundary(copy.deepcopy(state))
+
+        for cur_step in range(start_step, total):
+            await boundary(cur_step)
             step_record = {
                 "step_number": sub_steps[cur_step]["step_number"],
                 "status": "skipped",
@@ -259,16 +378,31 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
 
             turn_timestamp = time()
             try:
-                gen_response = await self.server_client.post(
-                    server_name=self.config.name,
-                    url_path=self.url_path_for_run("/v1/responses", body),
-                    json={
-                        **response_create_params,
-                        "input": [{"role": "user", "content": user_content}],
-                    },
-                    cookies=cookies,
-                )
-                await raise_for_status(gen_response)
+                async with legacy_run.step("replay" if guard else "wait") if legacy_run is not None else nullcontext():
+                    gen_response = await self.server_client.post(
+                        server_name=self.config.name,
+                        url_path=(rollout_path_prefix(rollout_id) + "/v1/responses")
+                        if guard
+                        else self.url_path_for_run("/v1/responses", body),
+                        json={
+                            **response_create_params,
+                            "input": [{"role": "user", "content": user_content}],
+                        },
+                        cookies=cookies,
+                        **(
+                            {
+                                "headers": {
+                                    "x-nemo-gym-logical-call-id": f"scicode:{generation_session_id}:{cur_step}",
+                                    "x-nemo-gym-call-config-sha256": digest,
+                                }
+                            }
+                            if guard
+                            else {}
+                        ),
+                    )
+                    await raise_for_status(gen_response)
+                    cookies = gen_response.cookies
+                    last_response_json = await gen_response.json()
             except Exception as error:
                 if is_context_window_error(error):
                     LOG.warning("SciCode step %s: context window exceeded; failing remaining steps.", cur_step)
@@ -278,8 +412,6 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
                     continue
                 raise
 
-            cookies = gen_response.cookies
-            last_response_json = await gen_response.json()
             model_response = NeMoGymResponse.model_validate(last_response_json)
             if trajectory is not None:
                 refs = (
@@ -322,20 +454,23 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
         verify_request_data["response"]["usage"] = usage.model_dump() if usage_complete else None
         verify_request_data["token_usage_version"] = TOKEN_USAGE_VERSION
         verify_request_data["step_usage"] = step_usage
-        verify_response = await self.server_client.post(
-            server_name=self.config.resources_server.name,
-            url_path="/verify",
-            json=verify_request_data,
-            cookies=cookies,
-        )
-        await raise_for_status(verify_response)
-        result = await verify_response.json()
+        await boundary(total, "verify")
+        async with legacy_run.step("wait") if legacy_run is not None else nullcontext():
+            verify_response = await self.server_client.post(
+                server_name=self.config.resources_server.name,
+                url_path="/verify",
+                json=verify_request_data,
+                cookies=cookies,
+            )
+            await raise_for_status(verify_response)
+            result = await verify_response.json()
         if trajectory is not None:
             # Prefilled/skipped subproblems are not model decisions.
             if trajectory.turns:
                 invocation.status = "incomplete" if out_of_context else "completed"
                 trajectory.invocations.append(invocation)
             result["ng_trajectory"] = trajectory.model_dump(mode="json")
+        await boundary(total, "return", result=result)
         return result
 
     async def aggregate_metrics(self, body: AggregateMetricsRequest = Body()) -> AggregateMetrics:
