@@ -19,7 +19,8 @@ from resources_servers.superchem.tests.test_native_contracts import response
         ({"reward": None}, True),
     ],
 )
-def test_native_transport(monkeypatch, receipt, masked):
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_native_transport(monkeypatch, receipt, masked, incomplete):
     received = AsyncMock()
     received.__aenter__.return_value = received
     received.raise_for_status = MagicMock()
@@ -36,16 +37,25 @@ def test_native_transport(monkeypatch, receipt, masked):
     )
     server = app.Server(config=cfg, server_client=MagicMock(spec=ServerClient))
     metadata = {"properties": ["QED"], "objectives": ["maximize"], "target": [0]}
+    completion = response(r"\boxed{CCO}")
+    if incomplete:
+        completion["status"] = "incomplete"
+        completion["incomplete_details"] = {"reason": "max_output_tokens"}
     result = TestClient(server.setup_webserver()).post(
         "/verify",
         json={
             "responses_create_params": {"input": [{"role": "user", "content": "Generate"}]},
-            "response": response(r"\boxed{CCO}"),
+            "response": completion,
             "verifier_metadata": {"metadata": metadata},
         },
     )
     assert result.status_code == 200, result.text
     assert result.json()["mask_sample"] == masked
+    if masked:
+        assert result.json()["failure_kind"] == "verifier_error"
+    else:
+        assert result.json()["reward"] == receipt["reward"]
+        assert result.json()["failure_kind"] == ("model_budget" if incomplete else None)
     assert result.json()["diagnostics"]["creator_response"] == receipt
     assert client.call_args.kwargs["json"]["metadata"] == [metadata]
 

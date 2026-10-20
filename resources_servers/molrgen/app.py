@@ -77,8 +77,18 @@ class Verifier:
                 failure_reason=str(error or "Invalid creator reward"),
                 diagnostics={"creator_response": receipt, "reward_is_serialization_placeholder": True},
             )
+        # A valid creator score remains usable when the solver exhausts its budget.
+        # Record the solver outcome without masking it or replacing the native score.
+        accounting = {}
+        if body.response.status == "incomplete":
+            reason = getattr(body.response.incomplete_details, "reason", None)
+            accounting = {
+                "failure_kind": "model_budget" if reason == "max_output_tokens" else "incomplete_response",
+                "failure_reason": f"Model response incomplete: {reason}",
+            }
         return Response(
             **body.model_dump(),
+            **accounting,
             reward=float(reward),
             diagnostics={
                 "creator_response": receipt,
