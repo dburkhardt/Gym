@@ -197,3 +197,26 @@ async def test_native_setup_creates_carrier_workspace(monkeypatch, tmp_path, cod
     else:
         await agent.setup(Environment())
     assert calls == [("mkdir -p /workspace", 30)]
+
+
+@pytest.mark.asyncio
+async def test_creator_failure_artifact_is_not_uploaded_for_scoring(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from benchmarks.blade import harbor_native
+
+    result = tmp_path / "native-result"
+    result.mkdir()
+    (result / "multirun_analyses.json").write_text(json.dumps({"analyses": {"0": [2, "generation failed"]}}))
+
+    async def failed_phase(**kwargs):
+        return result
+
+    class Environment:
+        async def upload_dir(self, *args):
+            raise AssertionError("Native failure must never enter scorer")
+
+    monkeypatch.setattr(harbor_native, "run_phase", failed_phase)
+    agent = SimpleNamespace(root=tmp_path, endpoint="unused", logs_dir=tmp_path)
+    with pytest.raises(RuntimeError, match="failure status"):
+        await harbor_native.BladeNativeAgent.run(agent, "crofoot", Environment(), None)
