@@ -558,3 +558,9 @@ uses explicit legacy classification for older receipts. Agent exceptions now
 propagate after trajectory/diagnostic preservation, so infrastructure failures
 cannot become valid scores merely because the wrapper swallowed an exception.
 This does not retroactively certify historical campaign scores.
+
+### Guarded model-call recovery boundary
+
+When the Gym run has a rollout capture ID, the Harbor bridge forwards a rollout-qualified model URL and binds calls to a persisted UUID plus the native Chat turn index. The binding, exact request/configuration hashes and completion state live in `agent/gym-call-state.json`. An exclusive file lock prevents two clients owning that state; overlapping calls on one client are rejected. Retrying the same call uses its original binding so the Gym capture store can replay a completed response or reject unresolved dispatch. Different trials receive different identities even for identical prompts.
+
+This is not automatic Harbor environment recovery. Native Terminus2 resets its shell/chat setup on `run()`. Reopening existing dispatch state therefore fails by default. The low-level `dispatch_resume_preserved_state` option is only for a caller that has independently preserved the environment and exact native Chat checkpoint; the built-in Harbor agent does not enable it. Restoring model state alone does not justify restarting an agent against a fresh shell. Summarized or altered turn histories that cannot satisfy the exact saved call binding fail closed.

@@ -72,6 +72,16 @@ class Terminus2NemoGym(Terminus2):
                 model_info=model_info,
                 responses_create_params=responses_create_params,
                 timeout_sec=nemo_model_server_timeout_sec,
+                dispatch_state_path=logs_dir / "gym-call-state.json" if "/ng-rollout/" in api_base else None,
+                dispatch_config={
+                    "model": model_name,
+                    "parser_name": parser_name,
+                    "max_turns": max_turns,
+                    "enable_summarize": enable_summarize,
+                    "responses_create_params": responses_create_params,
+                    "model_info": model_info,
+                    "interleaved_thinking": interleaved_thinking,
+                },
             )
 
         # Current Harbor validates native options and no longer accepts an llm

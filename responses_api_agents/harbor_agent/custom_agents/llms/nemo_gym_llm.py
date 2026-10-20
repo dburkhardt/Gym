@@ -12,8 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import fcntl
+import hashlib
+import json
+import os
 import re
+from pathlib import Path
 from typing import Any, cast
+from uuid import uuid4
 
 import httpx
 from harbor.llms.base import (
@@ -32,6 +38,7 @@ from tenacity import (
 )
 
 from nemo_gym.openai_utils import NeMoGymResponseCreateParamsNonStreaming
+from nemo_gym.provider_dispatch import configuration_digest
 
 
 _RoutedExperts = list[list[list[int]]] | str
@@ -51,6 +58,10 @@ _THINK_CLOSE = "</think>"
 _THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
+class ConcurrentHarborCallError(RuntimeError):
+    """The native sequential Chat contract was violated."""
+
+
 class NemoGymLLM(BaseLLM):
     """LLM backend that calls NeMo Gym model servers via chat completions."""
 
@@ -62,6 +73,9 @@ class NemoGymLLM(BaseLLM):
         model_info: dict[str, Any] | None = None,
         responses_create_params: dict[str, Any] | None = None,
         timeout_sec: float = 600.0,
+        dispatch_state_path: Path | None = None,
+        dispatch_config: dict[str, Any] | None = None,
+        dispatch_resume_preserved_state: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -70,6 +84,16 @@ class NemoGymLLM(BaseLLM):
         self._collect_rollout_details = collect_rollout_details
         self._model_info = model_info or {}
         self._timeout_sec = timeout_sec
+        self._dispatch_path = dispatch_state_path
+        self._dispatch_resume_preserved_state = dispatch_resume_preserved_state
+        self._dispatch_config = configuration_digest(
+            dispatch_config
+            or {"model": model_name, "model_info": model_info, "responses_create_params": responses_create_params}
+        )
+        self._dispatch_state = {"version": 1, "lineage": uuid4().hex, "calls": {}}
+        self._call_active = False
+        self._dispatch_lock = None
+        self._dispatch_ordinal = 0
 
         # Persistent HTTP client, reused across every turn of the episode. The Gym
         # vllm_model server pins a session to one vLLM engine via a cookie-based
@@ -108,6 +132,7 @@ class NemoGymLLM(BaseLLM):
                 (
                     ContextLengthExceededError,
                     OutputLengthExceededError,
+                    ConcurrentHarborCallError,
                 )
             )
         ),
@@ -119,8 +144,20 @@ class NemoGymLLM(BaseLLM):
         message_history: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        if self._call_active:
+            raise ConcurrentHarborCallError("Concurrent calls on one Harbor Chat are unsupported")
+        self._call_active = True
+        try:
+            return await self._call_serial(prompt, message_history, **kwargs)
+        finally:
+            self._call_active = False
+
+    async def _call_serial(
+        self, prompt: str, message_history: list[dict[str, Any]] | None = None, **kwargs: Any
+    ) -> LLMResponse:
         if message_history is None:
             message_history = []
+        self._select_dispatch_cursor(message_history)
         messages = message_history + [{"role": "user", "content": prompt}]
 
         # Attach token IDs from the previous turn to the last assistant
@@ -224,7 +261,7 @@ class NemoGymLLM(BaseLLM):
                 routed_experts,
             )
 
-        return LLMResponse(
+        result = LLMResponse(
             content=content,
             reasoning_content=reasoning_content,
             usage=usage,
@@ -232,6 +269,121 @@ class NemoGymLLM(BaseLLM):
             completion_token_ids=completion_token_ids,
             logprobs=logprobs,
         )
+
+        if self._dispatch_path is not None:
+            entry = self._dispatch_state["calls"][str(self._dispatch_ordinal)]
+            entry["completed"] = True
+            entry["token_state"] = {
+                "prompt": self._last_prompt_token_ids,
+                "completion": self._last_completion_token_ids,
+                "logprobs": self._last_logprobs,
+                "routed_experts": self._last_routed_experts,
+            }
+            self._save_dispatch_state()
+        return result
+
+    def _select_dispatch_cursor(self, history: list[dict[str, Any]]) -> None:
+        if self._dispatch_path is None:
+            return
+        if len(history) % 2 or any(
+            item.get("role") != ("user" if index % 2 == 0 else "assistant") for index, item in enumerate(history)
+        ):
+            raise RuntimeError(
+                "Guarded Harbor requires an intact native Chat turn cursor; summarized/reset history unsupported"
+            )
+        self._dispatch_ordinal = len(history) // 2
+        self._acquire_dispatch_owner()
+        previous = self._dispatch_state["calls"].get(str(self._dispatch_ordinal - 1))
+        if self._dispatch_ordinal and (previous is None or not previous.get("completed")):
+            raise RuntimeError("Harbor continuation cursor skips an unresolved or missing call")
+        tokens = (previous or {}).get("token_state", {})
+        self._last_prompt_token_ids = tokens.get("prompt")
+        self._last_completion_token_ids = tokens.get("completion")
+        self._last_logprobs = tokens.get("logprobs")
+        self._last_routed_experts = tokens.get("routed_experts")
+
+    def _acquire_dispatch_owner(self) -> None:
+        if self._dispatch_lock is not None or self._dispatch_path is None:
+            return
+        self._dispatch_path.parent.mkdir(parents=True, exist_ok=True)
+        owner = self._dispatch_path.with_suffix(".lock").open("a")
+        try:
+            fcntl.flock(owner.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            owner.close()
+            raise RuntimeError("Another Harbor client owns this trial's dispatch state") from exc
+        try:
+            if self._dispatch_path.exists():
+                if not self._dispatch_resume_preserved_state:
+                    raise RuntimeError(
+                        "Harbor restart requires a preserved environment/chat checkpoint; automatic restart unsupported"
+                    )
+                state = json.loads(self._dispatch_path.read_text())
+                self._validate_dispatch_state(state)
+                self._dispatch_state = state
+        except BaseException:
+            owner.close()
+            raise
+        self._dispatch_lock = owner
+
+    @staticmethod
+    def _validate_dispatch_state(state: dict[str, Any]) -> None:
+        if state.get("version") != 1 or not re.fullmatch(r"[0-9a-f]{32}", state.get("lineage", "")):
+            raise RuntimeError("Corrupt Harbor dispatch state version/lineage")
+        calls = state.get("calls")
+        if not isinstance(calls, dict) or set(calls) != {str(i) for i in range(len(calls))}:
+            raise RuntimeError("Corrupt Harbor dispatch call sequence")
+        for index, entry in calls.items():
+            if not isinstance(entry, dict) or type(entry.get("completed")) is not bool:
+                raise RuntimeError("Corrupt Harbor dispatch completion state")
+            expected = f"harbor:{state['lineage']}:solver:{index}"
+            if entry.get("logical_call_id") != expected or any(
+                not isinstance(entry.get(key), str) or not re.fullmatch(r"[0-9a-f]{64}", entry[key])
+                for key in ("configuration_sha256", "request_sha256")
+            ):
+                raise RuntimeError("Corrupt Harbor dispatch call binding")
+            if int(index) < len(calls) - 1 and not entry["completed"]:
+                raise RuntimeError("Corrupt Harbor dispatch sequence crosses unresolved call")
+
+    def _save_dispatch_state(self) -> None:
+        assert self._dispatch_path is not None
+        self._dispatch_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._dispatch_path.with_suffix(".tmp")
+        with temporary.open("w") as stream:
+            json.dump(self._dispatch_state, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(self._dispatch_path)
+        directory_fd = os.open(self._dispatch_path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+    def _dispatch_headers(self, payload: dict[str, Any]) -> dict[str, str]:
+        if self._dispatch_path is None:
+            return {}
+        if "/ng-rollout/" not in self._api_base:
+            raise RuntimeError("Harbor guarded calls require a rollout-qualified Gym model URL")
+        request_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        self._acquire_dispatch_owner()
+        lineage = self._dispatch_state["lineage"]
+        pending = {
+            "logical_call_id": f"harbor:{lineage}:solver:{self._dispatch_ordinal}",
+            "configuration_sha256": self._dispatch_config,
+            "request_sha256": request_hash,
+        }
+        calls = self._dispatch_state["calls"]
+        previous = calls.get(str(self._dispatch_ordinal))
+        if previous is not None and any(previous.get(key) != value for key, value in pending.items()):
+            raise RuntimeError("Harbor call cursor binding differs; do not dispatch another request")
+        if previous is None:
+            calls[str(self._dispatch_ordinal)] = {**pending, "completed": False}
+        self._save_dispatch_state()
+        return {
+            "x-nemo-gym-logical-call-id": pending["logical_call_id"],
+            "x-nemo-gym-call-config-sha256": pending["configuration_sha256"],
+        }
 
     def get_model_context_limit(self) -> int:
         fallback_context_limit = 1000000
@@ -281,7 +433,8 @@ class NemoGymLLM(BaseLLM):
         # so the optional per-call override is preserved regardless of the client's default.
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(timeout=timeout)
-        response = await self._http_client.post(endpoint, json=payload, timeout=timeout)
+        headers = self._dispatch_headers(payload)
+        response = await self._http_client.post(endpoint, json=payload, timeout=timeout, headers=headers)
 
         if response.status_code >= 400:
             error_text = response.text.lower()
@@ -296,6 +449,9 @@ class NemoGymLLM(BaseLLM):
         """Close the persistent HTTP client. Called at episode end; best-effort
         (the per-trial process exits anyway, but this avoids leaked connections /
         'client was not closed' warnings when many episodes run in one process)."""
+        if getattr(self, "_dispatch_lock", None) is not None:
+            self._dispatch_lock.close()
+            self._dispatch_lock = None
         if self._http_client is not None:
             try:
                 await self._http_client.aclose()

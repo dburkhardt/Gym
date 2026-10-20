@@ -45,6 +45,8 @@ class AIRSNoRetryAgent(Terminus2NemoGym):
             model_info=kwargs.get("model_info"),
             responses_create_params=kwargs.get("responses_create_params"),
             timeout_sec=kwargs.get("nemo_model_server_timeout_sec", 120.0),
+            dispatch_state_path=logs_dir / "gym-call-state.json" if "/ng-rollout/" in api_base else None,
+            dispatch_config={"model": model_name, "harness": "AIRSNoRetryAgent", **kwargs},
         )
         llm.failure_receipt_path = logs_dir / "llm-call-failure.json"
         super().__init__(logs_dir=logs_dir, model_name=model_name, api_base=api_base, llm=llm, **kwargs)

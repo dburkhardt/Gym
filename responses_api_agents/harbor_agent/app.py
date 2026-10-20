@@ -255,6 +255,14 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
             policy_model_name = global_config_dict["policy_model_name"]
             base_url = self._resolve_model_base_url(global_config_dict)
+            from nemo_gym.rollout_correlation import current_rollout_id, maybe_rollout_id_from_run_body
+            from nemo_gym.server_utils import rollout_path_prefix
+
+            capture_id = current_rollout_id() or maybe_rollout_id_from_run_body(body)
+            if global_config_dict.get("provider_dispatch_guard") and capture_id is None:
+                raise ValueError("Guarded Harbor runs require a rollout capture identity")
+            if capture_id is not None:
+                base_url = base_url.removesuffix("/v1") + rollout_path_prefix(capture_id) + "/v1"
             run_timestamp = datetime.now(timezone.utc)
             run_id = self._build_run_id(run_timestamp)
 
