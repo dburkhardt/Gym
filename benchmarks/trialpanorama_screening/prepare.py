@@ -9,7 +9,8 @@ from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
 
 def prepare() -> Path:
     return prepare_sample(
-        Path(__file__).resolve().parents[2] / "resources_servers/trialpanorama_screening/data/benchmark.jsonl"
+        Path(__file__).resolve().parents[2] / "resources_servers/trialpanorama_screening/data/benchmark.jsonl",
+        identity_metadata_key="id",
     )
 
 

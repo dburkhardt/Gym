@@ -8,7 +8,10 @@ from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
 
 
 def prepare() -> Path:
-    return prepare_sample(Path(__file__).resolve().parents[2] / "resources_servers/ctbench/data/benchmark.jsonl")
+    return prepare_sample(
+        Path(__file__).resolve().parents[2] / "resources_servers/ctbench/data/benchmark.jsonl",
+        identity_metadata_key="id",
+    )
 
 
 if __name__ == "__main__":

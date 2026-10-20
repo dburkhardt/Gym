@@ -85,3 +85,22 @@ def test_preparation_preserves_existing_dataset_after_interruption(name, tmp_pat
     assert json.loads(destination.read_bytes()) == {**row, "task_id": row["uuid"]}
     assert json.loads(source.read_bytes()) == row
     assert json.loads(destination.with_suffix(".source.json").read_text())["task_ids"] == [row["uuid"]]
+
+
+@pytest.mark.parametrize("name", ["ctbench", "trialpanorama_screening"])
+def test_metadata_id_is_explicitly_preserved(name, tmp_path, monkeypatch):
+    repo = Path(__file__).resolve().parents[2]
+    script = tmp_path / "benchmarks" / name / "prepare.py"
+    script.parent.mkdir(parents=True)
+    script.write_bytes((repo / "benchmarks" / name / "prepare.py").read_bytes())
+    row = {
+        "responses_create_params": {"input": [{"role": "user", "content": "unchanged"}]},
+        "verifier_metadata": {"id": 86, "answer": "reference"},
+    }
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps(row) + "\n")
+    monkeypatch.setenv("CAMPAIGN_SAMPLE_JSONL", str(source))
+    runpy.run_path(str(script), run_name="__main__")
+    output = next(tmp_path.glob("**/data/benchmark.jsonl"))
+    assert json.loads(output.read_text()) == {**row, "task_id": "86"}
+    assert json.loads(source.read_text()) == row
