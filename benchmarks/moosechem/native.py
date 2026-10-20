@@ -31,15 +31,19 @@ class ReplayPrefix:
         self.rows = [json.loads(x) for x in Path(path).read_text().splitlines()]
         self.index = 0
         last = self.rows[-1]['response']['choices'][0]
-        assert last['finish_reason'] == 'length' and last['message']['content'] is None
+        self.failed_tail = last['finish_reason'] == 'length' and last['message']['content'] is None
+        assert self.failed_tail or all(r['response']['choices'][0]['message']['content'] is not None for r in self.rows)
 
     def consume(self, stage, request):
         if self.index >= len(self.rows):
             return None
         row = self.rows[self.index]
-        assert row['stage'] == stage and row['request'] == request, f'Replay divergence at {self.index}'
+        comparable = dict(request)
+        assert row['request']['max_tokens'] in (8192,16384)
+        comparable['max_tokens'] = row['request']['max_tokens']
+        assert row['stage'] == stage and row['request'] == comparable, f'Replay divergence at {self.index}'
         self.index += 1
-        if self.index == len(self.rows):
+        if self.index == len(self.rows) and self.failed_tail:
             return None  # failed request is retried only after its exact identity is checked
         from openai.types.chat import ChatCompletion
         return ChatCompletion.model_validate(row['response'])
@@ -119,6 +123,7 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None):
                          inspiration_ids=[-1],recom_inspiration_ids=[],recom_num_beam_size=5,
                          self_explore_inspiration_ids=[],self_explore_num_beam_size=5,max_inspiration_search_steps=3)
     generation = modules[1].HypothesisGenerationEA(args[1])
+    modules[1].hyp_gene_ea = generation  # creator __main__ binds this global used by later stages
     generation.hypothesis_generation_for_one_background_question(background_question_id=task_id,
                              inspiration_ids=args[1].inspiration_ids,final_data_collection={})
     vars(args[2]).update(hypothesis_dir=str(out/'hypotheses.json'),output_dir=str(out/'evaluation.json'),

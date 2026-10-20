@@ -58,3 +58,12 @@ def test_saved_prefix_rejects_divergence():
     replay = ReplayPrefix('outputs/broad-eval-campaign/moosechem/task18/model-traces.jsonl')
     with pytest.raises(AssertionError):
         replay.consume('wrong-stage', {})
+
+
+def test_complete_mixed_budget_prefix_replays_every_success():
+    from benchmarks.moosechem.native import ReplayPrefix
+    replay=ReplayPrefix('outputs/broad-eval-campaign/moosechem/successful-prefix97.jsonl')
+    for row in replay.rows:
+        request=dict(row['request']);request['max_tokens']=8192
+        assert replay.consume(row['stage'],request) is not None
+    assert replay.index==97
