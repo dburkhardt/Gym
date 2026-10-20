@@ -184,6 +184,9 @@ def prepare(kind: str, repo: Path, output: Path) -> dict:
 
 def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
+    if kind=='molbench':
+        from benchmarks.molbench.adapter import score as score_molbench
+        return score_molbench(repo,task['verifier_metadata'],answer)
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
     if kind in ['genomeqa','omebench','hiscibench','moljson']:
