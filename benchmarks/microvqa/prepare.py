@@ -1,14 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Copy audited campaign rows, never download an unpinned dataset implicitly."""
+"""Prepare the pinned campaign sample for native Gym evaluation."""
 
-import os
-import shutil
 from pathlib import Path
+
+from benchmarks.scientific_agent_campaign.stage_sample import prepare_sample
+
+
+def prepare() -> Path:
+    return prepare_sample(Path(__file__).resolve().parents[2] / "resources_servers/microvqa/data/benchmark.jsonl")
 
 
 if __name__ == "__main__":
-    source = Path(os.environ["CAMPAIGN_SAMPLE_JSONL"])
-    destination = Path(__file__).resolve().parents[2] / "resources_servers/microvqa/data/benchmark.jsonl"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
+    print(prepare())
