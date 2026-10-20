@@ -106,3 +106,17 @@ def test_native_budget_and_transport_policy_remain_distinct(exception_type, expe
         "occurred_at": "2026-10-20T00:00:00Z",
     }
     assert HarborAgentUtils.with_native_validity(raw)["reward_valid"] is expected
+
+
+def test_native_terminus_preflight_accepts_gym_model_options():
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym import Terminus2NemoGym
+
+    parsed = Terminus2NemoGym.parse_options(
+        {
+            "parser_name": "json",
+            "responses_create_params": {"max_output_tokens": 16384},
+            "nemo_model_server_timeout_sec": 120.0,
+        }
+    )
+    assert parsed.responses_create_params == {"max_output_tokens": 16384}
+    assert parsed.parser_name == "json"
