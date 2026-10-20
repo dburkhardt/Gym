@@ -7,18 +7,21 @@ original database is never connected to or modified by this component.
 """
 
 import hashlib
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
-from responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.verifier import _owned_sandbox
+from nemo_gym.sandbox.lifecycle import _owned_sandbox
 
 
 IMAGE = "sha256:3a9633b67d61e169ddcffd531dda5fc702ac823abc5089d4b3031d30c5d2c41e"
 
 
 @asynccontextmanager
-async def database_clone(*, snapshot: Path, expected_sha256: str, socket_dir: Path, receipt: Path):
+async def database_clone(
+    *, snapshot: Path, expected_sha256: str, socket_dir: Path, receipt: Path, run_id: str | None = None
+):
     snapshot = snapshot.resolve(strict=True)
     with snapshot.open("rb") as stream:
         actual_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -29,9 +32,9 @@ async def database_clone(*, snapshot: Path, expected_sha256: str, socket_dir: Pa
         {"docker": {"create": {"network": "none"}}},
         SandboxSpec(
             image=IMAGE,
-            ttl_s=3600,
+            ttl_s=5040,
             resources=SandboxResources(cpu=1, memory_mib=2048),
-            metadata={"workload": "gym-corral-database"},
+            metadata={"workload": "gym-corral-database", "run": run_id or uuid.uuid4().hex},
             provider_options={"volumes": [f"{snapshot}:/snapshot.dump:ro", f"{socket_dir.resolve()}:/db-socket"]},
         ),
     )

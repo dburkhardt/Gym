@@ -229,5 +229,8 @@
     "tasks/retrosynthesis/database_config/phase_b_chemistry_utils.py": "8a27ac4409537b07bee1d721000f90ca01150d6cfcce7d1af1fcb61f9fe88964",
     "tasks/retrosynthesis/database_config/SETUP_GUIDE.md": "6c0b8d551c62b69297c8ac50b16927655a857222bbf924698b1033bca006c81e",
     "tasks/retrosynthesis/scripts/build_buyables.py": "c01dc655228293c5d91c3ddadc6b72247f6c0105a06d73f0024e0c28cf9759d5"
+  },
+  "runtime_file_overrides": {
+    "tasks/retrosynthesis/uv.lock": "1aaabcffa6c7cc73b5b8021c64c3c7db6babc4e9299ed87763400bd2f452d403"
   }
 }

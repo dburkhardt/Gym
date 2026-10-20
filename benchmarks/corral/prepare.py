@@ -28,6 +28,7 @@ def stage(source: Path, destination: Path) -> Path:
                 "task_id": task_id,
                 "instance_id": task_id,
                 "uuid": task_id,
+                "agent_ref": {"name": "harbor_agent"},
                 "responses_create_params": {"input": []},
                 "verifier_metadata": {
                     "native_task": native[0],
@@ -39,6 +40,19 @@ def stage(source: Path, destination: Path) -> Path:
     if len({r["task_id"] for r in rows}) != len(rows):
         raise ValueError("Duplicate frozen task IDs")
     destination.mkdir(parents=True, exist_ok=True)
+    for task_id in manifest["frozen5"]:
+        task = destination / "tasks" / task_id
+        with TemporaryDirectory() as temporary:
+            for name, text in {
+                "instruction.md": task_id + "\n",
+                "tests/test.sh": "#!/bin/sh\necho Native_Corral_custom_verifier_required >&2\nexit 1\n",
+                "environment/Dockerfile": "FROM sha256:24b49fd1a5fd0bd03192106d6c50b44564d5f413ff69bb6333a58ed0d79a51e3\nRUN mkdir -p /workspace\n",
+                "task.toml": 'version = "1.0"\nartifacts = ["/workspace"]\n[agent]\ntimeout_sec = 5040\n[verifier]\ntimeout_sec = 5040\n[environment]\ndocker_image = "sha256:24b49fd1a5fd0bd03192106d6c50b44564d5f413ff69bb6333a58ed0d79a51e3"\ncpus = 1\nmemory_mb = 128\nstorage_mb = 1024\nallow_internet = false\n',
+            }.items():
+                file = Path(temporary) / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(text)
+                stage_file(file, task / name)
     with TemporaryDirectory() as temporary:
         prepared = Path(temporary) / "benchmark.jsonl"
         prepared.write_text("".join(json.dumps(row) + "\n" for row in rows))

@@ -73,6 +73,15 @@ async def phase(
                 registry=registry,
                 observer=NoOpObserver(),
             )
+        if saved_state is None:
+            terminal = await store.for_execution(execution_id).materialize(result.branch_id, result.commit_hash)
+            (root / "native-runtime-outcome.json").write_text(
+                json.dumps(
+                    {"commit_hash": result.commit_hash, "runtime_metadata": dict(terminal.runtime.metadata)},
+                    default=str,
+                )
+                + "\n"
+            )
         return asdict(result)
     except BaseException as error:
         original_error = error

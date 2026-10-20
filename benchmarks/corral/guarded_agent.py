@@ -9,8 +9,6 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from nemo_gym.provider_dispatch import configuration_digest
-
 
 _OWNER = threading.Lock()
 
@@ -32,23 +30,30 @@ def publish(path: Path, value: dict):
 
 
 @contextmanager
-def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None):
+def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, dispatch_digest: str | None = None):
     from corral.agents import base_agent
     from corral.cli import create_agent
 
     if "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
         raise ValueError("Corral requires a native rollout-qualified model service")
     calls.mkdir(parents=True, exist_ok=False)
-    digest = configuration_digest(
-        {
-            "model": MODEL,
-            "temperature": 1.0,
-            "max_tokens": 16384,
-            "iterations": 50,
-            "creator": "f5a6963a9ccf6e3c0058c776fe4111b639add648",
-            "adapter_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        }
-    )
+    if dispatch_digest is not None:
+        if len(dispatch_digest) != 64 or any(c not in "0123456789abcdef" for c in dispatch_digest):
+            raise ValueError("Invalid persisted Corral protocol digest")
+        digest = dispatch_digest
+    else:
+        from nemo_gym.provider_dispatch import configuration_digest
+
+        digest = configuration_digest(
+            {
+                "model": MODEL,
+                "temperature": 1.0,
+                "max_tokens": 16384,
+                "iterations": 50,
+                "creator": "f5a6963a9ccf6e3c0058c776fe4111b639add648",
+                "adapter_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            }
+        )
     original = base_agent.llm_call
     lock = asyncio.Lock()
     ordinal = 0
