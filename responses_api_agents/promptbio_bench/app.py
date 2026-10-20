@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import Field, PrivateAttr
+from pydantic import Field, PrivateAttr, model_validator
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -29,11 +29,22 @@ class PromptBioConfig(BaseResponsesAPIAgentConfig):
     # Pairing is deliberate: both solvers share the upstream Detect/Recommend pass.
     comparison_models: list[str] = Field(default_factory=list)
     judge_model: str = "gpt-5.4"
+    judge_base_url: str | None = None
     judge_key_file: Path
     budget_ledger: Path
     budget_usd: float = 100
     max_steps: int = 100
     max_tokens: int = 16384
+
+    @model_validator(mode="after")
+    def campaign_contract(self):
+        if self.judge_base_url is not None:
+            from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL, GATEWAY
+            if self.judge_model != MODEL or any(x != MODEL for x in [self.model_name, *self.comparison_models]):
+                raise ValueError("Campaign requires Super for every role")
+            if self.model_base_url.rstrip("/") != GATEWAY or self.judge_base_url.rstrip("/") != GATEWAY:
+                raise ValueError("Campaign requires local gateway for every role")
+        return self
 
 
 class PromptBioRequest(BaseRunRequest):
@@ -73,6 +84,7 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
             python=cfg.scorer_python,
             output=cfg.output_dir / task_id / "grading",
             judge_model=cfg.judge_model,
+            judge_base_url=cfg.judge_base_url,
             judge_key_file=cfg.judge_key_file,
             budget_ledger=cfg.budget_ledger,
             budget_usd=cfg.budget_usd,
