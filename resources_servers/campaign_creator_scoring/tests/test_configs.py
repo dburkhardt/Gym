@@ -49,3 +49,25 @@ def test_verify_endpoint_with_pinned_qcbench(monkeypatch):
         assert result.status_code==200,result.text
         assert result.json()['reward']==1
         assert result.json()['scoring_details']['metric']=='creator_numeric'
+
+
+@pytest.mark.parametrize('benchmark',['qcbench','chemiq','sino_us_drugqa','moleculariq','fgbench','scienceqa','scibench'])
+def test_prepare_and_real_collation(benchmark,monkeypatch,tmp_path):
+    import importlib
+    import json
+    from pathlib import Path
+    from nemo_gym.train_data_utils import TrainDataProcessor
+    sample=Path('../../outputs/broad-eval-campaign/scientific-agents')/benchmark/(benchmark+'-5.jsonl')
+    if not sample.exists():
+        pytest.skip('Pinned campaign sample unavailable')
+    monkeypatch.setenv('CAMPAIGN_SAMPLE_JSONL',str(sample.resolve()))
+    monkeypatch.setenv('CAMPAIGN_UPSTREAM_REPO','/tmp/creator')
+    staged=importlib.import_module('benchmarks.'+benchmark+'.prepare').prepare()
+    assert staged.read_bytes()==sample.read_bytes()
+    initial=OmegaConf.merge(GlobalConfigDictParserConfig.NO_MODEL_GLOBAL_CONFIG_DICT,{'config_paths':[f'benchmarks/{benchmark}/config.yaml'],'output_dirpath':str(tmp_path),'mode':'train_preparation','should_download':False,'overwrite_metrics_conflicts':True})
+    global_config=GlobalConfigDictParser().parse(GlobalConfigDictParserConfig(initial_global_config_dict=initial,skip_load_from_cli=True,skip_load_from_dotenv=True,offline=True))
+    TrainDataProcessor().run(global_config)
+    actual=[json.loads(x) for x in (tmp_path/'benchmark.jsonl').read_text().splitlines()]
+    expected=[json.loads(x) for x in sample.read_text().splitlines()]
+    assert len(actual)==len(expected)==5
+    assert {x['uuid'] for x in actual}=={x['uuid'] for x in expected}
