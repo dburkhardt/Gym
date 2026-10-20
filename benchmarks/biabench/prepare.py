@@ -2,8 +2,11 @@
 """Validate pinned BIABench assets and publish native task identity, without inference."""
 
 import hashlib
+import importlib
+import inspect
 import json
 import os
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -28,6 +31,41 @@ def stage(source: Path, task: Path, destination: Path) -> Path:
     manifest = json.loads(Path(__file__).with_name("frozen_sources.json").read_text())
     validate(source, manifest["creator_files"])
     validate(task, manifest["task_files"])
+    source, task = source.resolve(), task.resolve()
+    public = {name: sha for name, sha in manifest["task_files"].items() if name.startswith("input/")}
+    solver = destination / "solver"
+    for path in solver.rglob("*"):
+        if path.is_symlink():
+            raise ValueError("Solver staging must not contain symlinks")
+        if path.is_file():
+            relative = str(path.relative_to(solver))
+            if path.name.startswith(".") and path.name.endswith(".stage.lock"):
+                relative = str(path.relative_to(solver).with_name(path.name[1:-11]))
+            if relative not in public and relative != "instruction.md":
+                raise ValueError(f"Unexpected solver file: {relative}")
+    for relative, checksum in manifest["task_files"].items():
+        role = "solver" if relative in public else "references"
+        stage_file(task / relative, destination / role / relative, expected_sha256=checksum)
+    for relative, checksum in manifest["creator_files"].items():
+        stage_file(source / relative, destination / "verifier_source" / relative, expected_sha256=checksum)
+    sys.path.insert(0, str(source))
+    native = importlib.import_module("bioimage_agent_bench.task_spec")
+    if Path(inspect.getfile(native)).resolve() != source / "bioimage_agent_bench/task_spec.py":
+        raise ValueError("Wrong creator task renderer imported")
+    prompt = (
+        native.render_instruction(
+            native.load_task_spec(task),
+            agent_id="nemotron_harbor",
+            level="basic",
+            input_dir=Path("/workspace/input"),
+            output_dir=Path("/workspace/output"),
+            include_environment=False,
+        )
+        + "\n\nCompute environment: This sandbox provides 4 CPUs and 8 GiB RAM, with no GPU. Use CPU execution.\n"
+    )
+    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
+    if prompt_hash != "380a3ac2065c676e69ae005df1c59409e693d7e9bb37e664ca6bc85db7e759c5":
+        raise ValueError("Frozen BIABench prompt differs from recorded CPU variant")
     row = {
         "task_id": manifest["task_id"],
         "instance_id": "biabench::" + manifest["task_id"],
@@ -38,10 +76,12 @@ def stage(source: Path, task: Path, destination: Path) -> Path:
             "process_score_required": True,
         },
     }
-    # No task assets or references are exposed to a solver by this identity stage.
-    # The eventual managed adapter must provide separately validated mounts.
+    # Only solver/ may be mounted into the task; references and creator scorer stay separate.
     with TemporaryDirectory() as directory:
         temporary = Path(directory)
+        instruction = temporary / "instruction.md"
+        instruction.write_text(prompt)
+        stage_file(instruction, solver / instruction.name, expected_sha256=prompt_hash)
         data = temporary / "benchmark.jsonl"
         data.write_text(json.dumps(row) + "\n")
         target = stage_file(data, destination / data.name)
