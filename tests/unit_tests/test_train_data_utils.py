@@ -19,7 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, mock_open
 
 from pydantic import ValidationError
-from pytest import MonkeyPatch, raises
+from pytest import MonkeyPatch, mark, raises
 
 import nemo_gym.global_config
 import nemo_gym.train_data_utils
@@ -1664,3 +1664,52 @@ class TestDeclaringInstanceValidation:
                 }
             )
         assert [c.name for c in out] == ["my_agent"]
+
+
+@mark.parametrize("path_expression", ["${oc.env:GYM_TEST_DATA_ROOT}/frozen.jsonl", "${data_root}/frozen.jsonl"])
+def test_interpolated_dataset_is_loaded_and_collated(tmp_path, monkeypatch, path_expression):
+    """Execution must consume the same resolved dataset path as eval plan."""
+    from omegaconf import OmegaConf
+
+    from nemo_gym.global_config import GlobalConfigDictParser
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GYM_TEST_DATA_ROOT", str(tmp_path))
+    original = {"task_id": "frozen-1", "responses_create_params": {"input": []}, "question": "unchanged"}
+    (tmp_path / "frozen.jsonl").write_text(json.dumps(original) + "\n")
+    config = OmegaConf.create(
+        {
+            "data_root": str(tmp_path),
+            "resource": {
+                "resources_servers": {
+                    "impl": {
+                        "entrypoint": "app.py",
+                        "domain": "knowledge",
+                        "datasets": [
+                            {
+                                "name": "frozen",
+                                "type": "benchmark",
+                                "jsonl_fpath": path_expression,
+                                "num_repeats": 1,
+                                "prepare_script": "unused.py",
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+    )
+    instances = GlobalConfigDictParser().filter_for_server_instance_configs(config)
+    assert len(instances) == 1
+    processor = TrainDataProcessor()
+    processor.load_datasets(
+        TrainDataProcessorConfig(
+            output_dirpath=str(tmp_path / "processed"), mode="train_preparation", should_download=False
+        ),
+        instances,
+    )
+    paths = processor._collate_samples_single_type("benchmark", instances, task_data_validation="off")
+    rows = [json.loads(line) for line in paths[0].read_text().splitlines()]
+    assert len(rows) == 1
+    assert all(rows[0][key] == value for key, value in original.items())
+    assert rows[0]["task_source"] == "resource"
