@@ -70,7 +70,7 @@ def test_native_verify(name, text, metadata):
     "name,metadata,judge_answer",
     [
         ("biomaze", {"protocol": "openended", "question": "q", "answer": "r"}, "Judge: Correct"),
-        ("fdarxbench", {"question": "q", "answer": "r"}, "A"),
+        ("fdarxbench", {"question": "q", "answer": "r"}, "A: The answer matches the reference."),
     ],
 )
 def test_native_judge_contract(name, metadata, judge_answer, tmp_path, monkeypatch):
