@@ -5,6 +5,8 @@
 import argparse
 import hashlib
 import json
+import re
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -98,9 +100,59 @@ def prepare(checkout: Path, output: Path) -> Path:
     return path
 
 
+def prepare_task02(checkout: Path, output: Path, image_id: str) -> Path:
+    """Stage an explicit image/artifact overlay; native scientific files remain byte-identical."""
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("image_id must be the existing scientific task image's immutable digest")
+    inspect_checkout(checkout)
+    source = checkout / "tasks" / "02_conc_diff_sys_traj"
+    target = output / "tasks" / source.name
+    shutil.copytree(source, target)
+    config = target / "task.toml"
+    original = config.read_text()
+    updated = original.replace('artifacts = ["/app/outputs", "/app/final_answer.txt"]', 'artifacts = ["/app"]')
+    updated = updated.replace('[verifier.env]\nCLAUDE_CODE_OAUTH_TOKEN = "${CLAUDE_CODE_OAUTH_TOKEN}"\n', "")
+    updated = updated.replace("[environment]\n", f'[environment]\ndocker_image = "{image_id}"\n')
+    config.write_text(updated)
+    (output / "task02-overlay.json").write_text(
+        json.dumps(
+            {
+                "source_commit": SOURCE_COMMIT,
+                "source_task_config_sha256": hashlib.sha256(original.encode()).hexdigest(),
+                "staged_task_config_sha256": hashlib.sha256(updated.encode()).hexdigest(),
+                "image_id": image_id,
+                "changes": [
+                    "immutable scientific task image",
+                    "full submitted workspace artifacts",
+                    "remove unused Claude OAuth injection",
+                ],
+                "scientific_sources_unchanged": True,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    (output / "pilot-task02.jsonl").write_text(
+        json.dumps(
+            {
+                "instance_id": "mdarena::02_conc_diff_sys_traj",
+                "responses_create_params": {"input": [], "temperature": 0.0},
+                "agent_ref": {"name": "harbor_agent"},
+            }
+        )
+        + "\n"
+    )
+    return target
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkout", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--task02-image-id", help="Optionally stage task02 with an existing immutable scientific image"
+    )
     args = parser.parse_args()
     print(prepare(args.checkout, args.output))
+    if args.task02_image_id:
+        print(prepare_task02(args.checkout, args.output, args.task02_image_id))

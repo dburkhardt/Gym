@@ -96,6 +96,10 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     # singularity_image_cache_dir, singularity_force_pull).
     harbor_environment_kwargs: Optional[dict[str, Any]] = None
 
+    # Native Harbor custom verifier hook. Model route is injected for guarded judges.
+    harbor_verifier_import_path: Optional[str] = None
+    harbor_verifier_kwargs: Optional[dict[str, Any]] = None
+
     # --- Timeouts ---
     # Override agent timeout (seconds). Replaces the task's own timeout entirely.
     # Use this to set a fixed timeout for all tasks regardless of task.toml.
@@ -540,7 +544,12 @@ class HarborAgent(SimpleResponsesAPIAgent):
             kwargs=environment_kwargs,
         )
 
+        verifier_kwargs = dict(self.config.harbor_verifier_kwargs or {})
+        if self.config.harbor_verifier_import_path:
+            verifier_kwargs.update(gym_model_api_base=api_base, gym_model_name=model_name)
         verifier_config = VerifierConfig(
+            import_path=self.config.harbor_verifier_import_path,
+            kwargs=verifier_kwargs,
             override_timeout_sec=(
                 float(self.config.harbor_verifier_override_timeout)
                 if self.config.harbor_verifier_override_timeout is not None

@@ -1,0 +1,39 @@
+# Nemotron judge/scaffold variant; original molecular-dynamics inputs and budgets remain unchanged.
+# Prepare pinned tasks and record image/artifact overlays before use. See benchmarks/mdarena/README.md.
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      entrypoint: app.py
+      domain: agent
+      description: MDArena native scientific tasks with isolated RewardKit tool-judge (Nemotron variant).
+      concurrency: 1
+      harbor_datasets:
+        mdarena:
+          local_dataset_path: ${oc.env:MDARENA_TASKS_DIR}
+          workdir: /app
+      harbor_agent_name: null
+      harbor_agent_import_path: responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym
+      harbor_agent_kwargs:
+        parser_name: xml
+        enable_summarize: false
+        responses_create_params:
+          input: []
+          temperature: 0.0
+          max_output_tokens: 16384
+        collect_rollout_details: true
+        trajectory_config:
+          raw_content: true
+        model_info:
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+          input_cost_per_token: 0.0
+          output_cost_per_token: 0.0
+      harbor_environment_type: docker
+      harbor_no_delete: false
+      harbor_verifier_import_path: responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.verifier:RewardKitAgentVerifier
+      harbor_verifier_kwargs:
+        image_id: ${oc.env:MDARENA_IMAGE_ID}
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      harbor_jobs_dir: responses_api_agents/harbor_agent/jobs
