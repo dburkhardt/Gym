@@ -35,3 +35,15 @@ async def test_outer_native_query_decorator_cannot_repeat_failure():
         with pytest.raises(ConnectionError):
             await agent._query_llm(None, "question", (None, None, None))
     assert query.await_count == 1
+
+
+def test_native_agent_uses_no_retry_backend(tmp_path):
+    agent = AIRSNoRetryAgent(
+        logs_dir=tmp_path,
+        model_name="nvidia/nvidia/nemotron-3.5-super-vl",
+        api_base="http://127.0.0.1:1/v1",
+        model_info={"max_input_tokens": 49152, "max_output_tokens": 16384},
+        enable_summarize=False,
+    )
+    assert isinstance(agent._llm, NoRetryNemoGymLLM)
+    assert agent._llm.failure_receipt_path == tmp_path / "llm-call-failure.json"
