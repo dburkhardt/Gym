@@ -1,0 +1,9 @@
+# Corral native integration (in progress)
+
+Preparation pins creator source f5a6963a9ccf6e3c0058c776fe4111b639add648 and dataset release6f7e6f080e9ec029b8c7847a563246b7e6c1ca18. It preserves the existing retrosynthesis level3 frozen5 (make1,2,5,9,10), with prior3/4 expansion recorded separately. Full native task fields remain verifier metadata, never substituted into a flat answer task. Spectra and wetlab are separate unaccepted environment routes, not silently covered by retrosynthesis.
+
+`native_phase.py` provides single-task creator execution and separate saved-state evaluation using ShardedCommitStore, including workspace snapshots. It does not launch a scheduler, construct a model client, or establish container/DB isolation. Solver integration must inject the creator ReAct agent with native50 interactions,16384 output tokens, one attempt, exact Nemotron model, and guarded native streaming transport. Creator streaming reconstructs reasoning content as answer content when final content is absent; preserve that qualification.
+
+Next gates: shared managed-container launch and DB-only connectivity; source/private-reference boundary; guarded streaming and durable per-call identity; native saved-state scorer controls; exact image/database/price snapshot identity. Persistent PostgreSQL/RDKit, frozen buyables and three supplemental reactions must be available. No live inference authorized or runnable benchmark config published yet.
+
+Canonical scorer false positives are preserved: historical wrong-root/template/precursor controls can score1. The optional diagnostic scorer is a separate protocol, not a replacement. Task1's released target/template mismatch remains qualified. Scientific acceptance must retain raw canonical metrics and these limitations; runtime integration alone does not clear them.
