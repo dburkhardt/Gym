@@ -1,0 +1,7 @@
+# MOOSE-Chem native pipeline
+
+Pinned creator f8cda98a3bed30b0f0d85fba625e343d688461ab; SHA256 checks cover source and the official51-question workbook/150-paper corpus. The wrapper invokes creator Screening, HypothesisGenerationEA and Evaluate, preserving source prompts, parsing, ranking and reference match scorer. Configuration follows creator main.sh: strict background/survey, four retrieval rounds, three mutations and refinements, up to three inspiration search steps. Ground-truth inspirations are disabled for generation. Evaluation enables reference annotation because a benchmark metric is required.
+
+All model roles use Nemotron3.5SuperVL via the shared local gateway; this is an explicit model/judge substitution variant. Creator8192-token generation cap and temperatures are retained. Every raw chat request/response is saved without authentication. Reference hypothesis/keypoints enter only the native evaluator. Match scoring is only applied to hypotheses with a creator-matched inspiration, so a missing matched score is not a numeric zero. A modern model may have seen these2024 papers; this run cannot reproduce the paper's unseen-literature premise.
+
+Three no-inference controls cover source defaults, reference recall1/0, and first retrieval prompt exclusion of hypothesis/keypoints. Full native pipeline runtime and judge calibration are still pending; this file does not claim Gym registration or scientific validity.

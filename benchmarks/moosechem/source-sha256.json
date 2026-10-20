@@ -1,0 +1,9 @@
+{
+  "Method/inspiration_screening.py": "7af722d44cecb6e0c63a3b7d1397a34330df6df3545ae65e5d41ee0569589a83",
+  "Method/hypothesis_generation.py": "664849ff73387cfb4646e39e1d754b7e25d9bd3b320241ccbf6950e41155a6db",
+  "Method/utils.py": "b9e7aa46da6b0357bc9a1dd050e815ca79917418257b8ec8598d70829a65b246",
+  "Method/evaluate.py": "eb39eecc355cc6171d4aec47dbceb9f2a61e5cf8b352f32291b203efe5a8e930",
+  "Method/logging_utils.py": "240c0941ab75a8bc734d24c5e9966f9cae2939ff25a84075e30524bef5a9395c",
+  "Data/chem_research_2024.xlsx": "6ebd5c313319e9819c590db26fb9c35a721ede8b5736a3537cb4a6865f999e99",
+  "Data/Inspiration_Corpus_150.json": "d0bc52b5f37db6482a8c201e36694da70159ad8e7c486b3fac5e125bff1d435d"
+}
