@@ -59,3 +59,18 @@ async def test_agent_scores_two_full_prompts_without_gold(monkeypatch):
     assert json.loads(result.output_text)['mean_nll']==[2,2]
     assert [r['messages'][0]['content'] for r in seen]==['abstract original','abstract altered']
     assert all(r['prompt_logprobs']==0 and r['max_tokens']==1 for r in seen)
+
+def test_real_collation_preserves_exact_five_ids(monkeypatch,tmp_path):
+    import json
+    from pathlib import Path
+    from nemo_gym.train_data_utils import TrainDataProcessor
+    sample=Path('../../outputs/broad-eval-campaign/brainbench/sample-5.jsonl').resolve()
+    if not sample.exists():pytest.skip('Prepared pinned source sample not present')
+    monkeypatch.setenv('CAMPAIGN_SAMPLE_JSONL',str(sample))
+    from benchmarks.brainbench.prepare import prepare
+    assert prepare().read_bytes()==sample.read_bytes()
+    initial=OmegaConf.merge(GlobalConfigDictParserConfig.NO_MODEL_GLOBAL_CONFIG_DICT,{'config_paths':['benchmarks/brainbench/config.yaml'],'output_dirpath':str(tmp_path),'mode':'train_preparation','should_download':False,'overwrite_metrics_conflicts':True})
+    cfg=GlobalConfigDictParser().parse(GlobalConfigDictParserConfig(initial_global_config_dict=initial,skip_load_from_cli=True,skip_load_from_dotenv=True,offline=True))
+    TrainDataProcessor().run(cfg)
+    actual=[json.loads(x) for x in (tmp_path/'benchmark.jsonl').read_text().splitlines()]
+    assert len(actual)==5 and {r['uuid'] for r in actual}=={json.loads(x)['uuid'] for x in sample.read_text().splitlines()}

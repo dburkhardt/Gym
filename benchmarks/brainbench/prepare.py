@@ -15,7 +15,10 @@ def build(experiments,testcases):
     random.Random(20261020).shuffle(out);return out
 
 def prepare()->Path:
-    sample=Path(os.environ['CAMPAIGN_SAMPLE_JSONL']);assert sample.is_file();return sample
+    sample=Path(os.environ['CAMPAIGN_SAMPLE_JSONL']).resolve();assert sample.is_file()
+    destination=Path(__file__).parent/'data/benchmark.jsonl';destination.parent.mkdir(parents=True,exist_ok=True)
+    if sample!=destination.resolve():__import__('shutil').copyfile(sample,destination)
+    return destination.resolve()
 if __name__=='__main__':
     import argparse
     p=argparse.ArgumentParser();p.add_argument('--experiments',type=Path,required=True);p.add_argument('--testcases',type=Path,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();rows=build(a.experiments,a.testcases);a.out.mkdir(parents=True,exist_ok=True)
