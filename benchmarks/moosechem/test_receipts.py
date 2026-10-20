@@ -108,3 +108,18 @@ def test_runtime_drift_rejected(monkeypatch):
     from benchmarks.moosechem.remaining_two import validate_runtime
     monkeypatch.setattr(native.subprocess if hasattr(native,'subprocess') else __import__('subprocess'),'check_output',lambda *a,**k:'{"python_version":"changed"}')
     with pytest.raises(AssertionError):validate_runtime('fake-python',{'python_version':'pinned'})
+
+def test_child_entry_imports_without_third_party_dependencies():
+    import subprocess,sys
+    from pathlib import Path
+    source=Path(__file__).with_name('child_entry.py')
+    code="""import builtins,runpy,sys
+original=builtins.__import__
+def restricted(name,*args,**kwargs):
+    if name.split('.')[0] in {'aiohttp','benchmarks','openai'}:
+        raise ImportError('native runtime has no proxy dependencies')
+    return original(name,*args,**kwargs)
+builtins.__import__=restricted
+runpy.run_path(sys.argv[1],run_name='child_import_control')
+"""
+    subprocess.run([sys.executable,'-I','-c',code,str(source.resolve())],check=True)

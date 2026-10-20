@@ -3,7 +3,13 @@
 """Child self-identifies durably before parent may release native execution."""
 import json,os,sys,time
 from pathlib import Path
-from benchmarks.moosechem.admission import persist
+def persist(path,value):
+    # Child uses the pinned creator runtime, which deliberately lacks aiohttp.
+    with path.open('x') as stream:
+        json.dump(value,stream);stream.flush();os.fsync(stream.fileno())
+    fd=os.open(path.parent,os.O_RDONLY)
+    try:os.fsync(fd)
+    finally:os.close(fd)
 
 def identity(pid):
  stat=Path(f'/proc/{pid}/stat').read_text();fields=stat[stat.rfind(')')+2:].split()
