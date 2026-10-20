@@ -30,7 +30,21 @@ class Verifier:
     async def verify(self, body: Request) -> Response:
         import asyncio
 
-        result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
+        try:
+            result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
+        except RuntimeError as exc:
+            return Response(
+                **body.model_dump(),
+                reward=0.0,
+                mask_sample=True,
+                failure_kind="ether0_benchmark:grader_unavailable",
+                failure_reason=str(exc),
+                diagnostics={
+                    "reward_is_serialization_placeholder": True,
+                    "denominator_policy": "Retain attempt; exclude placeholder from scientific performance.",
+                    "oracle_error": str(exc),
+                },
+            )
         return Response(**body.model_dump(), **result)
 
 
