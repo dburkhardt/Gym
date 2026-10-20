@@ -38,3 +38,24 @@ def test_missing_asset_fails_before_native_import(monkeypatch,tmp_path):
     monkeypatch.setattr(importlib.util,'find_spec',lambda name:SimpleNamespace(origin=str(tmp_path/'__init__.py')))
     with pytest.raises(RuntimeError,match='Missing or mismatched pinned creator asset'):
         grade('CCO',solution='fg_eval!:!x')
+
+
+def test_score_worker_keeps_creator_prints_off_json_stdout(monkeypatch, capsys):
+    import io
+    import json
+    import runpy
+    import sys
+    import types
+    from pathlib import Path
+
+    fake = types.ModuleType('resources_servers.ether0_benchmark.grading')
+    def noisy_grade(**payload):
+        print('creator diagnostic')
+        return {'reward': 1.0}
+    fake.grade = noisy_grade
+    monkeypatch.setitem(sys.modules, fake.__name__, fake)
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('{"answer":"C"}'))
+    runpy.run_path(str(Path(__file__).resolve().parents[1] / 'score_worker.py'), run_name='__main__')
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {'reward': 1.0}
+    assert 'creator diagnostic' in captured.err
