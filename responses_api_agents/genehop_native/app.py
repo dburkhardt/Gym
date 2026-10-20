@@ -16,7 +16,10 @@ from pydantic import PrivateAttr
 from benchmarks.genehop.native_loop import MODEL, NativeLoop
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
+from nemo_gym.config_types import ModelServerRef
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
+from nemo_gym.provider_dispatch import configuration_digest
+from nemo_gym.server_utils import raise_for_status, rollout_path_prefix
 
 
 class Config(BaseResponsesAPIAgentConfig):
@@ -24,6 +27,7 @@ class Config(BaseResponsesAPIAgentConfig):
     output_root: Path
     base_url: str = "http://127.0.0.1:49180/v1"
     api_key_env: str = "GENEHOP_API_KEY"
+    model_server: ModelServerRef | None = None
 
 
 class RunRequest(BaseRunRequest):
@@ -47,7 +51,29 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
     async def responses(self, request: Request, response: Response, body: NeMoGymResponseCreateParamsNonStreaming):
         raise NotImplementedError("Use native /run")
 
-    def execute(self, body):
+    async def guarded_model_call(self, body: RunRequest, payload: dict, turn: int) -> dict:
+        """Use the existing captured chat route without changing native request fields."""
+        if self.config.model_server is None:
+            raise ValueError("Shared model server is required")
+        if not self.server_client.global_config_dict.get("provider_dispatch_guard"):
+            raise ValueError("GeneHop shared transport requires provider_dispatch_guard")
+        rollout_id = self.rollout_id_from_run(body)
+        if rollout_id is None:
+            raise ValueError("Guarded GeneHop requires native rollout identity")
+        digest = configuration_digest({"harness": "genehop-native", "task": body.model_dump(), "payload": payload})
+        response = await self.server_client.post(
+            server_name=self.config.model_server.name,
+            url_path=rollout_path_prefix(rollout_id) + "/v1/chat/completions",
+            json=payload,
+            headers={
+                "x-nemo-gym-logical-call-id": f"genehop:{body.uuid}:{turn}",
+                "x-nemo-gym-call-config-sha256": digest,
+            },
+        )
+        await raise_for_status(response)
+        return await response.json()
+
+    def execute(self, body, model_call=None):
         if not re.fullmatch(r"[A-Za-z0-9_: -]+", body.uuid):
             raise ValueError("Unsafe task UUID")
         taskid = body.uuid.replace(":", "-").replace(" ", "_")
@@ -55,7 +81,11 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
         out.mkdir(parents=True, exist_ok=False)
         try:
             loop = NativeLoop(
-                self.config.upstream_repo, out, os.environ[self.config.api_key_env], self.config.base_url
+                self.config.upstream_repo,
+                out,
+                "" if model_call else os.environ[self.config.api_key_env],
+                self.config.base_url,
+                model_call=model_call,
             )
             loop.header_path = self.config.output_root / "prompt-header.txt"
             result = loop.run(body.verifier_metadata["question"])
@@ -75,8 +105,18 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
         inp = body.responses_create_params.model_dump()["input"]
         if len(inp) != 1 or inp[0]["role"] != "user" or inp[0]["content"] != question:
             raise ValueError("Question mismatch")
+        model_call = None
+        if self.config.model_server is not None:
+            event_loop = asyncio.get_running_loop()
+
+            def model_call(payload, turn):
+                return asyncio.run_coroutine_threadsafe(
+                    self.guarded_model_call(body, payload, turn), event_loop
+                ).result()
+        elif self.server_client.global_config_dict.get("provider_dispatch_guard") is True:
+            raise ValueError("Guarded GeneHop cannot use legacy direct transport")
         async with self._lock:
-            out, result = await asyncio.to_thread(self.execute, body)
+            out, result = await asyncio.to_thread(self.execute, body, model_call)
         score = None
         failure = None
         if result["status"] != "completed":

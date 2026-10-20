@@ -6,4 +6,10 @@ Preserves10 model turns,36,000-character rolling prompt truncation,20,000-charac
 
 Only Disease gene location has an upstream automatic score. Other task types retain generated responses with `raw_creator_score=null` and masked Gym reward placeholders. No overall accuracy should be computed from those placeholders. Responses wrap the final native answer; provider identity/usage is in per-turn receipts.
 
-Set `GENEHOP_SOURCE`, `GENEHOP_OUTPUT`, `GENEHOP_SAMPLE`, and an inherited `GENEHOP_API_KEY` on the worker. The API key must never be supplied as a serialized Gym config value. Uses the existing local rate-limited gateway. Initial implementation remains pending independent review and live pilot.
+Set `GENEHOP_SOURCE`, `GENEHOP_OUTPUT`, and `GENEHOP_SAMPLE` on the worker. Configure the shared policy model as described below. The legacy gateway path alone uses an inherited `GENEHOP_API_KEY`; never serialize it into Gym configuration. The migrated shared path remains pending live acceptance.
+
+## Shared transport migration
+
+The maintained benchmark config selects `policy_model` through Gym. Enable `observability_enabled` and `provider_dispatch_guard`, configure durable model-call capture, and supply credentials only to the model server. Each native chat turn uses the original payload and a rollout-qualified logical call identity. The direct gateway remains only for legacy unguarded runs; guarded runs reject that fallback. Existing task artifact directories block an automatic restart, so arbitrary interrupted-loop resume is not yet implemented. This bridge has contract tests but still requires live acceptance.
+
+For the automatically graded Disease gene location category, budget-limited output is scored with the creator parser and remains in the denominator. Other categories remain manually graded; infrastructure failures remain masked. Historical attempts are unchanged.

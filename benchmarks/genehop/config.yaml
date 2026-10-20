@@ -2,6 +2,9 @@ genehop_agent:
   responses_api_agents:
     genehop_native:
       entrypoint: app.py
+      model_server:
+        type: responses_api_models
+        name: policy_model
       upstream_repo: ${oc.env:GENEHOP_SOURCE}
       output_root: ${oc.env:GENEHOP_OUTPUT}
       datasets:

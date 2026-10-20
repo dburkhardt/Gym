@@ -111,7 +111,7 @@ def test_native_post_failure_and_uuid(tmp_path):
         upstream_repo=tmp_path,
         output_root=tmp_path / "out",
     )
-    agent = GeneHopAgent(config=config, server_client=MagicMock(spec=ServerClient))
+    agent = GeneHopAgent(config=config, server_client=MagicMock(spec=ServerClient, global_config_dict={}))
     body = {
         "uuid": "safe-1",
         "responses_create_params": {"input": [{"role": "user", "content": "Q"}]},
@@ -172,7 +172,7 @@ def test_budget_outputs_remain_in_automatic_score_denominator(tmp_path, status, 
         upstream_repo=tmp_path,
         output_root=tmp_path / "out",
     )
-    agent = GeneHopAgent(config=config, server_client=MagicMock(spec=ServerClient))
+    agent = GeneHopAgent(config=config, server_client=MagicMock(spec=ServerClient, global_config_dict={}))
     body = {
         "uuid": "budget-1",
         "responses_create_params": {"input": [{"role": "user", "content": "Q"}]},
@@ -210,3 +210,58 @@ def test_injected_model_transport_preserves_native_protocol(tmp_path):
         "stop": ["->", "\n\nQuestion"],
     }
     assert json.loads((tmp_path / "trial/model-00.json").read_text())["request"] == payload
+
+
+@pytest.mark.asyncio
+async def test_shared_chat_transport_uses_guarded_identity(tmp_path):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nemo_gym.config_types import ModelServerRef
+    from nemo_gym.server_utils import ServerClient
+    from responses_api_agents.genehop_native.app import Config, GeneHopAgent, RunRequest
+
+    config = Config(
+        host="127.0.0.1",
+        port=46001,
+        entrypoint="app.py",
+        name="genehop_agent",
+        upstream_repo=tmp_path,
+        output_root=tmp_path / "out",
+        model_server=ModelServerRef(type="responses_api_models", name="policy_model"),
+    )
+    server = MagicMock(
+        spec=ServerClient, global_config_dict={"provider_dispatch_guard": True, "observability_enabled": True}
+    )
+    response = MagicMock()
+    response.status = 200
+    response.json = AsyncMock(return_value=reply("Answer: x"))
+    server.post = AsyncMock(return_value=response)
+    agent = GeneHopAgent(config=config, server_client=server)
+    body = RunRequest.model_validate(
+        {
+            "_ng_rollout_id": "frozen-task-0",
+            "uuid": "task-1",
+            "responses_create_params": {"input": [{"role": "user", "content": "Q"}]},
+            "verifier_metadata": {
+                "question": "Q",
+                "answer": ["SECRET_REFERENCE"],
+                "category": "Disease gene location",
+            },
+        }
+    )
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": "Q"}],
+        "max_tokens": 16384,
+        "stop": ["->", "\n\nQuestion"],
+    }
+    assert (await agent.guarded_model_call(body, payload, 0))["model"] == MODEL
+    kwargs = server.post.call_args.kwargs
+    assert kwargs["url_path"] == "/ng-rollout/frozen-task-0/v1/chat/completions"
+    assert kwargs["json"] == payload
+    assert "SECRET_REFERENCE" not in json.dumps(kwargs)
+    assert kwargs["headers"]["x-nemo-gym-logical-call-id"] == "genehop:task-1:0"
+    server.global_config_dict["provider_dispatch_guard"] = False
+    with pytest.raises(ValueError, match="provider_dispatch_guard"):
+        await agent.guarded_model_call(body, payload, 1)
+    assert server.post.await_count == 1
