@@ -11,7 +11,8 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
-from resources_servers.ether0_benchmark.grading import grade
+import json
+import asyncio
 
 
 class Config(BaseResourcesServerConfig):
@@ -48,7 +49,7 @@ class Verifier:
             if process.returncode:
                 raise RuntimeError(f"Creator scorer subprocess exited {process.returncode}: " + stderr.decode(errors="replace")[-2000:])
             result = json.loads(stdout)
-        except RuntimeError as exc:
+        except (RuntimeError, OSError, ValueError) as exc:
             return Response(
                 **body.model_dump(),
                 reward=0.0,
