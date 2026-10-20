@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: molrgen
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: custom-gym-verifier
+domain: knowledge
+description: molrgen experimental pilot
+modality: text
+licensing: Apache-2.0
+authors:
+- dburkhardt
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: molrgen
+agent_server: simple_agent
+model_server: policy_model
+datasets:
+- name: molrgen
+  type: benchmark
+  jsonl_fpath: resources_servers/molrgen/data/benchmark.jsonl
+  prepare_script: benchmarks/molrgen/prepare.py
+  num_repeats: 1
+canonical_split: evaluation
+prompt_source: prepared
+lifecycle: active

@@ -1,0 +1,11 @@
+# MolRGen creator-service bridge (runtime validation pending)
+
+Source https://github.com/Fransou/MolRGen at `f033a3dfea50c3be5782a979e73eeeb842a7bae1`; data https://huggingface.co/datasets/Franso/MolRGen at `a63fd8b3b7f895f551bb1a5bc6f8fb408839bdc4`. Use the archive's `test_data/test_prompts_ood_boxed.jsonl` (1,000 records with original system/user messages and full reward metadata), not the stripped validation parquet. Deterministic seed20261020 samples5/20/50 and all receptor assets are prepared outside Git.
+
+This bridge sends the actual completion and isolated creator metadata to the creator `/get_reward` service in singleton mode. It records the entire creator receipt and labels reported docking oracle. No SMILES-validity approximation replaces docking. Set `creator_url` to the isolated service endpoint, `docking_oracle` to its actual configured condition, and `CAMPAIGN_SAMPLE_JSONL` before preparation. The service must use boxed parsing to match these prompts.
+
+The CPU PyScreener/Vina route is a creator-supported **oracle variant**, not equivalent to the default AutoDock-GPU scores. The current existing host has no GPU docking runtime. A real positive/invalid-molecule docking fixture and full error inspection remain required. Two tests validate Config, native HTTP /verify and mocked creator-service payload/receipt handling only; these do not validate chemistry or actual docking. Integration remains verified:false.
+
+Per-completion reward is not the paper's diversity-aware top-k result. Repeated generation, fingerprint clustering and creator aggregate replay remain separate required steps for that metric. Preserve all molecular properties, reward scaling, docking exhaustiveness and target settings. Empty/failed scoring must remain visible; explicit creator errors are masked and recorded with zero only as serialization placeholder. Do not silently omit failed attempts from reported denominators.
+
+The creator's published Docker image `fransou/molgendata:latest` could not be pulled (access denied/not found). A CPU build from the pinned source is being staged separately; dependency and runtime validation remain open. No model or docking runs are claimed by this commit.
