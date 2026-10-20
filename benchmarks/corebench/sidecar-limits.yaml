@@ -1,0 +1,4 @@
+services:
+  harbor-docker-egress-control-sidecar:
+    cpus: 0.25
+    mem_limit: 128m
