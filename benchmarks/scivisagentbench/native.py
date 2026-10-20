@@ -84,6 +84,10 @@ async def run_native(source: Path, config: dict, task: dict, output: Path, sende
         # Only question/path metadata is sent to the solver. source_case.assert stays host-side.
         (output/'solver-prompt.txt').write_text(prompt)
         result = await agent.run_task(prompt, case.get_task_config(agent.agent_mode))
+        # Use the creator's own result serialization for efficiency/token components.
+        # Its host-only case directory is separate from the solver's writable workspace.
+        if task.get('judge_case_dir'):
+            agent.save_test_result(result, task['judge_case_dir'], task['case_name'], prompt)
         record = result.to_dict()
         (output/'native-solver-result.json').write_text(json.dumps(record, indent=2))
         return record

@@ -6,7 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from transport import MODEL, NativeClient, stream_chunk
+from benchmarks.scivisagentbench.transport import MODEL, NativeClient, stream_chunk
 
 BASE = {'id': 'control', 'model': MODEL, 'choices': [{'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'Done'}}], 'usage': {'prompt_tokens': 3, 'completion_tokens': 2, 'total_tokens': 5}}
 

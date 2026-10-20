@@ -30,6 +30,7 @@ class Config(BaseResponsesAPIAgentConfig):
     max_tokens: int = 16384
     timeout_s: int = 7200
     inference_enabled: bool = False
+    judge_command: list[str] = Field(default_factory=list)
 
 
 class RunRequest(BaseRunRequest):
@@ -68,6 +69,7 @@ class Agent(SimpleResponsesAPIAgent):
                 await raise_for_status(reply)
                 return await get_response_json(reply)
             result = {}
+            evaluation = {}
             failure = 'native_evaluator_pending'
             try:
                 async with asyncio.timeout(self.config.timeout_s):
@@ -76,14 +78,31 @@ class Agent(SimpleResponsesAPIAgent):
                         sender, self.config.max_tokens)
                 if not result.get('success'):
                     failure = 'native_solver_failed: '+str(result.get('error'))
+                elif self.config.judge_command:
+                    task_path=output/'judge-task.json'
+                    task_path.write_text(json.dumps(task))
+                    with (output/'native-judge.log').open('xb') as log:
+                        process=await asyncio.create_subprocess_exec(*self.config.judge_command,
+                            self.config.source_root,str(task_path),str(output/'evaluation'),self.config.endpoint,
+                            stdout=log,stderr=asyncio.subprocess.STDOUT)
+                        try:
+                            code=await asyncio.wait_for(process.wait(),timeout=self.config.timeout_s)
+                        except BaseException:
+                            process.kill()
+                            await process.wait()
+                            raise
+                    if code:raise RuntimeError(f'native judge exited {code}; raw log preserved')
+                    evaluation=json.loads((output/'evaluation/evaluation.json').read_text())
+                    failure=None if evaluation['valid_for_interpretation'] else evaluation['failure_kind']
             except Exception as exc:
                 failure = type(exc).__name__+': '+str(exc)
             response = NeMoGymResponse(id=output.name, created_at=time.time(), model=MODEL,
                 object='response', output=[], parallel_tool_calls=False, tools=[], tool_choice='auto')
-            # Deliberately masked until native evaluator completes; reward0 is serialization only.
-            record = RunResponse(**body.model_dump(), response=response, reward=0,
-                mask_sample=True, failure_kind='scivis:unscored', failure_reason=failure,
-                scientific_score=None, native_solver_result=result, artifact_dir=str(output))
+            # Native percentage includes operational components; preserve component breakdown.
+            score=evaluation['native_result']['scores']['percentage']/100 if evaluation.get('valid_for_interpretation') else None
+            record = RunResponse(**body.model_dump(), response=response, reward=score if score is not None else 0,
+                mask_sample=score is None, failure_kind='scivis:unscored' if score is None else None, failure_reason=failure,
+                scientific_score=score, native_solver_result=result, artifact_dir=str(output))
             output.mkdir(parents=True, exist_ok=True)
             (output/'gym-result.json').write_text(record.model_dump_json(indent=2))
             return record
