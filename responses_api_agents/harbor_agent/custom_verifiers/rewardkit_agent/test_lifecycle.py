@@ -60,3 +60,21 @@ async def test_cleanup_failure_does_not_mask_original(tmp_path):
         async with _owned_sandbox(Sandbox(), tmp_path / "receipt.json"):
             raise ValueError("measurement failed")
     assert json.loads((tmp_path / "receipt.error.json").read_text())["message"] == "cleanup failed"
+
+
+def test_judge_request_passes_native_gym_validation():
+    from nemo_gym.openai_utils import NeMoGymResponseCreateParamsNonStreaming
+    from responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.tool_loop import build_request
+
+    request = build_request(
+        [{"role": "user", "content": "Inspect the submitted workspace"}],
+        {
+            "type": "object",
+            "properties": {"pass": {"type": "boolean"}},
+            "required": ["pass"],
+            "additionalProperties": False,
+        },
+    )
+    parsed = NeMoGymResponseCreateParamsNonStreaming.model_validate(request)
+    assert parsed.tools[0]["strict"] is False
+    assert parsed.max_output_tokens == 16384

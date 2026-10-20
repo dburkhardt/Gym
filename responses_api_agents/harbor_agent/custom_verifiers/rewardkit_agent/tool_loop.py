@@ -34,6 +34,29 @@ def run_shell(command: str, timeout: float) -> dict:
     raise RuntimeError("Scientific shell must be an explicitly isolated executor")
 
 
+def build_request(history: list, schema: dict) -> dict:
+    return {
+        "model": MODEL,
+        "input": history,
+        "max_output_tokens": 16384,
+        "tools": [
+            {
+                "type": "function",
+                "name": "shell",
+                "strict": False,
+                "description": "Inspect workspace files and run scientific checks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}},
+                    "required": ["command"],
+                    "additionalProperties": False,
+                },
+            }
+        ],
+        "text": {"format": {"type": "json_schema", "name": "judge_response", "schema": schema, "strict": True}},
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--prompt", required=True)
@@ -57,25 +80,7 @@ def main() -> None:
         remaining = a.timeout - (time.monotonic() - start)
         if remaining <= 0:
             raise TimeoutError("Native judge600s budget expired")
-        request = {
-            "model": MODEL,
-            "input": history,
-            "max_output_tokens": 16384,
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "shell",
-                    "description": "Inspect workspace files and run scientific checks.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"command": {"type": "string"}},
-                        "required": ["command"],
-                        "additionalProperties": False,
-                    },
-                }
-            ],
-            "text": {"format": {"type": "json_schema", "name": "judge_response", "schema": schema, "strict": True}},
-        }
+        request = build_request(history, schema)
         rp = out / f"{turn:03d}-request.json"
         durable_write(rp, json.dumps(request).encode())
         req = urllib.request.Request(
