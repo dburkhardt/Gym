@@ -57,6 +57,7 @@ async def test_agent_scores_two_full_prompts_without_gold(monkeypatch):
     body=NeMoGymResponseCreateParamsNonStreaming(input=[{'role':'user','content':json.dumps({'choices':['abstract original','abstract altered']})}])
     result=await agent.responses(None,None,body)
     assert json.loads(result.output_text)['mean_nll']==[2,2]
+    assert result.usage.input_tokens==4 and result.usage.total_tokens==4
     assert [r['messages'][0]['content'] for r in seen]==['abstract original','abstract altered']
     assert all(r['prompt_logprobs']==0 and r['max_tokens']==1 for r in seen)
 
