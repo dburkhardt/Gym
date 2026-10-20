@@ -1,0 +1,7 @@
+campaign_creator_scoring:
+  resources_servers:
+    campaign_creator_scoring:
+      entrypoint: app.py
+      verified: false
+      benchmark: qcbench
+      upstream_repo: ???
