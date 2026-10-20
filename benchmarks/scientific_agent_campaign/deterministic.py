@@ -18,7 +18,7 @@ try:
 except ImportError:
     from prepare import stratified
 
-PINS = {'mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
+PINS = {'suprabench':'bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5','mollangbench':'76dcacb082e20871851cbca6395180503a8b6d22','fukuyama':'63bb79f912f0b2de593996b80ffeea894f6f1a59','scienceqa':'2cbf8318e07b9ece895bb2ae605e71e38d623264','scibench':'e14e0ca3d3db0f02928a18d435b9c3d15656a7c5','fgbench':'fe67aded66bb08534da180ad6073cef42f422666','moleculariq':'425ecaaa8faf65aa43aa60ec0f584b7b7f060063','sino_us_drugqa':'cd026a27a5e039863de9080b8d7d95acaf1f5a39','chemiq':'63826f64990802e87f1b11b9192606a20838d522',
         'qcbench':'195b4788375d1701b405f1addbf84903a41b5dc1',
         'genehop':'0a2a327a507be49e660597769cc53431abd6613a'}
 
@@ -40,7 +40,10 @@ def validate_repo(kind: str, repo: Path) -> None:
 def prepare(kind: str, repo: Path, output: Path) -> dict:
     validate_repo(kind, repo)
     rows = []
-    if kind == 'mollangbench':
+    if kind == 'suprabench':
+        for x in map(json.loads,(repo/'data/tbs/base.jsonl').read_text().splitlines()):
+            rows.append({'uuid':x['id'],'stratum':'tbs','responses_create_params':{'input':[{'role':'user','content':x['question']}]},'verifier_metadata':{'answer':str(x['answer']).strip().upper(),'host_name':x.get('host_name','')}})
+    elif kind == 'mollangbench':
         import pyarrow.parquet as pq
         data=Path(os.environ['MOLLANG_DATA_DIR'])
         for sub in ['generation','edit']:
@@ -139,6 +142,9 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     validate_repo(kind, repo)
     meta = task['verifier_metadata']
+    if kind == 'suprabench':
+        tree=ast.parse((repo/'src/eval/tbs.py').read_text()); fns=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ['_after_think','_extract_answer_tag','parse_mcq']];ns={'re':re};exec(compile(ast.Module(body=fns,type_ignores=[]),'creator_parser','exec'),ns);pred=ns['parse_mcq'](answer)
+        return {'reward':float(pred==meta['answer']),'valid':pred is not None,'predicted':pred,'metric':'creator_TBS_parse; aggregate_accuracy_uses_parsed_only'}
     if kind == 'mollangbench':
         upstream=module(repo/'scripts/evaluate_results.py'); predicted=upstream.canonicalize_smiles(upstream.parse_smiles_from_output(answer)); target=upstream.canonicalize_smiles(meta['smiles'])
         return {'reward':float(predicted is not None and predicted==target),'valid':predicted is not None,'metric':'creator_canonical_smiles_accuracy'}
