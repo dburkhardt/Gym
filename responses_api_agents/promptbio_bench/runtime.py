@@ -202,6 +202,8 @@ def solve(
             messages.append(message)
             (run / "trajectory.json").write_text(json.dumps(messages, indent=2))
             calls = message.get("tool_calls") or []
+            if model == "nvidia/nvidia/nemotron-3.5-super-vl" and result["choices"][0].get("finish_reason") == "length":
+                raise TimeoutError("Solver output token budget exhausted")
             if not calls:
                 status = "completed"
                 break
@@ -340,6 +342,10 @@ def grade(
                 subprocess.run(
                     argv, cwd=scorer_dir, env=env, check=True, stdout=log, stderr=subprocess.STDOUT, timeout=3600
                 )
+    if judge_base_url is not None and budget_ledger.exists():
+        requests = [json.loads(line) for line in budget_ledger.read_text().splitlines()]
+        if any("failure" in request for request in requests):
+            raise ValueError("Campaign judge failure retained in receipts; raw scorer outputs are not valid performance")
     scores = [parse_score(path) for path in paths]
     receipt.write_text(json.dumps(signature, indent=2))
     return scores
