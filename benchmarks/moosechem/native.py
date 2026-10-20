@@ -27,11 +27,18 @@ def creator_defaults(path):
 
 
 class ReplayPrefix:
-    def __init__(self, path):
+    def __init__(self, path, *, allow_transport_tail=False):
         self.rows = [json.loads(x) for x in Path(path).read_text().splitlines()]
         self.index = 0
-        last = self.rows[-1]['response']['choices'][0]
-        self.failed_tail = last['finish_reason'] == 'length' and last['message']['content'] is None
+        tail = self.rows[-1]
+        transport_tail = 'response' not in tail and 'error_type' in tail
+        if transport_tail:
+            assert allow_transport_tail, 'Transport outcome requires explicit recovery authorization'
+            assert all('response' in row for row in self.rows[:-1])
+            self.failed_tail = True
+        else:
+            last = tail['response']['choices'][0]
+            self.failed_tail = last['finish_reason'] == 'length' and last['message']['content'] is None
         assert self.failed_tail or all(r['response']['choices'][0]['message']['content'] is not None for r in self.rows)
 
     def consume(self, stage, request):
@@ -80,6 +87,7 @@ class RecordedClient:
             return result
         except Exception as exc:
             record['error_type'] = type(exc).__name__
+            record['http_status'] = getattr(exc, 'status_code', None)
             raise
         finally:
             record['elapsed_seconds'] = time.time() - started
@@ -87,7 +95,7 @@ class RecordedClient:
                 stream.write(json.dumps(record) + '\n')
 
 
-def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_token_budget=8192):
+def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_token_budget=8192, allow_transport_tail=False):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     pins = json.loads(Path(__file__).with_name('source-sha256.json').read_text())
@@ -99,7 +107,7 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_to
     trace = out / 'model-traces.jsonl'
     if trace.exists():
         raise RuntimeError('Existing model trace; reconcile explicitly before rerunning')
-    replay = ReplayPrefix(replay_path) if replay_path else None
+    replay = ReplayPrefix(replay_path, allow_transport_tail=allow_transport_tail) if replay_path else None
     for stage, module in zip(names, modules):
         module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, replay=replay, output_token_budget=output_token_budget, **kw)
     common = dict(api_type=0, api_key=Path(os.environ['MOOSE_KEY_FILE']).read_text().strip(),
@@ -147,10 +155,11 @@ if __name__ == '__main__':
     parser.add_argument('--task-id',type=int,required=True)
     parser.add_argument('--screening-only',action='store_true')
     parser.add_argument('--replay-path',type=Path)
+    parser.add_argument('--allow-transport-tail',action='store_true',help='Explicitly authorized recovery; original transport outcome remains uncertain')
     parser.add_argument('--output-token-budget',type=int,choices=[8192,16384],default=8192)
     args=parser.parse_args()
     try:
-        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path,output_token_budget=args.output_token_budget)
+        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path,output_token_budget=args.output_token_budget,allow_transport_tail=args.allow_transport_tail)
         (args.output/'result.json').write_text(json.dumps(result,indent=2))
     except Exception as exc:
         (args.output/'failure.json').write_text(json.dumps({'type':type(exc).__name__,'message':str(exc)},indent=2))

@@ -85,3 +85,18 @@ def test_explicit_budget_variant_changes_only_budget(tmp_path):
     client.create(**request)
     assert captured==[dict(request,max_tokens=16384)]
     assert request['max_tokens']==8192
+
+
+def test_transport_tail_requires_opt_in_and_exact_identity(tmp_path):
+    import json
+    from benchmarks.moosechem.native import ReplayPrefix
+    row={'stage':'hypothesis_generation','request':{'max_tokens':16384,'messages':[]},'error_type':'InternalServerError'}
+    path=tmp_path/'trace.jsonl';path.write_text(json.dumps(row)+'\n')
+    with pytest.raises(AssertionError,match='explicit recovery'):
+        ReplayPrefix(path)
+    replay=ReplayPrefix(path,allow_transport_tail=True)
+    with pytest.raises(AssertionError):
+        replay.consume('wrong',row['request'])
+    assert replay.index==0
+    assert replay.consume(row['stage'],row['request']) is None
+    assert replay.index==1
