@@ -50,11 +50,13 @@ class ReplayPrefix:
 
 
 class RecordedClient:
-    def __init__(self, *, stage, trace, replay=None, **kwargs):
+    def __init__(self, *, stage, trace, replay=None, output_token_budget=8192, **kwargs):
         from openai import OpenAI
         assert kwargs['base_url'] == 'http://127.0.0.1:49180/v1'
         self.inner = OpenAI(**kwargs, max_retries=0, timeout=600)
         self.stage, self.trace, self.replay = stage, Path(trace), replay
+        assert output_token_budget in (8192,16384)
+        self.output_token_budget = output_token_budget
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
 
     def create(self, **kwargs):
@@ -67,6 +69,8 @@ class RecordedClient:
                     stream.write(json.dumps({'stage':self.stage,'source_index':self.replay.index-1,'inference':False})+'\n')
                 return result
             kwargs['max_tokens'] = 16384
+        elif self.output_token_budget != 8192:
+            kwargs['max_tokens'] = self.output_token_budget
         started = time.time()
         record = {'stage': self.stage, 'request': kwargs, 'started': started}
         try:
@@ -83,7 +87,7 @@ class RecordedClient:
                 stream.write(json.dumps(record) + '\n')
 
 
-def run(repo, out, task_id, *, screening_only=False, replay_path=None):
+def run(repo, out, task_id, *, screening_only=False, replay_path=None, output_token_budget=8192):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     pins = json.loads(Path(__file__).with_name('source-sha256.json').read_text())
@@ -97,7 +101,7 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None):
         raise RuntimeError('Existing model trace; reconcile explicitly before rerunning')
     replay = ReplayPrefix(replay_path) if replay_path else None
     for stage, module in zip(names, modules):
-        module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, replay=replay, **kw)
+        module.OpenAI = lambda _stage=stage, **kw: RecordedClient(stage=_stage, trace=trace, replay=replay, output_token_budget=output_token_budget, **kw)
     common = dict(api_type=0, api_key=Path(os.environ['MOOSE_KEY_FILE']).read_text().strip(),
                   base_url='http://127.0.0.1:49180/v1', model_name=MODEL,
                   chem_annotation_path=str(repo/'Data/chem_research_2024.xlsx'),
@@ -133,7 +137,7 @@ def run(repo, out, task_id, *, screening_only=False, replay_path=None):
             'evaluation':json.loads((out/'evaluation.json').read_text()),
             'replay_source':str(replay_path) if replay_path else None,
             'reused_successful_responses':sum(1 for _ in (out/'replay-receipts.jsonl').open()) if (out/'replay-receipts.jsonl').exists() else 0,
-            'budget_protocol':'saved_8192_and_16384_prefix_then_16384_new_calls' if replay_path else 'creator_8192'}
+            'budget_protocol':'saved_8192_and_16384_prefix_then_16384_new_calls' if replay_path else f'explicit_output_budget_{output_token_budget}'}
 
 
 if __name__ == '__main__':
@@ -143,9 +147,10 @@ if __name__ == '__main__':
     parser.add_argument('--task-id',type=int,required=True)
     parser.add_argument('--screening-only',action='store_true')
     parser.add_argument('--replay-path',type=Path)
+    parser.add_argument('--output-token-budget',type=int,choices=[8192,16384],default=8192)
     args=parser.parse_args()
     try:
-        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path)
+        result=run(args.repo,args.output,args.task_id,screening_only=args.screening_only,replay_path=args.replay_path,output_token_budget=args.output_token_budget)
         (args.output/'result.json').write_text(json.dumps(result,indent=2))
     except Exception as exc:
         (args.output/'failure.json').write_text(json.dumps({'type':type(exc).__name__,'message':str(exc)},indent=2))

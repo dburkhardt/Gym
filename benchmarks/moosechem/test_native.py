@@ -67,3 +67,21 @@ def test_complete_mixed_budget_prefix_replays_every_success():
         request=dict(row['request']);request['max_tokens']=8192
         assert replay.consume(row['stage'],request) is not None
     assert replay.index==97
+
+
+def test_explicit_budget_variant_changes_only_budget(tmp_path):
+    from benchmarks.moosechem.native import RecordedClient, MODEL
+    from types import SimpleNamespace
+    captured=[]
+    class Result:
+        model=MODEL
+        def model_dump(self):return {'model':MODEL}
+    def create(**kwargs):captured.append(kwargs);return Result()
+    client=object.__new__(RecordedClient)
+    client.stage='control';client.trace=tmp_path/'trace.jsonl';client.replay=None
+    client.output_token_budget=16384
+    client.inner=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    request={'model':MODEL,'max_tokens':8192,'messages':[{'role':'user','content':'unchanged'}]}
+    client.create(**request)
+    assert captured==[dict(request,max_tokens=16384)]
+    assert request['max_tokens']==8192
