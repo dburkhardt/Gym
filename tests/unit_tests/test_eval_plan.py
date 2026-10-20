@@ -171,6 +171,33 @@ class TestPlanBenchmarkCommand:
         assert [task.task_id.task_id for task in plan.tasks] == ["a", "b"]
         assert plan.benchmark.name == "fake_bench"
 
+    def test_planning_does_not_probe_service_ports(self, tmp_path: Path) -> None:
+        out = tmp_path / "offline-plan.json"
+        config = self._config(tmp_path, plan_output_fpath=str(out))
+
+        def resolve(*, global_config_dict_parser_config):
+            parser_config = global_config_dict_parser_config.model_copy(
+                update={
+                    "initial_global_config_dict": OmegaConf.merge(
+                        global_config_dict_parser_config.initial_global_config_dict, config
+                    ),
+                    "skip_load_from_cli": True,
+                    "skip_load_from_dotenv": True,
+                }
+            )
+            return nemo_gym.global_config.GlobalConfigDictParser().parse(parser_config)
+
+        with (
+            patch("nemo_gym.cli.eval.get_global_config_dict", side_effect=resolve),
+            patch(
+                "nemo_gym.cli.eval.importlib.import_module", return_value=self._prepare_module(tmp_path, [_row("a")])
+            ),
+            patch("nemo_gym.global_config._find_open_port_using_range", side_effect=AssertionError("Port probe")),
+        ):
+            plan_benchmark()
+
+        assert [task.task_id.task_id for task in EvalPlan.model_validate_json(out.read_text()).tasks] == ["a"]
+
     def test_task_ids_select_a_subset(self, tmp_path: Path) -> None:
         out = tmp_path / "plan.json"
         config = self._config(tmp_path, plan_output_fpath=str(out), plan_task_ids=["b"])

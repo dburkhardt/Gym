@@ -450,6 +450,7 @@ def plan_benchmark() -> None:
     global_config_dict = get_global_config_dict(
         global_config_dict_parser_config=GlobalConfigDictParserConfig(
             initial_global_config_dict=GlobalConfigDictParserConfig.NO_MODEL_GLOBAL_CONFIG_DICT,
+            offline=True,
         )
     )
     plan_config = PlanBenchmarkConfig.model_validate(global_config_dict)
