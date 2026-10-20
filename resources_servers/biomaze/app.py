@@ -23,6 +23,8 @@ from resources_servers.biomaze.openended import judge_query, parse_judge
 class Config(BaseResourcesServerConfig):
     judge_model_server: ModelServerRef | None = None
     judge_prompt_file: str | None = None
+    judge_model: str = "nvidia/nvidia/nemotron-3.5-super-vl"
+    allowed_judge_models: list[str] = ["nvidia/nvidia/nemotron-3.5-super-vl"]
     REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
 
 
@@ -55,7 +57,9 @@ class Verifier:
 
         if body.verifier_metadata.get("protocol") == "openended":
             if not self.config.judge_model_server or not self.config.judge_prompt_file:
-                raise RuntimeError("Openended requires Nemotron judge and pinned creator judge prompt")
+                raise RuntimeError("Openended requires a configured judge and pinned creator judge prompt")
+            if self.config.judge_model not in self.config.allowed_judge_models:
+                raise RuntimeError("Configured judge model is outside campaign allowlist")
             meta = body.verifier_metadata
             query = judge_query(
                 Path(self.config.judge_prompt_file).read_text(),
@@ -65,7 +69,7 @@ class Verifier:
             )
             params = NeMoGymResponseCreateParamsNonStreaming(
                 input=[{"role": "user", "content": query}],
-                model="nvidia/nvidia/nemotron-3.5-super-vl",
+                model=self.config.judge_model,
                 temperature=0,
                 max_output_tokens=4096,
             )
@@ -84,7 +88,7 @@ class Verifier:
                     "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
                 },
             )
-            if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
+            if judged.model not in self.config.allowed_judge_models or judged.model != self.config.judge_model:
                 raise RuntimeError("Judge model is outside benchmark allowlist")
             if judged.status != "completed":
                 return self.judge_failure(body, judged, f"Judge status {judged.status}: {judged.incomplete_details}")
@@ -94,7 +98,7 @@ class Verifier:
                 **body.model_dump(),
                 reward=float(parse_judge(judged.output_text or "")),
                 diagnostics={
-                    "protocol": "Nemotron conclusion-judge variant",
+                    "protocol": "Configured conclusion-judge variant",
                     "judge_response": judged.model_dump(),
                     "deviation": "Creator 3800-token model-specific input gate replaced by provider context enforcement",
                 },

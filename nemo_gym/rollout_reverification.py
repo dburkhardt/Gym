@@ -751,15 +751,21 @@ def _verification_run_identity(output: Path, *, resume: bool, overwrite: bool, a
     """Durably bind one regrade run before dispatch; resume retains, overwrite replaces."""
     path = output.with_name(output.name + ".reverify-identity.json")
     existed = path.exists()
+    if resume and not existed:
+        raise ConfigError("cannot resume guarded reverification without its persisted run identity")
     with path.open("a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
             handle.seek(0)
             existing = handle.read()
+            if existed:
+                try:
+                    identity = orjson.loads(existing)["verification_run_id"]
+                    if not isinstance(identity, str) or not identity:
+                        raise ValueError("missing identity")
+                except (ValueError, KeyError, TypeError) as error:
+                    raise ConfigError("invalid verification run identity; reconcile before resuming") from error
             if existing and (resume or append):
-                identity = orjson.loads(existing)["verification_run_id"]
-                if not isinstance(identity, str) or not identity:
-                    raise ConfigError("invalid verification run identity; reconcile before resuming")
                 os.fsync(handle.fileno())
                 directory = os.open(path.parent, os.O_RDONLY)
                 try:
@@ -803,9 +809,14 @@ def _bind_verification_payloads(payloads: List[Dict], run_id: str) -> None:
 def _run_verification_payloads(
     payloads: List[Dict],
     semaphore: Semaphore | nullcontext[None] | None = None,
+    verification_run_id: str | None = None,
 ) -> Iterator[Future]:  # pragma: no cover
     semaphore = semaphore or nullcontext[None]()
     server_client = setup_server_client()
+    if bool(server_client.global_config_dict.get("provider_dispatch_guard", False)) != bool(verification_run_id):
+        raise ConfigError(
+            "reverification guard configuration must match model servers; persisted run lineage required"
+        )
     agent_to_rs = _build_agent_to_resources_server_mapping(server_client.global_config_dict)
 
     async def _post_subroutine(row: Dict) -> Tuple[Dict, Dict]:
@@ -1085,19 +1096,56 @@ def _load_reverified_results(output_fpath: Path) -> Tuple[List[Dict], List[Dict]
 
 class RolloutReverificationHelper(BaseModel):
     async def run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
-        output = _resolve_under_cwd_or_install(config.output_jsonl_fpath)
-        lease = _verification_output_lease(output) if config.provider_dispatch_guard else nullcontext()
-        with lease:
+        if not config.provider_dispatch_guard:
             return await self._run_from_config(config)
+        warning = await _guard_reverify_mode(config) if config.input_format != "atif" else None
+        output = Path(config.output_jsonl_fpath)
+        output = output.with_name(("unsafe_" if warning else "") + output.name)
+        if output.is_symlink() or failures_path_for(output).is_symlink():
+            raise ConfigError("guarded reverification requires regular output paths, not symlink aliases")
+        output = output.resolve()
+        with _verification_output_lease(output):
+            if not (config.resume_from_cache or config.append or config.overwrite):
+                if output.exists() or failures_path_for(output).exists():
+                    raise ConfigError("Output file already exists; use explicit overwrite or resume")
+            # Validate inputs before either the lineage or prior result files change.
+            inputs = _resolve_under_cwd_or_install(config.materialized_inputs_jsonl_fpath)
+            if config.input_format == "atif":
+                payloads = _prepare_atif_payloads(
+                    inputs, _resolve_under_cwd_or_install(config.atif_manifest_jsonl_fpath), config.limit
+                )
+                await _guard_atif_preflight(payloads)
+            else:
+                source = _resolve_under_cwd_or_install(config.rollouts_jsonl_fpath)
+                if config.judge_failed_only:
+                    source = failures_path_for(source)
+                _prepare_payloads(
+                    inputs,
+                    source,
+                    OutputPaths(output=output, failures=failures_path_for(output)),
+                    config.resume_from_cache,
+                    config.limit,
+                    retry_terminal_timeouts=config.retry_terminal_timeouts,
+                )
+            # Validate persisted identity before output preparation can unlink results.
+            identity = _verification_run_identity(
+                output, resume=config.resume_from_cache, overwrite=config.overwrite, append=config.append
+            )
+            return await self._run_from_config(config, verification_run_id=identity, preflight_warning=warning)
 
-    async def _run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
-        force_warning: Optional[str] = None
-        output_name_prefix = ""
-        if config.input_format != "atif":
+    async def _run_from_config(
+        self,
+        config: RolloutReverificationConfig,
+        *,
+        verification_run_id: str | None = None,
+        preflight_warning: str | None = None,
+    ) -> List[Dict]:
+        force_warning = preflight_warning
+        if config.input_format != "atif" and verification_run_id is None:
             force_warning = await _guard_reverify_mode(config)
-            if force_warning:
-                print(force_warning)
-                output_name_prefix = "unsafe_"
+        output_name_prefix = "unsafe_" if force_warning else ""
+        if force_warning:
+            print(force_warning)
 
         materialized_inputs_jsonl_fpath = _resolve_under_cwd_or_install(config.materialized_inputs_jsonl_fpath)
         if config.input_format == "atif":
@@ -1155,13 +1203,7 @@ class RolloutReverificationHelper(BaseModel):
                 retry_terminal_timeouts=config.retry_terminal_timeouts,
             )
 
-        if config.provider_dispatch_guard:
-            verification_run_id = _verification_run_identity(
-                output_fpaths.output,
-                resume=config.resume_from_cache,
-                overwrite=config.overwrite,
-                append=config.append,
-            )
+        if verification_run_id:
             _bind_verification_payloads(payloads_to_reverify, verification_run_id)
 
         semaphore = nullcontext()
@@ -1177,7 +1219,11 @@ class RolloutReverificationHelper(BaseModel):
         failure_counts: Counter = Counter()
         completed = 0  # number of rows re-verified this run (for progress reporting)
         try:
-            for future in _run_verification_payloads(payloads_to_reverify, semaphore=semaphore):
+            for future in _run_verification_payloads(
+                payloads_to_reverify,
+                semaphore=semaphore,
+                **({"verification_run_id": verification_run_id} if verification_run_id else {}),
+            ):
                 row, result = await future
 
                 if config.retry_invalid_judge_responses:

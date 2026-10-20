@@ -541,3 +541,102 @@ async def test_judge_server_client_reverify_resume_replays(tmp_path, monkeypatch
         assert response.id == "verdict"
     assert paths[0] == paths[1]
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_judge_http_process_restart_replays_saved_response(tmp_path, monkeypatch):
+    import hashlib
+    import textwrap
+
+    from omegaconf import OmegaConf
+    from pydantic import BaseModel
+
+    from nemo_gym.judge import call_judge
+    from nemo_gym.rollout_correlation import rollout_context
+    from nemo_gym.rollout_reverification import _verification_run_identity
+    from nemo_gym.server_utils import ServerClient
+
+    class Verdict(BaseModel):
+        id: str
+        output: list
+
+    script = tmp_path / "model_server.py"
+    script.write_text(
+        textwrap.dedent("""
+        import sys
+        from pathlib import Path
+        import uvicorn
+        from nemo_gym.base_responses_api_model import CaptureStore, _CaptureMiddleware
+        from nemo_gym.provider_dispatch import current_provider_dispatch
+        root, port = Path(sys.argv[1]), int(sys.argv[2])
+        async def app(scope, receive, send):
+            await receive()
+            dispatch = current_provider_dispatch.get()
+            dispatch.before_send()
+            with (root / 'upstream-count').open('a') as handle:
+                handle.write('sent\\n')
+            dispatch.response_headers(200)
+            await send({'type':'http.response.start','status':200,'headers':[(b'content-type',b'application/json')]})
+            await send({'type':'http.response.body','body':b'{"id":"saved-judge","output":[]}'})
+        middleware = _CaptureMiddleware(app, store=CaptureStore(root / 'capture', provider_dispatch_guard=True), model_server_name='judge', model_config_digest='b'*64)
+        uvicorn.run(middleware,host='127.0.0.1',port=port,lifespan='off',log_level='error')
+    """)
+    )
+    monkeypatch.setattr("nemo_gym.server_utils.get_global_config_dict", lambda **kwargs: {})
+    output = tmp_path / "regrade.jsonl"
+    paths = []
+    for resume in (False, True):
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        process = subprocess.Popen(
+            [sys.executable, str(script), str(tmp_path), str(port)],
+            env={**os.environ, "PYTHONPATH": str(Path.cwd())},
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            for _ in range(100):
+                if process.poll() is not None:
+                    pytest.fail(process.stderr.read().decode())
+                try:
+                    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                    writer.close()
+                    await writer.wait_closed()
+                    break
+                except OSError:
+                    await asyncio.sleep(0.05)
+            else:
+                pytest.fail("local model process never ready")
+            client = ServerClient(
+                head_server_config={"name": "head", "host": "localhost", "port": 10000},
+                global_config_dict=OmegaConf.create(
+                    {
+                        "provider_dispatch_guard": True,
+                        "observability_enabled": True,
+                        "judge": {"responses_api_models": {}},
+                    }
+                ),
+            )
+            client._server_base_urls["judge"] = f"http://127.0.0.1:{port}"
+            lineage = _verification_run_identity(output, resume=resume, overwrite=False, append=False) + ":task-1"
+            path = "reverify-" + hashlib.sha256(lineage.encode()).hexdigest()
+            paths.append(path)
+            with rollout_context(path):
+                result = await call_judge(
+                    client,
+                    server_name="judge",
+                    url_path="/v1/responses",
+                    json={"input": "grade"},
+                    response_model=Verdict,
+                    verification_id=lineage,
+                    call_id="conclusion",
+                    scorer_identity={"version": "1"},
+                )
+            assert result.id == "saved-judge"
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+            process.stderr.close()
+    assert paths[0] == paths[1]
+    assert (tmp_path / "upstream-count").read_text().splitlines() == ["sent"]
