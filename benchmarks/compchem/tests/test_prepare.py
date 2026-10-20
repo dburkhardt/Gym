@@ -83,3 +83,23 @@ def test_tampering_fails_before_any_publication(release, change):
     with pytest.raises(ValueError):
         module.stage(checkout, prepared, dest)
     assert not dest.exists()
+
+
+def test_scorer_controls_replace_plural_native_agents_without_model_route():
+    from benchmarks.compchem.controls import control_config
+
+    original = {
+        "agents": [
+            {"import_path": "Terminus2NemoGym", "model_name": "Nemotron", "kwargs": {"api_base": "live-provider"}}
+        ],
+        "datasets": [{"path": "native-tasks"}],
+    }
+    for name in ("nop", "oracle"):
+        result = control_config(original, name)
+        assert result["agents"] == [{"name": name}]
+        assert "agent" not in result
+        assert result["datasets"] == original["datasets"]
+        assert "live-provider" not in json.dumps(result)
+    assert original["agents"][0]["import_path"] == "Terminus2NemoGym"
+    with pytest.raises(ValueError):
+        control_config(original, "terminus-2")
