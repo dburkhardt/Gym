@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: evidencebench
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: custom-gym-verifier
+domain: knowledge
+description: evidencebench experimental pilot
+modality: text
+licensing: MIT (code); see creator dataset license
+authors:
+- dburkhardt
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+determinism: unknown
+resources_server: evidencebench
+agent_server: simple_agent
+model_server: policy_model
+datasets:
+- name: evidencebench
+  type: benchmark
+  jsonl_fpath: resources_servers/evidencebench/data/benchmark.jsonl
+  prepare_script: benchmarks/evidencebench/prepare.py
+  num_repeats: 1
+canonical_split: evaluation
+prompt_source: prepared
+lifecycle: active

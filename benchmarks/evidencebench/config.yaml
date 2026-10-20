@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/evidencebench/configs/evidencebench.yaml
+evidencebench:
+  resources_servers:
+    evidencebench:
+      datasets:
+      - name: evidencebench
+        type: benchmark
+        jsonl_fpath: resources_servers/evidencebench/data/benchmark.jsonl
+        prepare_script: benchmarks/evidencebench/prepare.py
+        num_repeats: 1

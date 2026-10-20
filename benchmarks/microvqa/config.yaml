@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/microvqa/configs/microvqa.yaml
+microvqa:
+  resources_servers:
+    microvqa:
+      datasets:
+      - name: microvqa
+        type: benchmark
+        jsonl_fpath: resources_servers/microvqa/data/benchmark.jsonl
+        prepare_script: benchmarks/microvqa/prepare.py
+        num_repeats: 1
