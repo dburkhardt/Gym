@@ -148,3 +148,17 @@ def test_reference_code_is_not_a_required_solver_artifact(fixture):
     assert result["complete"]
     assert result["expected_files"] == 5
     assert result["auxiliary_reference_files"] == ["preprocess/Trait/code/TCGA.py"]
+
+
+def test_expansion_retains_original_ids_and_fixed_strata():
+    metadata = {f"T{i}": {"conditions": ["Age", "Gender", "T0"]} for i in range(30)}
+    entries = [{"path": f"input/GEO/{t}/G/raw.gz", "type": "file", "size": i+1} for i,t in enumerate(metadata)]
+    entries += [{"path": f"output/regress/{t}/significant_genes_condition_{c}.json", "type":"file", "size":1} for t in metadata for c in [None,"Age","Gender","T0"]]
+    five,_=prepare.select_pairs(metadata,entries)
+    twenty,_=prepare.select_pairs(metadata,entries,20)
+    fifty,_=prepare.select_pairs(metadata,entries,50)
+    assert len(twenty)==20 and len(fifty)==50
+    assert {r["task_id"] for r in five} <= {r["task_id"] for r in twenty} <= {r["task_id"] for r in fifty}
+    assert [sum(r["category"]==c for r in twenty) for c in ["unconditional","conditional","two-step"]]==[8,8,4]
+    assert prepare.select_pairs(metadata,list(reversed(entries)),20)[0]==twenty
+    with pytest.raises(ValueError):prepare.select_pairs(metadata,entries,19)

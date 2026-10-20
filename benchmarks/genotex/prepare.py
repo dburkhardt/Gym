@@ -65,8 +65,11 @@ def download(entry: dict, root: Path) -> None:
     temporary.replace(target)
 
 
-def select_pairs(metadata: dict, entries: list[dict]) -> tuple[list[dict], list[dict]]:
+def select_pairs(metadata: dict, entries: list[dict], sample_size: int = 5) -> tuple[list[dict], list[dict]]:
     """Choose 2 unconditional, 2 age/gender, 1 two-step pair by total raw input bytes."""
+    quotas = {5: (2, 2, 1), 20: (8, 8, 4), 50: (20, 20, 10)}
+    if sample_size not in quotas:
+        raise ValueError("sample_size must be 5, 20, or 50")
     files = {e["path"]: e for e in entries if e["type"] == "file"}
     sizes = {}
     for path, entry in files.items():
@@ -103,7 +106,7 @@ def select_pairs(metadata: dict, entries: list[dict]) -> tuple[list[dict], list[
             else:
                 eligible.append({**item, "input_bytes": sum(sizes[t] for t in traits)})
     chosen = []
-    for category, count in [("unconditional", 2), ("conditional", 2), ("two-step", 1)]:
+    for category, count in zip(("unconditional", "conditional", "two-step"), quotas[sample_size]):
         group = sorted(
             [p for p in eligible if p["category"] == category], key=lambda p: (p["input_bytes"], p["task_id"])
         )
@@ -112,7 +115,7 @@ def select_pairs(metadata: dict, entries: list[dict]) -> tuple[list[dict], list[
     return chosen, excluded
 
 
-def prepare(root: Path | None = None) -> Path:
+def prepare(root: Path | None = None, sample_size: int = 5) -> Path:
     """Download selected raw inputs and private references, then write Gym records."""
     root = (root or Path(os.environ.get("GENOTEX_DATA_ROOT", "~/.cache/genotex"))).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -125,7 +128,7 @@ def prepare(root: Path | None = None) -> Path:
         if entry["path"].startswith("metadata/") and entry["type"] == "file":
             download(entry, root / "assets")
     metadata = json.loads((root / "assets/metadata/task_info.json").read_text())
-    selected, excluded = select_pairs(metadata, entries)
+    selected, excluded = select_pairs(metadata, entries, sample_size)
     traits = {t for p in selected for t in p["traits"]}
     regression = {f"output/regress/{p['trait']}/significant_genes_condition_{p['condition']}.json" for p in selected}
     for entry in entries:
@@ -138,7 +141,7 @@ def prepare(root: Path | None = None) -> Path:
     selection = {
         "source_revision": SOURCE_REV,
         "dataset_revision": DATA_REV,
-        "selection_rule": "GEO-only; published regression reference; 2 unconditional, 2 age/gender, 1 two-step; ascending raw bytes then task ID",
+        "selection_rule": f"GEO-only; published regression reference; sample_size={sample_size}; category quotas 40% unconditional,40% age/gender,20% two-step; ascending raw bytes then task ID",
         "selected": selected,
         "excluded": excluded,
     }
@@ -169,5 +172,6 @@ def prepare(root: Path | None = None) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", type=Path)
+    parser.add_argument("--sample-size", type=int, choices=[5,20,50], default=5)
     args = parser.parse_args()
-    print(prepare(args.data_root))
+    print(prepare(args.data_root, args.sample_size))
