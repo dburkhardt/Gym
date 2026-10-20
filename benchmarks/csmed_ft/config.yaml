@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/csmed_ft/configs/csmed_ft.yaml
+csmed_ft:
+  resources_servers:
+    csmed_ft:
+      datasets:
+      - name: csmed_ft
+        type: benchmark
+        jsonl_fpath: resources_servers/csmed_ft/data/benchmark.jsonl
+        prepare_script: benchmarks/csmed_ft/prepare.py
+        num_repeats: 1
