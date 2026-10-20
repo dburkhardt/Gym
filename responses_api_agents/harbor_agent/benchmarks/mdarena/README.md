@@ -1,0 +1,13 @@
+# MDArena native Gym integration preparation
+
+Source: [weitse-hsu/MDArena](https://github.com/weitse-hsu/MDArena), commit `d1d789d92a9935e716182e31d99393edcd4ac7d6`, MIT license. Preserve its canaries and exclusion from training corpora. Preparation inspects the source; it does not copy benchmark content into this repository or launch a model.
+
+Run `python responses_api_agents/harbor_agent/benchmarks/mdarena/prepare.py --checkout /path/to/pinned/MDArena --output /path/to/preflight`. The checkout must be clean and exactly pinned. Output includes all 50 task configurations, source hashes, native judge definitions, explicit CPU/memory limits, and the existing frozen five-task Gym rows. This is preparation, not a runnable Nemotron benchmark configuration.
+
+Task 02 (`mdarena::02_conc_diff_sys_traj`) is the first representative target. Its unchanged native limits are 600 seconds for the solver, 900 seconds for the verifier, and 600 seconds for the process judge, with 2 CPUs and 8192 MiB. The existing molecular-dynamics image and inputs are required. A small generic image is not equivalent.
+
+The native RewardKit judge is an **agent**, configured for Claude Code/Claude Opus 5. Its three process criteria require inspecting inputs and the submitted workspace plus the solver trajectory. The programmatic correctness criterion alone only requires a nonempty summary and absence of a concatenated trajectory; even an irrelevant nonempty summary passes that dimension. Do not replace process grading with correctness-only results or a summary-only LLM rubric.
+
+The pending Nemotron variant must retain native RewardKit prompt/schema/criteria/weights and scientific tool access while changing every LLM role to `nvidia/nvidia/nemotron-3.5-super-vl`. Route the judge through the guarded Gym model server, not a direct SDK. Never put provider credentials or the Docker socket in the scientific shell. A fresh native separate verifier must restore the complete submitted workspace and trajectory; the creator's two declared output artifacts alone are insufficient. Keep verifier test sources inaccessible during solver execution. Pin the task image and RewardKit version explicitly and record all overlays.
+
+Two supported initial solver configurations are Terminus2NemoGym with `parser_name: json` and `parser_name: xml`, using identical frozen rows, budgets, inputs and judge. They are parser/scaffold variants within one harness, not two independently implemented agents. Both still need end-to-end guarded acceptance. The old standalone held launches are not part of this integration and must not be resumed.
