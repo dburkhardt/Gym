@@ -1,0 +1,5 @@
+# S2/TOMG MolCustom AtomNum subset
+
+Source phenixace/S2-TOMG-Bench pinned df70b90de6efb62e753345b886234b7acfeff874; HF revision74746861d1c36d772dce0fc484f0ba62d554632a. Uses5000 held-out AtomNum constraints only, not the other8 tasks. Exact SYSTEM_HEAD_JSON and released Instruction are used. Scoring executes creator correct_text and mol_prop functions, then checks all17 element counts exactly as creator CLI --correct. This deliberately retains JSON-correction extraction; no SMILES-reference proxy.
+
+Set S2TOMG_ATOMNUM_CSV to pinned MolCustom_AtomNum.csv, prepare via deterministic module, then standard CAMPAIGN_UPSTREAM_REPO/CAMPAIGN_SAMPLE_JSONL and prepare.py. Dependencies RDKit. Native startup/collation tested. Twenty positive fixtures construct disconnected atom components satisfying counts and20 negative methane controls fail. The positive controls expose a creator-metric limitation: it checks atom counts/validity but does not require one connected molecule. Do not interpret this score as meaningful medicinal-chemistry design quality.
