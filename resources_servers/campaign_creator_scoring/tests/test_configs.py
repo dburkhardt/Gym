@@ -71,3 +71,14 @@ def test_prepare_and_real_collation(benchmark,monkeypatch,tmp_path):
     expected=[json.loads(x) for x in sample.read_text().splitlines()]
     assert len(actual)==len(expected)==5
     assert {x['uuid'] for x in actual}=={x['uuid'] for x in expected}
+
+def test_structured_output_response_alias_roundtrip():
+    import json
+    from pathlib import Path
+    from resources_servers.campaign_creator_scoring.app import VerifyRequest,VerifyResponse
+    sample=json.loads(Path('../../outputs/broad-eval-campaign/scientific-agents/moljson/moljson-5.jsonl').read_text().splitlines()[0])
+    trace=json.loads(Path('../../outputs/broad-eval-campaign/proteinlmbench/pilot-20-v2.jsonl').read_text().splitlines()[0])
+    response=trace['response'];response['text']=sample['responses_create_params']['text']
+    body=VerifyRequest.model_validate({**sample,'response':response})
+    actual=VerifyResponse(**body.model_dump(by_alias=True),reward=1,scoring_details={})
+    assert actual.response.text.format.schema_==response['text']['format']['schema']

@@ -32,7 +32,7 @@ class CreatorResourcesServer(SimpleResourcesServer):
             {'uuid': body.uuid, 'verifier_metadata':body.verifier_metadata}, body.response.output_text or '')
         if details.get('reward') is None:
             raise ValueError('This task has no upstream automatic score; do not convert to zero.')
-        return VerifyResponse(**body.model_dump(), reward=details['reward'], scoring_details=details)
+        return VerifyResponse(**body.model_dump(by_alias=True), reward=details['reward'], scoring_details=details)
 
 if __name__ == '__main__':
     CreatorResourcesServer.run_webserver()
