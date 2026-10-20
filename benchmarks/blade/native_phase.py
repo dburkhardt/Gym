@@ -51,6 +51,30 @@ def post_json(socket_path: str, payload: dict, headers: dict[str, str]) -> dict:
         connection.close()
 
 
+def response_outcome(result) -> dict:
+    """Classify captured responses without inventing answers or scientific scores."""
+    choices = result.choices
+    reasons = [choice.finish_reason for choice in choices]
+    if result.model != MODEL or not choices:
+        kind = "response_contract_failure"
+    elif "length" in reasons:
+        kind = "model_output_budget_exhausted"
+    elif any(reason != "stop" for reason in reasons):
+        kind = "unsupported_response_termination"
+    elif any(choice.message.content is None or not choice.message.content.strip() for choice in choices):
+        kind = "model_no_visible_answer"
+    else:
+        kind = "visible_answer"
+    return {
+        "kind": kind,
+        "response_captured": True,
+        "finish_reasons": reasons,
+        "usage": result.usage.model_dump() if result.usage else None,
+        "creator_score": None,
+        "scope": "call outcome only; task completion requires native analysis and verification",
+    }
+
+
 class Transport:
     """One physical request per native call; an uncertain failure poisons this phase."""
 
@@ -86,10 +110,13 @@ class Transport:
                 "x-nemo-gym-call-config-sha256": self.digest,
             }
             headers["Authorization"] = "Bearer " + self.token
+            response_captured = False
             try:
                 body = post_json(self.socket_path, payload, headers)
                 publish(stem.with_suffix(".response.json"), body)
+                response_captured = True
                 result = ChatCompletion.model_validate(body)
+                publish(stem.with_suffix(".outcome.json"), response_outcome(result))
                 if (
                     result.model != MODEL
                     or not result.choices
@@ -97,9 +124,12 @@ class Transport:
                 ):
                     raise ValueError("Incomplete or wrong-model native response")
             except Exception as error:
-                publish(stem.with_suffix(".failure.json"), {"type": type(error).__name__, "resend": False})
+                publish(
+                    stem.with_suffix(".failure.json"),
+                    {"type": type(error).__name__, "resend": False, "response_captured": response_captured},
+                )
                 # Deliberately not an OpenAI retry exception: creator backoff cannot resend.
-                raise RuntimeError("BLADE native provider call failed; inspect durable receipt") from error
+                raise RuntimeError("BLADE native call unusable; inspect response and outcome receipts") from error
             self.failed = False
             return result
 
