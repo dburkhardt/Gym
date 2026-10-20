@@ -727,10 +727,12 @@ def reverify_rollouts():  # pragma: no cover
     rh = RunHelper()
     rh.start(None)
 
-    config = RolloutReverificationConfig.model_validate(get_global_config_dict())
-    rrh = RolloutReverificationHelper()
-
-    asyncio.run(rrh.run_from_config(config))
+    try:
+        config = RolloutReverificationConfig.model_validate(get_global_config_dict())
+        rrh = RolloutReverificationHelper()
+        asyncio.run(rrh.run_from_config(config))
+    finally:
+        rh.shutdown()
 
 
 @exit_cleanly_on_config_error
