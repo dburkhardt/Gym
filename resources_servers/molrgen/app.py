@@ -34,13 +34,18 @@ class Response(BaseVerifyResponse, Request):
 class Verifier:
     async def verify(self, body: Request) -> Response:
         payload = {"query": [body.response.output_text or ""], "metadata": [body.verifier_metadata["metadata"]]}
-        async with httpx.AsyncClient(timeout=self.config.creator_timeout_seconds) as client:
-            received = await client.post(self.config.creator_url.rstrip("/") + "/get_reward", json=payload)
-            received.raise_for_status()
-            receipt = received.json()
+        try:
+            async with httpx.AsyncClient(timeout=self.config.creator_timeout_seconds) as client:
+                received = await client.post(self.config.creator_url.rstrip("/") + "/get_reward", json=payload)
+                received.raise_for_status()
+                receipt = received.json()
+                if not isinstance(receipt, dict):
+                    raise ValueError("Creator response must be an object")
+        except (httpx.HTTPError, ValueError) as exc:
+            receipt = {"error": repr(exc), "request": payload}
         reward = receipt.get("reward")
         error = receipt.get("error")
-        if error or not isinstance(reward, (float, int)) or not math.isfinite(reward):
+        if error or isinstance(reward, bool) or not isinstance(reward, (float, int)) or not math.isfinite(reward):
             return Response(
                 **body.model_dump(),
                 reward=0.0,

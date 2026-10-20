@@ -16,6 +16,8 @@ from resources_servers.superchem.tests.test_native_contracts import response
     [
         ({"reward": 0.5, "error": None, "meta": {"properties": ["QED"]}}, False),
         ({"reward": 0, "error": "docking failed", "meta": {}}, True),
+        ({"reward": True}, True),
+        ({"reward": None}, True),
     ],
 )
 def test_native_transport(monkeypatch, receipt, masked):
