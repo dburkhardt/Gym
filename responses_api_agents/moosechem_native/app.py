@@ -26,6 +26,7 @@ from nemo_gym.sandbox.model_bridge import bridge
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 from nemo_gym.server_utils import rollout_path_prefix
+from responses_api_agents.moosechem_native.trajectory import observations
 
 
 class Config(BaseResponsesAPIAgentConfig):
@@ -50,6 +51,7 @@ class RunRequest(BaseRunRequest):
 class VerifyResponse(BaseVerifyResponse):
     model_config = ConfigDict(extra="allow")
     artifact_dir: str
+    ng_trajectory: dict | None = None
     native_metrics: dict
     reward_metric: str = "final_round_inspiration_top3_recall_not_hypothesis_quality"
     synthetic_summary_response: bool = True
@@ -195,11 +197,20 @@ class Agent(SimpleResponsesAPIAgent):
                 "tools": [],
             }
         )
+        trajectory, usage = observations(
+            out,
+            task_id=str(body.model_dump().get("task_id", task_id)),
+            rollout_id=current_rollout_id() or maybe_rollout_id_from_run_body(body) or str(task_id),
+            model_ref=self.config.model_server,
+            imported=self.config.import_existing,
+        )
+        response.usage = usage
         return VerifyResponse(
             **body.model_dump(),
             response=response,
             reward=reward,
             artifact_dir=str(out),
+            ng_trajectory=trajectory.model_dump(mode="json"),
             native_metrics={
                 "retrieval_by_round": screen[1],
                 "full_creator_evaluation": result["evaluation"],
