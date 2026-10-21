@@ -46,6 +46,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
 )
+from nemo_gym.sandbox.lifecycle import _publish
 from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure, required_artifact_failure
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
@@ -71,6 +72,7 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     # Logical reservation for the whole trial on its Ray worker, including local
     # Docker children and sidecars. This is admission, not a container memory limit.
     harbor_ray_task_memory_bytes: Optional[int] = Field(default=None, gt=0, strict=True)
+    harbor_ray_cancel_settle_timeout_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # --- Harbor agent settings ---
     # Name of a built-in Harbor agent (e.g. "terminus-2", "claude-code", "aider").
@@ -227,7 +229,37 @@ def _run_harbor_job_sync(job_config_dict: dict) -> str:
     if _RAY_WORKER_EVENT_LOOP is None or _RAY_WORKER_EVENT_LOOP.is_closed():
         _RAY_WORKER_EVENT_LOOP = asyncio.new_event_loop()
         asyncio.set_event_loop(_RAY_WORKER_EVENT_LOOP)
-    return _RAY_WORKER_EVENT_LOOP.run_until_complete(run_harbor_job(job_config_dict))
+    task = _RAY_WORKER_EVENT_LOOP.create_task(run_harbor_job(job_config_dict))
+    try:
+        return _RAY_WORKER_EVENT_LOOP.run_until_complete(task)
+    except KeyboardInterrupt:
+        # Ray cooperative cancellation interrupts the synchronous entrypoint.
+        # Translate it once into native asyncio cancellation so Harbor can recover
+        # artifacts and finalize its owned environment before this worker exits.
+        task.cancel()
+        cleanup_error = None
+        while not task.done():
+            try:
+                _RAY_WORKER_EVENT_LOOP.run_until_complete(task)
+            except KeyboardInterrupt:
+                # A repeated cooperative signal must not inject a second asyncio
+                # cancellation into a finalizer already recovering artifacts.
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                cleanup_error = type(exc).__name__
+                logger.exception("Harbor cleanup failed during Ray cancellation")
+                break
+        if task.done() and not task.cancelled():
+            error = task.exception()
+            if error is not None:
+                cleanup_error = type(error).__name__
+        _write_cancellation_receipt(
+            _cancellation_path(job_config_dict, "worker"),
+            {"phase": "native_coroutine_settled", "cleanup_error": cleanup_error, "docker_cleanup_confirmed": False},
+        )
+        raise
 
 
 @ray.remote(
@@ -238,6 +270,71 @@ def _run_harbor_job_sync(job_config_dict: dict) -> str:
 )
 def runner_ray_remote(runner: Callable, params: dict[str, Any]) -> Any:
     return runner(**params)
+
+
+def _cancellation_path(config: dict, role: str) -> Path | None:
+    if not config.get("jobs_dir") or not config.get("job_name"):
+        return None
+    return Path(config["jobs_dir"]) / config["job_name"] / f"gym-cancellation-{role}.json"
+
+
+def _write_cancellation_receipt(path: Path | None, value: dict) -> None:
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _publish(
+            path, {**value, "job_directory": str(path.parent), "timestamp": datetime.now(timezone.utc).isoformat()}
+        )
+    except Exception:
+        logger.exception("Could not persist owned Harbor cancellation receipt at %s", path)
+
+
+async def _await_owned_ray_job(future, *, settle_timeout_s: float, receipt_path: Path | None = None) -> str:
+    async def wait_for_result():
+        return await future
+
+    waiter = asyncio.create_task(wait_for_result())
+    try:
+        return await asyncio.shield(waiter)
+    except asyncio.CancelledError:
+        _write_cancellation_receipt(receipt_path, {"phase": "cancellation_requested", "cleanup_confirmed": False})
+        # Never force-kill a worker: native finalizers need time to preserve
+        # artifacts and stop only the environment belonging to this job.
+        try:
+            ray.cancel(future, force=False, recursive=True)
+        except Exception:
+            logger.exception("Could not request owned Harbor Ray job cancellation; cleanup remains unconfirmed")
+        deadline = asyncio.get_running_loop().time() + settle_timeout_s
+        while not waiter.done():
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                logger.error("Owned Harbor Ray job cancellation did not settle; cleanup remains unconfirmed")
+                break
+            try:
+                await asyncio.wait_for(asyncio.shield(waiter), timeout=remaining)
+            except asyncio.CancelledError:
+                continue
+            except TimeoutError:
+                logger.error("Owned Harbor Ray job cancellation did not settle; cleanup remains unconfirmed")
+                break
+            except Exception:
+                break
+        _write_cancellation_receipt(
+            receipt_path,
+            {
+                "phase": "ray_wait_settled" if waiter.done() else "settlement_unknown",
+                "cleanup_confirmed": False,
+                "note": "Ray wait completion alone does not prove Docker or native finalizer cleanup",
+            },
+        )
+        if waiter.done():
+            if not waiter.cancelled():
+                waiter.exception()  # Retrieve the expected remote cancellation/failure.
+        else:
+            # Observe a late failure without cancelling the underlying ObjectRef.
+            waiter.add_done_callback(lambda task: None if task.cancelled() else task.exception())
+        raise
 
 
 class HarborAgent(SimpleResponsesAPIAgent):
@@ -322,7 +419,11 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 # Await the ObjectRef directly; to_thread(ray.get, ...) would pin
                 # one executor thread per in-flight trial, so completed trials
                 # would queue behind long-running ones.
-                trial_dir_path = await future
+                trial_dir_path = await _await_owned_ray_job(
+                    future,
+                    settle_timeout_s=self.config.harbor_ray_cancel_settle_timeout_s,
+                    receipt_path=jobs_dir / job_name / "gym-cancellation-request.json",
+                )
                 trial_dir = Path(trial_dir_path)
 
                 def _read_trial_files():
