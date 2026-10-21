@@ -231,3 +231,95 @@ def test_shared_agent_or_empty_evidence_does_not_establish_dataset_scope():
     metric = summarize_dispositions([first, second])["per_metric"]["outcome"]
     assert metric["reviewed_mean"] is None
     assert len(metric["reviewed_source_groups"]) == 2
+
+
+def test_provider_evidence_deduplicates_physical_calls_without_inventing_total():
+    row = {
+        "reward": 0.0,
+        "mask_sample": False,
+        "_ng_task_index": 0,
+        "_ng_rollout_index": 0,
+        "ng_model_call_capture": {
+            "calls": [
+                {"model_call_id": "call", "provider_attempts": [{"attempt_id": "physical", "outcome": "captured"}]}
+            ]
+        },
+    }
+    report = summarize_dispositions([row, copy.deepcopy(row)])
+    assert report["provider_evidence"]["physical_attempt_lower_bound"] == 1
+    assert report["provider_evidence"]["outcome_counts"]["captured"] == 1
+    assert report["observed_rollout_attempt_lower_bound"] == 1
+    assert report["attempted_total"] is None
+    assert report["provider_dispatch_unresolved_total"] is None
+    assert report["records"][0]["raw_reward"] == 0
+
+
+def test_conflicting_provider_identity_and_empty_ids_are_not_success():
+    records = [
+        {
+            "ng_model_call_capture": {
+                "calls": [
+                    {"model_call_id": "one", "provider_attempts": [{"attempt_id": "same", "outcome": "captured"}]},
+                    {"model_call_id": "two", "provider_attempts": [{"attempt_id": "same", "outcome": "captured"}]},
+                    {"model_call_id": "", "provider_attempts": []},
+                    {"model_call_id": "three", "provider_attempts": [{"attempt_id": "", "outcome": "captured"}]},
+                    {"model_call_id": "four", "provider_attempts": None},
+                ]
+            }
+        }
+    ]
+    report = summarize_dispositions(records)
+    evidence = report["provider_evidence"]
+    assert evidence["outcome_counts"] == {"captured": 0, "rejected": 0, "unresolved": 1, "conflicting": 1}
+    assert len(evidence["errors"]) == 3
+
+
+def test_review_provenance_and_raw_scalar_remain_visible():
+    row = _reviewed_mixed()
+    row["metadata"]["measurement_review"]["evidence"] = {"request_sha256": "b" * 64, "source": "saved-request.json"}
+    report = summarize_dispositions([row])
+    assert report["records"][0]["review_evidence"] == row["metadata"]["measurement_review"]["evidence"]
+    assert report["records"][0]["raw_reward"] == 0.8
+    assert report["records"][0]["native_metric_scores"] == {"outcome": 0.8, "process": 1.0}
+
+
+def test_preserved_budget_zero_verifier_failure_and_pending_dispatch_when_available():
+    import hashlib
+    import tarfile
+
+    import pytest
+
+    base = Path(__file__).resolve().parents[4] / "outputs/broad-eval-campaign/foundation"
+    mol = base / "molrgen-live/evidence/smoke5-v1.jsonl"
+    archive = base / "mdarena-gym/json-original-masked.tar.gz"
+    pending_dir = base / "fukuyama-native/native-remaining4-eightdraws-v1/capture"
+    markers = list(pending_dir.glob("*.capture.pending"))
+    if not mol.exists() or not archive.exists() or not markers:
+        pytest.skip("Preserved campaign evidence not shipped with Gym")
+    before = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (mol, archive, markers[0])}
+    mol_rows = [json.loads(line) for line in mol.read_text().splitlines()]
+    zeros = [row for row in mol_rows if row["reward"] == 0 and row["response"]["status"] == "incomplete"]
+    assert zeros, "Fixture must include actual output-budget zero"
+    aggregate = compute_aggregate_metrics(zeros)
+    assert aggregate.disposition_summary["counts"]["quality_selected_records"] == len(zeros)
+    assert aggregate.disposition_summary["counts"]["raw_scored_records"] == len(zeros)
+    assert aggregate.disposition_summary["provider_evidence"]["outcome_counts"]["captured"] == len(zeros)
+    with tarfile.open(archive) as source:
+        member = next(item for item in source.getmembers() if item.name.endswith("/response.json"))
+        failed = json.load(source.extractfile(member))
+    assert failed["mask_sample"] is True
+    failure_report = summarize_dispositions([failed])
+    assert failure_report["counts"]["quality_selected_records"] == 0
+    assert failure_report["records"][0]["raw_reward"] == failed.get("reward")
+    pending = json.loads(markers[0].read_text())
+    assert any(item.get("outcome") not in {"captured", "rejected"} for item in pending["provider_attempts"])
+    # Explicit derived reporting view of this exact pending marker; no index-based
+    # join to the unrelated MolRGen/MDArena runs and no invented completed result.
+    unresolved = {
+        "ng_model_call_capture": {"rollout_id": pending["provider_binding"]["logical_rollout"], "calls": [pending]}
+    }
+    unknown_report = summarize_dispositions([], failures=[unresolved])
+    assert unknown_report["counts"]["completed_result_records"] == 0
+    assert unknown_report["provider_evidence"]["outcome_counts"]["unresolved"] == 1
+    assert unknown_report["provider_dispatch_unresolved_total"] is None
+    assert before == {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (mol, archive, markers[0])}
