@@ -41,6 +41,7 @@ def regrade(repo: Path, packet_path: Path, results_path: Path) -> dict:
         "packet_sha256": hashlib.sha256(packet_bytes).hexdigest(),
         "results_sha256": hashlib.sha256(results_bytes).hexdigest(),
         "scorer_sha256": hashlib.sha256(Path(__file__).with_name("creator_recipe.py").read_bytes()).hexdigest(),
+        "wrapper_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "order": expected,
     }
     return {
