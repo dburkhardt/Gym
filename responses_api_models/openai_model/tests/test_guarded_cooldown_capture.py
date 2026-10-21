@@ -20,7 +20,16 @@ from responses_api_models.openai_model.app import SimpleModelServer, SimpleModel
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["rejected_then_success", "deadline_wait", "accepted_timeout"])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "rejected_then_success",
+        "deadline_wait",
+        "accepted_timeout",
+        "admission_before_send",
+        "admission_after_rejection",
+    ],
+)
 async def test_guarded_cooldown_physical_capture_and_deadline(tmp_path, monkeypatch, mode):
     calls = []
 
@@ -32,7 +41,7 @@ async def test_guarded_cooldown_physical_capture_and_deadline(tmp_path, monkeypa
             return web.json_response(
                 {"error": {"message": "capacity"}},
                 status=429,
-                headers={"Retry-After": "0.2" if mode == "deadline_wait" else "0.02"},
+                headers={"Retry-After": "0.2" if mode in {"deadline_wait", "admission_after_rejection"} else "0.02"},
             )
         return web.json_response(
             {
@@ -77,6 +86,12 @@ async def test_guarded_cooldown_physical_capture_and_deadline(tmp_path, monkeypa
     model = SimpleModelServer(
         config=config, server_client=MagicMock(spec=ServerClient, global_config_dict=global_config)
     )
+    if mode == "accepted_timeout":
+        model.config.upstream_admission_timeout_seconds = 0.01
+    if mode.startswith("admission_"):
+        model.config.upstream_admission_timeout_seconds = 0.03
+    if mode == "admission_before_send":
+        model._rate_limit_until = time.monotonic() + 0.2
     app = model.setup_webserver()
     model.setup_exception_middleware(app)
     model.setup_cancellation_middleware(app)
@@ -111,7 +126,9 @@ async def test_guarded_cooldown_physical_capture_and_deadline(tmp_path, monkeypa
                 else:
                     reply = await invoke()
                     assert reply.status_code == (200 if mode == "rejected_then_success" else 500)
-            assert len(calls) == (2 if mode == "rejected_then_success" else 1)
+            assert len(calls) == (
+                0 if mode == "admission_before_send" else 2 if mode == "rejected_then_success" else 1
+            )
             if len(calls) == 2:
                 assert calls[0][1] == calls[1][1]
                 assert calls[1][0] - calls[0][0] >= 0.02
@@ -136,6 +153,16 @@ async def test_guarded_cooldown_physical_capture_and_deadline(tmp_path, monkeypa
                 assert records[0]["provider_attempts"][0]["outcome"] == "rejected"
                 assert records[0]["provider_attempts"][0]["status_code"] == 429
                 assert not list((tmp_path / "capture").glob("*.pending"))
+            elif mode.startswith("admission_"):
+                assert len(records) == 1
+                attempts = records[0]["provider_attempts"]
+                assert len(attempts) == (0 if mode == "admission_before_send" else 1)
+                if attempts:
+                    assert attempts[0]["outcome"] == "rejected"
+                    assert attempts[0]["status_code"] == 429
+                assert records[0]["error_category"] is not None
+                assert "UpstreamAdmissionTimeoutError" in reply.text
+                assert not CaptureStore(tmp_path / "capture", provider_dispatch_guard=True).has_pending("0-0")
             elif mode == "accepted_timeout":
                 store = CaptureStore(tmp_path / "capture", provider_dispatch_guard=True)
                 assert store.has_pending("0-0")

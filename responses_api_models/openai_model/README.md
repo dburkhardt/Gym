@@ -90,3 +90,24 @@ benchmark wall-clock budget. Existing explicit-rejection retries and uncertain
 no-resend semantics remain unchanged; keep configured physical retry limits
 appropriate to the provider guard. Qualification evidence uses separate local
 processes and a loopback fake provider, not a production rate-limit claim.
+
+### Optional cumulative queue allowance
+
+`upstream_admission_timeout_seconds` bounds cumulative queued time for one logical
+request: pre-request jitter, shared/local cooldown, semaphore acquisition and
+retry backoff. The default `null` preserves existing behavior. A peer extending
+shared cooldown does not reset this allowance, nor does a rejected retry.
+
+This is separate from `upstream_request_timeout_seconds`, which still grants
+each provider attempt its configured duration. For example, a 60-second
+admission allowance plus a 600-second provider timeout can occupy up to 660
+seconds per role (excluding local settlement overhead). A solver followed by
+a judge therefore needs a drain covering both roles; do not silently count queue
+time against the scientific provider budget.
+
+Expiry raises `UpstreamAdmissionTimeoutError` before starting the next attempt.
+It is an infrastructure failure, not a model score. Captures distinguish expiry
+with zero physical sends from expiry after earlier rejected attempts; the latter
+remain preserved. This option neither enables retries nor makes uncertain calls
+safe to resend. Configure the existing rejected-only policy separately when
+authorized, and retain the overall collector/supervisor deadline.

@@ -62,6 +62,46 @@ class UpstreamRetriesExhaustedError(RuntimeError):
         self.response_content = getattr(last_error, "response_content", None)
 
 
+class UpstreamAdmissionTimeoutError(RuntimeError):
+    """Queued admission expired before the next provider attempt was started.
+
+    Earlier attempts, if any, remain in the capture ledger; this does not assert
+    that the entire logical request had zero physical sends.
+    """
+
+
+class _AdmissionBudget:
+    """Per-logical-call cumulative waiting time, never provider execution time."""
+
+    def __init__(self, seconds: float | None):
+        self.remaining = seconds
+
+    @asynccontextmanager
+    async def waiting(self):
+        if self.remaining is None:
+            yield
+            return
+        if self.remaining <= 0:
+            raise UpstreamAdmissionTimeoutError("Upstream queued admission budget exhausted before next attempt")
+        start = asyncio.get_running_loop().time()
+        timer = asyncio.timeout(self.remaining)
+        try:
+            async with timer:
+                yield
+        except TimeoutError as error:
+            if timer.expired():
+                raise UpstreamAdmissionTimeoutError(
+                    "Upstream queued admission budget exhausted before next attempt"
+                ) from error
+            raise
+        finally:
+            self.remaining = max(0.0, self.remaining - (asyncio.get_running_loop().time() - start))
+
+    async def sleep(self, seconds: float):
+        async with self.waiting():
+            await asyncio.sleep(seconds)
+
+
 class UpstreamRetryPolicy(BaseModel):
     """Retry policy for one logical request to the upstream provider."""
 
@@ -168,6 +208,16 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
         description=(
             "Total time limit for each provider attempt, not a deadline for the "
             "whole retry schedule. None means no limit."
+        ),
+    )
+    upstream_admission_timeout_seconds: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Cumulative queued time per logical call: jitter, cooldown, semaphore acquisition "
+            "and retry backoff. Provider execution is excluded and retains its separate "
+            "per-attempt timeout. None preserves unbounded queued admission."
         ),
     )
     upstream_connect_timeout_seconds: Optional[float] = Field(
@@ -314,6 +364,16 @@ class SimpleModelServer(SimpleResponsesAPIModel):
         finally:
             self._semaphore.release()
 
+    @asynccontextmanager
+    async def _admitted_upstream_slot(self, budget: _AdmissionBudget):
+        slot = self._upstream_request_slot()
+        async with budget.waiting():
+            await slot.__aenter__()
+        try:
+            yield
+        finally:
+            await slot.__aexit__(None, None, None)
+
     async def _shared_cooldown_call(self, operation: Callable, *args):
         """Settle bounded local state I/O before returning caller cancellation."""
         task = asyncio.create_task(asyncio.to_thread(operation, *args))
@@ -339,19 +399,24 @@ class SimpleModelServer(SimpleResponsesAPIModel):
             return local
         return max(local, await self._shared_cooldown_call(self._shared_cooldown.remaining))
 
-    async def _call_with_cooldown(self, operation: Callable[[], Awaitable[ResponseT]]) -> ResponseT:
+    async def _call_with_cooldown(
+        self, operation: Callable[[], Awaitable[ResponseT]], budget: _AdmissionBudget
+    ) -> ResponseT:
         """Wait outside the slot; only observed 429 rejection is safe to retry."""
         policy = self.config.upstream_retry_policy
         for attempt in range(policy.max_attempts):
             if policy.pre_request_jitter_seconds is not None:
-                await asyncio.sleep(random.uniform(*policy.pre_request_jitter_seconds))
+                await budget.sleep(random.uniform(*policy.pre_request_jitter_seconds))
             while True:
-                delay = await self._cooldown_remaining()
+                async with budget.waiting():
+                    delay = await self._cooldown_remaining()
                 if delay > 0:
-                    await asyncio.sleep(delay)
-                async with self._upstream_request_slot():
+                    await budget.sleep(delay)
+                async with self._admitted_upstream_slot(budget):
                     # Another request may have established a cooldown while we queued.
-                    if await self._cooldown_remaining() > 0:
+                    async with budget.waiting():
+                        still_cooling = await self._cooldown_remaining() > 0
+                    if still_cooling:
                         continue
                     try:
                         return await operation()
@@ -379,36 +444,37 @@ class SimpleModelServer(SimpleResponsesAPIModel):
                 break
             # Backoff complements, rather than replaces, the shared provider wait.
             backoff = policy.backoff_initial_seconds * policy.backoff_multiplier**attempt
-            await asyncio.sleep(backoff + random.uniform(0, backoff * policy.backoff_jitter_fraction))
+            await budget.sleep(backoff + random.uniform(0, backoff * policy.backoff_jitter_fraction))
         raise AssertionError("Validated retry policy always contains an attempt")
 
     async def _call_upstream(
         self,
         operation: Callable[[], Awaitable[ResponseT]],
     ) -> ResponseT:
+        budget = _AdmissionBudget(self.config.upstream_admission_timeout_seconds)
         if self.config.upstream_rate_limit_cooldown_seconds is not None:
-            return await self._call_with_cooldown(operation)
+            return await self._call_with_cooldown(operation, budget)
         retry_policy = self.config.upstream_retry_policy
         if retry_policy.max_attempts == 1:
             # Preserve the ordinary model server's historical behavior: one
             # request owns its concurrency slot until its one client call has
             # returned (including any retries performed inside that client).
             if retry_policy.pre_request_jitter_seconds is not None:
-                await asyncio.sleep(random.uniform(*retry_policy.pre_request_jitter_seconds))
-            async with self._upstream_request_slot():
+                await budget.sleep(random.uniform(*retry_policy.pre_request_jitter_seconds))
+            async with self._admitted_upstream_slot(budget):
                 return await operation()
 
         last_error: Exception | None = None
         for attempt in range(retry_policy.max_attempts):
             if retry_policy.pre_request_jitter_seconds is not None:
-                await asyncio.sleep(random.uniform(*retry_policy.pre_request_jitter_seconds))
+                await budget.sleep(random.uniform(*retry_policy.pre_request_jitter_seconds))
             try:
                 # Acquire per attempt so a failure releases its provider slot
                 # before retry backoff instead of monopolizing capacity for
                 # the full retry loop.
-                async with self._upstream_request_slot():
+                async with self._admitted_upstream_slot(budget):
                     return await operation()
-            except PermanentEndpointError:
+            except (PermanentEndpointError, UpstreamAdmissionTimeoutError):
                 # The client has stopped calling a spent or unauthorized endpoint,
                 # so every later attempt would fail without reaching the provider.
                 raise
@@ -434,7 +500,7 @@ class SimpleModelServer(SimpleResponsesAPIModel):
                 retry_wait,
                 last_error,
             )
-            await asyncio.sleep(retry_wait)
+            await budget.sleep(retry_wait)
 
         raise UpstreamRetriesExhaustedError(retry_policy.max_attempts, last_error) from last_error
 
