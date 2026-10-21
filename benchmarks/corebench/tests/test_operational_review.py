@@ -25,9 +25,12 @@ def native():
     }
 
 
-def test_overlay_preserves_raw_and_excludes_quality(tmp_path):
+@pytest.mark.parametrize("capsule", ["1683542", "6746514"])
+def test_overlay_preserves_raw_and_excludes_quality(tmp_path, capsule):
     raw = tmp_path / "raw.jsonl"
-    raw.write_text(json.dumps(native()) + "\n")
+    record = native()
+    record["instance_id"] = "corebench::capsule-" + capsule
+    raw.write_text(json.dumps(record) + "\n")
     before = raw.read_bytes()
     report = tmp_path / "report.json"
     report.write_text("{}\n")
