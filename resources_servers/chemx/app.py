@@ -43,7 +43,7 @@ class Server(SimpleResourcesServer):
             raise ValueError("ChemX frozen manifest identity mismatch")
         if body.uuid != body.verifier_metadata.get("article_id"):
             raise ValueError("ChemX article identity mismatch")
-        payload = body.model_dump()
+        payload = body.model_dump(by_alias=True)
         try:
             result = await asyncio.to_thread(
                 score, Path(self.config.upstream_repo), article_id=body.uuid, answer=body.response.output_text or ""

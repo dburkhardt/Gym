@@ -126,3 +126,55 @@ async def test_native_verifier_preserves_lineage_and_rejects_wrong_manifest():
     body.verifier_metadata["manifest_sha256"] = "wrong"
     with pytest.raises(ValueError, match="manifest"):
         await Server.verify(server, body)
+
+
+@pytest.mark.asyncio
+async def test_converted_strict_schema_survives_native_verifier():
+    import hashlib
+    from types import SimpleNamespace
+
+    from benchmarks.chemx.protocol import MANIFEST
+    from nemo_gym.openai_utils import NeMoGymChatCompletion, NeMoGymResponseCreateParamsNonStreaming
+    from nemo_gym.responses_converter import ResponsesConverter
+    from resources_servers.chemx.app import Request, Server
+
+    schema = json.loads((SOURCE / "LLM/data/schemas/magnetic.json").read_text())
+    params = NeMoGymResponseCreateParamsNonStreaming(
+        input="fixture",
+        max_output_tokens=10000,
+        text={"format": {"type": "json_schema", "name": "magnetic", "schema": schema, "strict": True}},
+    )
+    response = ResponsesConverter(return_token_id_information=False).chat_completion_to_response(
+        responses_create_params=params,
+        chat_completion=NeMoGymChatCompletion.model_validate(
+            {
+                "id": "fixture",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "fixture",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": '{"samples":[]}'},
+                    }
+                ],
+            }
+        ),
+    )
+    body = Request(
+        uuid="nano12183159.pdf",
+        responses_create_params=params,
+        response=response,
+        verifier_metadata={
+            "article_id": "nano12183159.pdf",
+            "manifest_sha256": hashlib.sha256(MANIFEST.read_bytes()).hexdigest(),
+        },
+        _ng_task_index=0,
+        _ng_rollout_index=0,
+    )
+    result = await Server.verify(SimpleNamespace(config=SimpleNamespace(upstream_repo=str(SOURCE))), body)
+    assert result.reward == 0 and not result.mask_sample
+    assert result.response.model_dump(by_alias=True)["text"]["format"]["schema"] == schema
+    assert result.response.text.format.strict is True
+    assert result.model_dump()["_ng_rollout_index"] == 0
