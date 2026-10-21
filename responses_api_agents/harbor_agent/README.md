@@ -584,3 +584,10 @@ LITELLM_LOCAL_MODEL_COST_MAP=True PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="$
 ```
 
 This qualifies the restricted cursor and file-session control, not arbitrary shell or scientific-container restoration. Native tmux uses nonblocking commands and cannot attest completed foreground work, background jobs, cwd/environment or terminal state through this interface. It remains unsupported and restart-only. Summarization/delegation, parser-error boundaries, exhausted turns and unknown tool/provider outcomes are not resumable checkpoint boundaries. A production integration must supply an audited tool-state attestor and atomic workspace/session restoration through existing Gym hooks before enabling continuation; captured model responses or copied files alone are insufficient.
+
+Guarded Terminus calls submit once at the `NemoGymLLM.call` boundary. The selected
+model server remains responsible for its configured physical retry policy and
+shared cooldown. This prevents the legacy three-attempt outer retry from resetting
+a model server's one-attempt budget after a definitive rejection. Unguarded
+Terminus retains its legacy retry behavior. Unknown dispatches still require
+explicit reconciliation; this change does not authorize replay or continuation.

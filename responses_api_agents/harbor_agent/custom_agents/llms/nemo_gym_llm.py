@@ -31,8 +31,6 @@ from harbor.llms.base import (
 from harbor.models.metric import UsageInfo
 from tenacity import (
     retry,
-    retry_if_exception_type,
-    retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -126,14 +124,15 @@ class NemoGymLLM(BaseLLM):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=15),
-        retry=(
-            retry_if_exception_type(Exception)
-            & retry_if_not_exception_type(
-                (
-                    ContextLengthExceededError,
-                    OutputLengthExceededError,
-                    ConcurrentHarborCallError,
-                )
+        # Guarded requests have one HTTP submission at this layer. The model
+        # server owns its configured physical retry policy and shared cooldown;
+        # an outer retry would otherwise reset that per-request attempt budget.
+        retry=lambda state: (
+            state.args[0]._dispatch_path is None
+            and isinstance(state.outcome.exception(), Exception)
+            and not isinstance(
+                state.outcome.exception(),
+                (ContextLengthExceededError, OutputLengthExceededError, ConcurrentHarborCallError),
             )
         ),
         reraise=True,

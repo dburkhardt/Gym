@@ -157,9 +157,9 @@ async def test_truncated_response_is_durable_before_chat_advances(tmp_path):
     path = tmp_path / "state.json"
     llm = make_llm(path)
     llm._http_client = AsyncMock()
-    llm._http_client.post.return_value = httpx.Response(200, json={
-        "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]
-    })
+    llm._http_client.post.return_value = httpx.Response(
+        200, json={"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]}
+    )
     with pytest.raises(OutputLengthExceededError) as error:
         await NemoGymLLM.call.__wrapped__(llm, "question")
     assert error.value.truncated_response == "partial"
@@ -168,19 +168,132 @@ async def test_truncated_response_is_durable_before_chat_advances(tmp_path):
     await llm.aclose()
     restored = make_llm(path, resume=True)
     restored._http_client = AsyncMock()
-    restored._http_client.post.return_value = httpx.Response(200, json={
-        "choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]
-    })
+    restored._http_client.post.return_value = httpx.Response(
+        200, json={"choices": [{"message": {"content": "partial"}, "finish_reason": "length"}]}
+    )
     with pytest.raises(OutputLengthExceededError) as replay_error:
         await NemoGymLLM.call.__wrapped__(restored, "question")
     assert replay_error.value.truncated_response == "partial"
     assert restored._http_client.post.call_args.kwargs["headers"]["x-nemo-gym-logical-call-id"] == first
-    restored._http_client.post.return_value = httpx.Response(200, json={
-        "choices": [{"message": {"content": "finished"}, "finish_reason": "stop"}]
-    })
+    restored._http_client.post.return_value = httpx.Response(
+        200, json={"choices": [{"message": {"content": "finished"}, "finish_reason": "stop"}]}
+    )
     history = [{"role": "user", "content": "question"}, {"role": "assistant", "content": "partial"}]
     result = await NemoGymLLM.call.__wrapped__(restored, "continue", history)
     assert result.content == "finished"
     assert restored._http_client.post.call_args.kwargs["headers"]["x-nemo-gym-logical-call-id"] != first
     assert len(json.loads(path.read_text())["calls"]) == 2
     await restored.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["429", "timeout"])
+async def test_guarded_outer_retry_does_not_reset_provider_attempt_budget(tmp_path, failure):
+    llm = make_llm(tmp_path / "state.json")
+    attempts = []
+
+    def provider(request):
+        attempts.append(request)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("ambiguous response", request=request)
+        return httpx.Response(429, json={"error": "quota exhausted"})
+
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(provider))
+    # Exercise the actual Tenacity-decorated public entry point, not __wrapped__.
+    expected = httpx.ReadTimeout if failure == "timeout" else httpx.HTTPStatusError
+    with pytest.raises(expected):
+        await llm.call("question")
+    assert len(attempts) == 1
+    assert not json.loads((tmp_path / "state.json").read_text())["calls"]["0"]["completed"]
+    await llm.aclose()
+
+
+@pytest.mark.asyncio
+async def test_guarded_successful_independent_turns_still_dispatch(tmp_path):
+    llm = make_llm(tmp_path / "state.json")
+    ids = []
+
+    def provider(request):
+        ids.append(request.headers["x-nemo-gym-logical-call-id"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]})
+
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(provider))
+    await llm.call("question")
+    await llm.call("next", [{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}])
+    assert len(ids) == len(set(ids)) == 2
+    await llm.aclose()
+
+
+@pytest.mark.asyncio
+async def test_unguarded_legacy_retry_policy_remains_configurable():
+    from tenacity import wait_none
+
+    llm = NemoGymLLM(model_name="test", api_base="http://localhost/v1")
+    calls = []
+
+    def provider(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, json={"error": "quota"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]})
+
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(provider))
+    await NemoGymLLM.call.retry_with(wait=wait_none())(llm, "question")
+    assert len(calls) == 2
+    await llm.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("inner_attempts", [1, 2])
+async def test_guarded_outer_submission_preserves_configured_inner_policy(tmp_path, inner_attempts):
+    from unittest.mock import MagicMock
+
+    from aiohttp import ClientResponseError
+
+    from nemo_gym.server_utils import ServerClient
+    from responses_api_models.openai_model.app import SimpleModelServer, SimpleModelServerConfig
+
+    model = SimpleModelServer(
+        config=SimpleModelServerConfig(
+            host="127.0.0.1",
+            port=8081,
+            name="test",
+            entrypoint="",
+            openai_base_url="http://unused",
+            openai_api_key="unused",
+            openai_model="test",
+            max_concurrent_requests=1,
+            upstream_max_num_tries=1,
+            upstream_rate_limit_cooldown_seconds=0,
+            upstream_retry_policy={"max_attempts": inner_attempts, "backoff_initial_seconds": 0},
+        ),
+        server_client=MagicMock(spec=ServerClient, global_config_dict={}),
+    )
+    submissions, physical = [], []
+
+    async def physical_operation():
+        physical.append("send")
+        if len(physical) == 1:
+            raise ClientResponseError(None, (), status=429, headers={"Retry-After": "0"})
+        return {"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}
+
+    async def model_route(request):
+        submissions.append(request)
+        try:
+            body = await model._call_upstream(physical_operation)
+            return httpx.Response(200, json=body)
+        except ClientResponseError as error:
+            return httpx.Response(error.status, json={"error": "quota"})
+
+    llm = make_llm(tmp_path / "state.json")
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(model_route))
+    try:
+        if inner_attempts == 1:
+            with pytest.raises(httpx.HTTPStatusError):
+                await llm.call("question")
+        else:
+            assert (await llm.call("question")).content == "answer"
+        assert len(submissions) == 1
+        assert len(physical) == inner_attempts
+    finally:
+        await llm.aclose()
