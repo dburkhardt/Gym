@@ -43,6 +43,8 @@ class GenoTEXRunRequest(BaseRunRequest):
 
 
 class GenoTEXResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict[str, JsonValue]
     metrics: dict[str, JsonValue] = Field(default_factory=dict)
     artifact_dir: str

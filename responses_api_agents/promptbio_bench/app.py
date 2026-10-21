@@ -56,6 +56,10 @@ class PromptBioRequest(BaseRunRequest):
     verifier_metadata: dict[str, str]
 
 
+class PromptBioResult(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
+
 class PromptBioAgent(SimpleResponsesAPIAgent):
     config: PromptBioConfig
     _semaphore: asyncio.Semaphore = PrivateAttr(default_factory=lambda: asyncio.Semaphore(1))
@@ -145,7 +149,7 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
                 "tools": [],
             }
         )
-        return BaseVerifyResponse(**body.model_dump(), response=response, reward=score)
+        return PromptBioResult(**body.model_dump(), response=response, reward=score)
 
 
 if __name__ == "__main__":

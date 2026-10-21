@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 from benchmarks.genehop.native_loop import MODEL, NativeLoop
 from benchmarks.genehop.source_identity import validate_source
@@ -33,11 +33,15 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     uuid: str
     verifier_metadata: dict
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict
     uuid: str
     artifact_dir: str

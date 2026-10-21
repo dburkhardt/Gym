@@ -37,6 +37,8 @@ class RunRequest(BaseRunRequest):
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     metrics: dict
     ng_trajectory: dict
     artifact_dir: str

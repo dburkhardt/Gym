@@ -51,6 +51,8 @@ class RunRequest(BaseRunRequest):
 
 
 class RunResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     artifact_dir: str
     native_solver_result: dict = Field(default_factory=dict)
     scientific_score: float | None = None

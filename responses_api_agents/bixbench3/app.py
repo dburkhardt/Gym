@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from fastapi import HTTPException, Request, Response
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, Body, SimpleResponsesAPIAgent
@@ -69,11 +69,15 @@ class BixBench3Config(BaseResponsesAPIAgentConfig):
 
 
 class BixBench3Request(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     task_id: str
     settings_file: str
 
 
 class BixBench3Result(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     task_id: str
     grade_path: str
     inspect_log_dir: str
