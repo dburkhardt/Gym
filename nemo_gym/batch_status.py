@@ -404,6 +404,12 @@ class BatchStatusTracker:
         self.manifest_fpath = manifest_fpath
         self.status_fpath = manifest_fpath.with_name(BATCH_STATUS_FNAME)
         self.manifest, self.manifest_sha256 = load_batch_manifest(manifest_fpath)
+        self.execution_binding = None
+        if self.status_fpath.exists():
+            previous_status = orjson.loads(self.status_fpath.read_bytes())
+            self.execution_binding = previous_status.get("execution_binding")
+            if self.execution_binding is not None and previous_status.get("manifest_sha256") != self.manifest_sha256:
+                raise ConfigError("Bound batch status belongs to a different manifest")
         self.observations = observe_materialized_rows(materialized_rows)
         validate_batch_manifest(self.manifest, self.observations)
         self._expected_rollout_identities: set[tuple[str, int, int]] = {
@@ -526,6 +532,7 @@ class BatchStatusTracker:
         return {
             "schema_version": "1",
             "manifest_sha256": self.manifest_sha256,
+            **({"execution_binding": self.execution_binding} if self.execution_binding is not None else {}),
             "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "members": members,
         }

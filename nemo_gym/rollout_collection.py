@@ -1827,6 +1827,10 @@ class RolloutCollectionConfig(SharedRolloutCollectionConfig):
             "rollouts are long."
         ),
     )
+    guarded_restart_receipt_fpath: Optional[str] = Field(
+        default=None,
+        description="Explicit exact failed-attempt receipt for bound native batches; never permits unresolved sends or scientific reruns.",
+    )
     resume_from_cache: bool = Field(
         default=False,
         description="If the same command is run multiple times, check the materialized inputs and current outputs and remove the inputs that have already been run",
@@ -3167,12 +3171,32 @@ class RolloutCollectionHelper(BaseModel):
         # outside a git clone.
         output_fpath.parent.mkdir(parents=True, exist_ok=True)
 
+        from nemo_gym.batch_restart import reject_bound_overwrite
+
+        reject_bound_overwrite(config.batch_manifest_fpath, resume=config.resume_from_cache)
+
+        if config.guarded_restart_receipt_fpath:
+            if (
+                not config.resume_from_cache
+                or not config.materialized_jsonl_fpath.exists()
+                or not output_fpath.exists()
+                or not config.batch_manifest_fpath
+            ):
+                raise ValueError(
+                    "Explicit restart requires existing native batch inputs/results and resume_from_cache=True"
+                )
+            if config.retry_invalid_judge_responses or config.retry_terminal_timeouts:
+                raise ValueError(
+                    "Explicit infrastructure restart cannot combine scientific rejudge or terminal-timeout retry switches"
+                )
+
         persisted_success_keys: set = set()
         if config.resume_from_cache and config.materialized_jsonl_fpath.exists() and output_fpath.exists():
             should_clear_outputs = False
-            _drop_truncated_tail(output_fpath)
-            if failures_fpath.exists():
-                _drop_truncated_tail(failures_fpath)
+            if not config.guarded_restart_receipt_fpath:
+                _drop_truncated_tail(output_fpath)
+                if failures_fpath.exists():
+                    _drop_truncated_tail(failures_fpath)
             (
                 input_rows,
                 rows,
@@ -3264,8 +3288,8 @@ class RolloutCollectionHelper(BaseModel):
             batch_failure_rows = [
                 _batch_status_row(row, batch_agent_refs) for row in _latest_failure_rows([failures_fpath]).values()
             ]
-            batch_tracker.write_status(batch_completed_rows, batch_failure_rows, force=True)
-            print(f"Validated batch manifest and initialized status at {batch_tracker.status_fpath}")
+            # Guarded execution binding is checked before publishing a replacement status below.
+            print(f"Validated batch manifest at {batch_tracker.status_fpath}")
 
         semaphore = nullcontext()
         if config.num_samples_in_parallel:
@@ -3303,14 +3327,57 @@ class RolloutCollectionHelper(BaseModel):
         if token_capture_config.enabled and token_capture_config.token_id_capture.rebuild_response:
             token_source = installed_token_source()
 
+        execution_binding_sha256 = None
+        admitted_prior = frozenset()
+        if config.guarded_restart_receipt_fpath and (
+            batch_tracker is None
+            or not global_config.get("provider_dispatch_guard", False)
+            or not observability_enabled
+            or not capture_dirs
+        ):
+            raise ValueError("Explicit guarded restart requires a bound batch manifest and provider dispatch guard")
+        if batch_tracker is not None and global_config.get("provider_dispatch_guard", False):
+            from nemo_gym.batch_restart import admitted_prior_attempts, bind_execution
+
+            execution_binding_sha256 = bind_execution(
+                batch_tracker,
+                global_config,
+                config.materialized_jsonl_fpath,
+                resume=config.resume_from_cache,
+                require_prior=bool(config.guarded_restart_receipt_fpath),
+                collector_config=config.model_dump(mode="json"),
+                capture_dirs=capture_dirs,
+            )
+            if config.guarded_restart_receipt_fpath:
+                admitted_prior = frozenset(
+                    admitted_prior_attempts(
+                        config.guarded_restart_receipt_fpath,
+                        binding_sha256=execution_binding_sha256,
+                        failures_path=failures_fpath,
+                        pending_rows=input_rows,
+                        completed_keys=persisted_success_keys,
+                    )
+                )
+        if admitted_prior:
+            from nemo_gym.episode_types import EpisodeId
+
+            selected_logical = {EpisodeId.from_capture_key(key).rollout_id for key in admitted_prior}
+            input_rows = [
+                row
+                for row in input_rows
+                if EpisodeId.from_capture_key(maybe_rollout_id_from_run_body(row)).rollout_id in selected_logical
+            ]
+
         # Guarded recovery must retain prior evidence; a fresh agent session cannot
         # silently replace an interrupted attempt. Legacy unguarded reruns clear theirs.
         if capture_dirs:
             if global_config.get("provider_dispatch_guard", False):
-                assert_guarded_rollout_dispatch_safe(input_rows, capture_dirs)
+                assert_guarded_rollout_dispatch_safe(input_rows, capture_dirs, admitted_prior_attempts=admitted_prior)
             else:
                 print("Clearing existing model-call captures for rollouts being dispatched")
                 clear_model_call_captures_for_rollouts(input_rows, capture_dirs)
+        if batch_tracker is not None:
+            batch_tracker.write_status(batch_completed_rows, batch_failure_rows, force=True)
         token_capture_rows = [
             row
             for row in input_rows
@@ -3562,6 +3629,8 @@ class RolloutCollectionHelper(BaseModel):
                 if config.retain_results_in_memory:
                     rows.append(row)
                     results.append(result)
+                if execution_binding_sha256 is not None:
+                    result["_ng_batch_execution_sha256"] = execution_binding_sha256
                 serialized = orjson.dumps(result)
                 # A drained row never ran, so it is not a rollout to upload.
                 if upload_spool is not None and not result.get(NG_DISPATCH_DRAINED_KEY):

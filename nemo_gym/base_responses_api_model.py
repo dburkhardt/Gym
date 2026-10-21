@@ -2591,7 +2591,9 @@ async def await_model_call_capture_quiescence(
         await asyncio.sleep(poll_s)
 
 
-def assert_guarded_rollout_dispatch_safe(records: list[Any], capture_dirs: list[Path]) -> None:
+def assert_guarded_rollout_dispatch_safe(
+    records: list[Any], capture_dirs: list[Path], *, admitted_prior_attempts: frozenset[str] = frozenset()
+) -> None:
     """Keep crash evidence intact before a collector creates new agent sessions.
 
     Completed output rows are already removed by native resume. Remaining rows
@@ -2615,6 +2617,15 @@ def assert_guarded_rollout_dispatch_safe(records: list[Any], capture_dirs: list[
                 if EpisodeId.from_capture_key(prior).rollout_id in logical:
                     prior_keys.add(prior)
         for key in prior_keys:
+            if key in admitted_prior_attempts and key not in keys:
+                store.assert_dispatch_reconciled([key])
+                if store.is_incomplete(key) or store.has_pending(key):
+                    raise ControlError("Admitted prior attempt still has incomplete capture evidence")
+                if store.path_for(key).exists():
+                    captured_calls = store.dispatch_records(key)
+                    if not captured_calls or any(not call["provider_attempts"] for call in captured_calls):
+                        raise ControlError("Admitted prior attempt lacks durable provider reconciliation")
+                continue
             if store.path_for(key).exists() or store.is_incomplete(key) or store.has_pending(key):
                 raise ControlError(
                     f"guarded rollout {key} has prior provider evidence but no completed output; "
