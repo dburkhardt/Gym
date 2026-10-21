@@ -1072,3 +1072,41 @@ async def test_memory_admission_default_retains_existing_submission():
         await _make_server().run(_make_run_request())
         runner.options.assert_not_called()
         runner.remote.assert_called_once()
+
+
+@pytest.mark.parametrize("authoritative", [True, False, None, "true"])
+def test_custom_worker_guard_is_authoritative_not_configured(authoritative):
+    server = _make_server(
+        harbor_agent_import_path="benchmarks.ainsteinbench.harbor_native:AInsteinAgent",
+        harbor_agent_kwargs={"gym_provider_dispatch_guard": not (authoritative is True)},
+        harbor_verifier_import_path="benchmarks.ainsteinbench.harbor_native:AInsteinVerifier",
+        harbor_verifier_kwargs={"gym_provider_dispatch_guard": not (authoritative is True)},
+    )
+    result = server._build_job_config(
+        "scientific",
+        "test_task_123",
+        "model",
+        "http://127.0.0.1:1/ng-rollout/0-0/v1",
+        "guard-contract",
+        Path("/tmp/guard-contract"),
+        gym_provider_dispatch_guard=authoritative,
+    )
+    assert result["agents"][0]["kwargs"]["gym_provider_dispatch_guard"] is (authoritative is True)
+    assert result["verifier"]["kwargs"]["gym_provider_dispatch_guard"] is (authoritative is True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("authoritative", [True, False, "true"])
+async def test_run_passes_parent_guard_decision_to_worker_job(authoritative):
+    server = _make_server()
+    body = _make_run_request().model_copy(update={"_ng_task_index": 0, "_ng_rollout_index": 0})
+    with _harbor_run_mocks():
+        with (
+            patch(
+                "responses_api_agents.harbor_agent.app.get_global_config_dict",
+                return_value={**_GLOBAL_CONFIG, "provider_dispatch_guard": authoritative},
+            ),
+            patch.object(HarborAgent, "_build_job_config", return_value={"job_name": "mock_job"}) as build,
+        ):
+            await server.run(body)
+        assert build.call_args.kwargs["gym_provider_dispatch_guard"] is (authoritative is True)

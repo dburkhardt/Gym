@@ -473,3 +473,49 @@ def test_native_config_requires_submission_capture():
 
     cfg = OmegaConf.load(Path(__file__).parents[1] / "config.yaml")
     assert list(cfg.harbor_agent.responses_api_agents.harbor_agent.harbor_required_artifact_sources) == ["/submission"]
+
+
+@pytest.mark.parametrize("guard", [True, False, None, "true"])
+def test_agent_init_in_process_with_real_ray_worker_arguments(tmp_path, guard):
+    import subprocess
+    import sys
+
+    script = r"""
+import json, sys
+from pathlib import Path
+from benchmarks.ainsteinbench.harbor_native import AInsteinAgent
+flag = json.loads(sys.argv[1])
+try:
+    agent = AInsteinAgent(source=sys.argv[2], logs_dir=Path(sys.argv[3]),
+        api_base="http://127.0.0.1:1/ng-rollout/0-0/v1",
+        model_name="nvidia/nvidia/nemotron-3.5-super-vl", gym_provider_dispatch_guard=flag)
+except ValueError as error:
+    assert flag is not True and "guarded native" in str(error)
+    print("guard-refused")
+else:
+    assert flag is True
+    print("guard-accepted")
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            json.dumps(guard),
+            str(SOURCE),
+            str(tmp_path),
+            "--node-ip-address=10.160.4.241",
+            "--node-manager-port=43317",
+            "--object-store-name=/tmp/ray/control/sockets/plasma_store",
+            "--raylet-name=/tmp/ray/control/sockets/raylet",
+            "--redis-address=None",
+            "--gcs-address=10.160.4.241:46141",
+            "--worker-id=control",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert ("guard-accepted" if guard is True else "guard-refused") in result.stdout
+    assert "unrecognized arguments" not in result.stderr

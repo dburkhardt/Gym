@@ -29,3 +29,9 @@ versioned `AINSTEIN_DATA` directory and point the native dataset path there.
 Do not reuse a cached legacy manifest or overwrite historical attempt inputs.
 A native plan alone does not exercise Harbor's `/run` routing contract; the
 preparation regression validates the request, parser and dataset job selection.
+
+The parent Harbor server passes its authoritative guard decision as
+`gym_provider_dispatch_guard` to the custom agent. The worker refuses a missing,
+false or non-boolean decision, and retains the exact-model and rollout-scoped
+endpoint checks. It does not parse Gym/Hydra configuration in a Ray worker;
+Ray's own command-line arguments must remain untouched.

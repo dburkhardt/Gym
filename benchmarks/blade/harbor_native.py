@@ -19,7 +19,6 @@ from harbor.verifier.base import BaseVerifier
 from benchmarks.blade.prepare import TOKENIZER_FILENAME, TOKENIZER_SHA256
 from benchmarks.blade.scoped_bridge import bridge
 from nemo_gym.dataset_staging import stage_file
-from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
 from responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.verifier import _owned_sandbox, _publish
@@ -67,15 +66,18 @@ def validate_staged(root: Path) -> None:
 
 
 async def run_phase(
-    *, root: Path, dataset: str, phase: str, endpoint: str, output: Path, submitted: Path | None = None
+    *,
+    root: Path,
+    dataset: str,
+    phase: str,
+    endpoint: str,
+    output: Path,
+    submitted: Path | None = None,
+    gym_provider_dispatch_guard: bool = False,
 ) -> Path:
     if dataset not in DATASETS or phase not in ("solver", "scorer"):
         raise ValueError("Task or native phase is not frozen")
-    if (
-        not get_global_config_dict().get("provider_dispatch_guard")
-        or "/ng-rollout/" not in endpoint
-        or not endpoint.endswith("/v1")
-    ):
+    if gym_provider_dispatch_guard is not True or "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
         raise ValueError("Native BLADE requires guarded Gym model service")
     validate_staged(root)
     tokenizer = root / "runtime/tiktoken" / TOKENIZER_FILENAME
@@ -171,8 +173,11 @@ async def run_phase(
 
 
 class BladeNativeAgent(BaseAgent):
-    def __init__(self, *, prepared_root: str, api_base: str, **kwargs) -> None:
+    def __init__(
+        self, *, prepared_root: str, api_base: str, gym_provider_dispatch_guard: bool = False, **kwargs
+    ) -> None:
         super().__init__(**kwargs)
+        self.gym_provider_dispatch_guard = gym_provider_dispatch_guard
         if self.model_name != MODEL:
             raise ValueError("Native BLADE requires exact authorized model")
         self.root, self.endpoint = Path(prepared_root), api_base
@@ -197,6 +202,7 @@ class BladeNativeAgent(BaseAgent):
             dataset=dataset,
             phase="solver",
             endpoint=self.endpoint,
+            gym_provider_dispatch_guard=self.gym_provider_dispatch_guard,
             output=self.logs_dir / "native-solver",
         )
         if not (result / "multirun_analyses.json").is_file():
@@ -208,8 +214,17 @@ class BladeNativeAgent(BaseAgent):
 
 
 class BladeNativeVerifier(BaseVerifier):
-    def __init__(self, *, prepared_root: str, gym_model_api_base: str, gym_model_name: str, **kwargs) -> None:
+    def __init__(
+        self,
+        *,
+        prepared_root: str,
+        gym_model_api_base: str,
+        gym_model_name: str,
+        gym_provider_dispatch_guard: bool = False,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
+        self.gym_provider_dispatch_guard = gym_provider_dispatch_guard
         if gym_model_name != MODEL:
             raise ValueError("BLADE matching roles require exact authorized model")
         self.root, self.endpoint = Path(prepared_root), gym_model_api_base
@@ -223,6 +238,7 @@ class BladeNativeVerifier(BaseVerifier):
             dataset=dataset,
             phase="scorer",
             endpoint=self.endpoint,
+            gym_provider_dispatch_guard=self.gym_provider_dispatch_guard,
             output=self.trial_paths.verifier_dir / "native-scorer",
             submitted=submitted,
         )

@@ -398,6 +398,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 job_name=job_name,
                 jobs_dir=jobs_dir,
                 responses_create_params=responses_create_params,
+                gym_provider_dispatch_guard=global_config_dict.get("provider_dispatch_guard") is True,
             )
 
             failure_reason = None
@@ -620,6 +621,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
         job_name: str,
         jobs_dir: Path,
         responses_create_params: Optional[dict[str, Any]] = None,
+        gym_provider_dispatch_guard: bool = False,
     ) -> dict:
         """Build a Harbor JobConfig dict for a single task."""
         from harbor.models.job.config import DatasetConfig, JobConfig, RetryConfig
@@ -637,6 +639,10 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 agent_kwargs["temperature"] = responses_create_params["temperature"]
         if self.config.harbor_agent_kwargs:
             agent_kwargs.update(self.config.harbor_agent_kwargs)
+
+        if self.config.harbor_agent_import_path:
+            # Bind the server's guard decision; never parse Hydra's CLI in a Ray worker.
+            agent_kwargs["gym_provider_dispatch_guard"] = gym_provider_dispatch_guard is True
 
         agent_config = AgentConfig(
             name=self.config.harbor_agent_name if not self.config.harbor_agent_import_path else None,
@@ -686,7 +692,11 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
         verifier_kwargs = dict(self.config.harbor_verifier_kwargs or {})
         if self.config.harbor_verifier_import_path:
-            verifier_kwargs.update(gym_model_api_base=api_base, gym_model_name=model_name)
+            verifier_kwargs.update(
+                gym_model_api_base=api_base,
+                gym_model_name=model_name,
+                gym_provider_dispatch_guard=gym_provider_dispatch_guard is True,
+            )
         verifier_config = VerifierConfig(
             import_path=self.config.harbor_verifier_import_path,
             kwargs=verifier_kwargs,

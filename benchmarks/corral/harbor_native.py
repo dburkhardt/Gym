@@ -20,7 +20,6 @@ from benchmarks.corral.database import database_clone
 from benchmarks.corral.guarded_agent import MODEL
 from benchmarks.corral.outcomes import NativeAgentIterationLimitError, NativeAgentSurrenderError, outcome
 from benchmarks.corral.state_artifact import pack_state, unpack_state
-from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
 from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
@@ -38,14 +37,19 @@ def copy_state(source: Path, destination: Path):
 
 
 async def run_phase(
-    *, task_id: str, phase: str, snapshot: Path, endpoint: str, output: Path, submitted: Path | None = None
+    *,
+    task_id: str,
+    phase: str,
+    snapshot: Path,
+    endpoint: str,
+    output: Path,
+    submitted: Path | None = None,
+    gym_provider_dispatch_guard: bool = False,
 ):
     manifest = json.loads(Path(__file__).with_name("frozen_sources.json").read_text())
     if task_id not in manifest["frozen5"] or phase not in ("solver", "scorer"):
         raise ValueError("Corral task or phase outside frozen native selection")
-    if phase == "solver" and (
-        not get_global_config_dict().get("provider_dispatch_guard") or "/ng-rollout/" not in endpoint
-    ):
+    if phase == "solver" and (gym_provider_dispatch_guard is not True or "/ng-rollout/" not in endpoint):
         raise ValueError("Corral requires native guarded rollout endpoint")
     if (phase == "scorer") != (submitted is not None):
         raise ValueError("Scoring requires saved state; solver must start fresh")
@@ -180,8 +184,9 @@ async def run_phase(
 
 
 class CorralNativeAgent(BaseAgent):
-    def __init__(self, *, database_snapshot: str, api_base: str, **kwargs):
+    def __init__(self, *, database_snapshot: str, api_base: str, gym_provider_dispatch_guard: bool = False, **kwargs):
         super().__init__(**kwargs)
+        self.gym_provider_dispatch_guard = gym_provider_dispatch_guard
         if self.model_name != MODEL:
             raise ValueError("Corral requires exact campaign model")
         self.snapshot, self.endpoint = Path(database_snapshot), api_base
@@ -204,6 +209,7 @@ class CorralNativeAgent(BaseAgent):
             phase="solver",
             snapshot=self.snapshot,
             endpoint=self.endpoint,
+            gym_provider_dispatch_guard=self.gym_provider_dispatch_guard,
             output=self.logs_dir / "native-solver",
         )
         archive = self.logs_dir / "native-state.tar"
@@ -215,8 +221,17 @@ class CorralNativeAgent(BaseAgent):
 
 
 class CorralNativeVerifier(BaseVerifier):
-    def __init__(self, *, database_snapshot: str, gym_model_api_base: str, gym_model_name: str, **kwargs):
+    def __init__(
+        self,
+        *,
+        database_snapshot: str,
+        gym_model_api_base: str,
+        gym_model_name: str,
+        gym_provider_dispatch_guard: bool = False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
+        self.gym_provider_dispatch_guard = gym_provider_dispatch_guard
         if gym_model_name != MODEL:
             raise ValueError("Corral requires exact campaign model")
         self.snapshot = Path(database_snapshot)
@@ -234,6 +249,7 @@ class CorralNativeVerifier(BaseVerifier):
             phase="scorer",
             snapshot=self.snapshot,
             endpoint=self.endpoint,
+            gym_provider_dispatch_guard=self.gym_provider_dispatch_guard,
             output=self.trial_paths.verifier_dir / "native-scorer",
             submitted=submitted,
         )

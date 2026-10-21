@@ -18,7 +18,6 @@ from benchmarks.ainsteinbench.native import MODEL
 from benchmarks.ainsteinbench.scoring import qualification
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log, prompt
 from benchmarks.ainsteinbench.trajectory import publish as publish_trajectory
-from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox.lifecycle import _publish
 from nemo_gym.server_utils import request
@@ -138,15 +137,11 @@ async def isolate(environment, raw, output):
 
 
 class AInsteinAgent(BaseAgent):
-    def __init__(self, *, source, api_base, **kwargs):
+    def __init__(self, *, source, api_base, gym_provider_dispatch_guard: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.source = Path(source)
         self.endpoint = api_base
-        if (
-            self.model_name != MODEL
-            or "/ng-rollout/" not in api_base
-            or not get_global_config_dict().get("provider_dispatch_guard")
-        ):
+        if self.model_name != MODEL or "/ng-rollout/" not in api_base or gym_provider_dispatch_guard is not True:
             raise ValueError("AInstein requires guarded native exact-model endpoint")
 
     @staticmethod
