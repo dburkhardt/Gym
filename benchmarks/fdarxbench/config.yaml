@@ -16,3 +16,12 @@ fdarxbench:
         jsonl_fpath: resources_servers/fdarxbench/data/benchmark.jsonl
         prepare_script: benchmarks/fdarxbench/prepare.py
         num_repeats: 1
+
+# Judge identity is independent of policy_model and CLI --model overrides.
+judge_model:
+  responses_api_models:
+    openai_model:
+      entrypoint: app.py
+      openai_base_url: ${judge_base_url}
+      openai_api_key: ${judge_api_key}
+      openai_model: ${oc.select:judge_model_name,nvidia/nvidia/nemotron-3.5-super-vl}
