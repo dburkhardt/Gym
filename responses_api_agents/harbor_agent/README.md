@@ -600,3 +600,28 @@ not confirm Docker cleanup. The native controller resolves Harbor's
 Other services retain the 1s default. The same deadline covers a logged launcher's
 surviving descendants. These are operational cleanup bounds, not extensions to
 solver or verifier timeouts; actual container absence still needs verification.
+
+### Optional declared phase-budget admission
+
+Set `harbor_admission_finalization_allowance_s` to a positive operational allowance
+and configure the collector's explicit positive `drain_margin_s`. Before
+`Job.run()` can start a container or agent, the worker resolves the actual downloaded
+task and TrialConfig through the installed Harbor timeout implementation. It writes
+`gym-phase-budget.json` and refuses a drain smaller than the sum of enabled phase
+timeouts plus the allowance. Existing behavior remains unchanged when this option
+is absent.
+
+This covers one normal single-step trial per job, without a simulated user, bridge,
+trajectory loading, or regrade. Unsupported shapes fail closed. The breakdown
+includes agent environment start, agent setup, agent execution, verifier execution,
+and a second environment start when verification uses a separate environment.
+Overrides, caps, phase multipliers, and agent-class setup defaults use Harbor's
+resolution rules; scientific timeouts are not modified. The receipt binds task and
+trial configuration hashes plus the resolver and agent-class source files.
+
+The phase sum is not a proven end-to-end runtime bound: healthchecks, skills/files,
+artifact transfers, hooks, environment stop, and result publication need an explicit
+operational allowance. Service shutdown also needs the supervisor's separate
+cleanup reserve. Use this check together with the supervisor's
+`--collector-cleanup-reserve` admission deadline; it does not independently establish
+provider capacity or guarantee that operational I/O finishes inside its allowance.

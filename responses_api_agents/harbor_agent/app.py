@@ -73,6 +73,8 @@ class HarborDatasetSourceConfig(BaseModel):
 
 class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
     concurrency: int
+    # Opt-in phase-budget enforcement; the actual collector drain is bound separately.
+    harbor_admission_finalization_allowance_s: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
 
     # CPUs Ray reserves per Harbor job. Jobs are I/O-bound, so a fractional
     # value runs far more of them than Ray's default of 1 CPU/task, which caps
@@ -162,7 +164,7 @@ def _find_trial_dir_with_result(job_dir: Path) -> Optional[Path]:
     return None
 
 
-async def run_harbor_job(job_config_dict: dict) -> str:
+async def run_harbor_job(job_config_dict: dict, admission_budget: Optional[dict] = None) -> str:
     """Runs a single Harbor Job and returns the *absolute* trial directory path.
 
     The trial directory contains:
@@ -202,6 +204,11 @@ async def run_harbor_job(job_config_dict: dict) -> str:
     for download in job._task_download_results.values():
         HarborAgentUtils.validate_task_resources(download.path, config.environment)
 
+    if admission_budget is not None:
+        from responses_api_agents.harbor_agent.phase_budget import validate_job_admission
+
+        validate_job_admission(job, **admission_budget)
+
     job_error = None
     try:
         await job.run()
@@ -226,13 +233,17 @@ async def run_harbor_job(job_config_dict: dict) -> str:
 _RAY_WORKER_EVENT_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 
-async def _run_harbor_job_with_transport(job_config_dict: dict, transport_config: dict) -> str:
+async def _run_harbor_job_with_transport(
+    job_config_dict: dict, transport_config: dict, admission_budget: Optional[dict] = None
+) -> str:
     # Only the typed parent-selected pool settings cross the Ray boundary. Never
     # parse worker argv or forward the credential-bearing global configuration.
     cfg = GlobalAIOHTTPAsyncClientConfig.model_validate(transport_config)
     set_global_aiohttp_client(cfg)
     primary_error = None
     try:
+        if admission_budget is not None:
+            return await run_harbor_job(job_config_dict, admission_budget=admission_budget)
         return await run_harbor_job(job_config_dict)
     except BaseException as error:
         primary_error = error
@@ -247,7 +258,9 @@ async def _run_harbor_job_with_transport(job_config_dict: dict, transport_config
             logger.exception("Worker HTTP cleanup failed while preserving the original job error")
 
 
-def _run_harbor_job_sync(job_config_dict: dict, transport_config: Optional[dict] = None) -> str:
+def _run_harbor_job_sync(
+    job_config_dict: dict, transport_config: Optional[dict] = None, admission_budget: Optional[dict] = None
+) -> str:
     """Synchronous wrapper for run_harbor_job for use in Ray remote.
 
     Ray workers are long-lived processes. Reusing a single event loop per worker
@@ -259,7 +272,7 @@ def _run_harbor_job_sync(job_config_dict: dict, transport_config: Optional[dict]
         _RAY_WORKER_EVENT_LOOP = asyncio.new_event_loop()
         asyncio.set_event_loop(_RAY_WORKER_EVENT_LOOP)
     task = _RAY_WORKER_EVENT_LOOP.create_task(
-        _run_harbor_job_with_transport(job_config_dict, transport_config or {})
+        _run_harbor_job_with_transport(job_config_dict, transport_config or {}, admission_budget)
     )
     try:
         return _RAY_WORKER_EVENT_LOOP.run_until_complete(task)
@@ -476,6 +489,19 @@ class HarborAgent(SimpleResponsesAPIAgent):
                         mode="json"
                     ),
                 )
+                if self.config.harbor_admission_finalization_allowance_s is not None:
+                    drain = global_config_dict.get("drain_margin_s")
+                    if (
+                        isinstance(drain, bool)
+                        or not isinstance(drain, (int, float))
+                        or not math.isfinite(drain)
+                        or drain <= 0
+                    ):
+                        raise ValueError("Harbor phase admission requires explicit positive collector drain_margin_s")
+                    params["admission_budget"] = {
+                        "drain_seconds": drain,
+                        "operational_allowance_seconds": self.config.harbor_admission_finalization_allowance_s,
+                    }
                 runner = runner_ray_remote
                 resource_options = {}
                 if self.config.harbor_ray_task_num_cpus is not None:
