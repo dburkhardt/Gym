@@ -203,6 +203,7 @@ def run(
     output_token_budget=8192,
     allow_transport_tail=False,
     client_factory=None,
+    replay_loader=None,
 ):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -216,7 +217,11 @@ def run(
     if trace.exists() or (out / "dispatch-intents.jsonl").exists():
         raise RuntimeError("Existing model trace or dispatch intent; reconcile explicitly before rerunning")
     claim_run(out)
-    replay = ReplayPrefix(replay_path, allow_transport_tail=allow_transport_tail) if replay_path else None
+    replay = (
+        (replay_loader or ReplayPrefix)(replay_path, allow_transport_tail=allow_transport_tail)
+        if replay_path
+        else None
+    )
     factory = client_factory or RecordedClient
     for stage, module in zip(names, modules):
         module.OpenAI = lambda _stage=stage, **kw: factory(
