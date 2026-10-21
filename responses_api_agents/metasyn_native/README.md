@@ -40,3 +40,9 @@ python -m responses_api_agents.metasyn_native.qualify_runtime \
 ```
 
 The maintained disconnect command was exercised with the actual creator/encoder. Its failed native evaluation is deliberately preserved as evidence; a failed judge result is never a valid scalar reward. This control does not instantiate the native Gym model server or qualify provider-ledger reconciliation.
+
+### Repeated tasks and explicit attempts
+
+Native execution artifacts are isolated by the exact review ID and Gym rollout/attempt identity under `output_root/attempts/`. The creator still receives an output root with its original `<review_id>` child directory. A second invocation of the same episode refuses to overwrite or resend work. Independent logical repeats use separate directories and do not claim to reconcile earlier repeats. A new physical attempt of the same logical rollout requires successful prior creator/evaluation receipts and reconciled capture records. Missing, failed, legacy task-only artifacts, a changed capture store, or an unknown provider outcome require explicit reconciliation; changing the attempt suffix does not bypass these checks. This is artifact isolation, not arbitrary MetaSyn restart recovery. Existing native completed-output resume remains the supported way to reuse completed results.
+
+The local regression runs a real deterministic child through the maintained process lifecycle and checks isolated file effects, unchanged first-attempt artifacts, and guarded refusal. It makes no external model calls and does not requalify live scientific execution.
