@@ -14,6 +14,11 @@ from nemo_gym.dataset_staging import stage_file
 
 def stage(source: Path, destination: Path):
     rows, hashes = checked_source(source)
+    existing = destination / "benchmark.jsonl"
+    if existing.exists():
+        previous = [json.loads(line) for line in existing.read_text().splitlines() if line.strip()]
+        if any(row.get("instance_id") != f"ainsteinbench::{row.get('task_id')}" for row in previous):
+            raise ValueError("Legacy AInstein routing artifact: prepare into a fresh versioned destination")
     records = []
     with TemporaryDirectory() as temporary:
         temp = Path(temporary)
@@ -34,7 +39,7 @@ def stage(source: Path, destination: Path):
             records.append(
                 {
                     "task_id": task_id,
-                    "instance_id": task_id,
+                    "instance_id": f"ainsteinbench::{task_id}",
                     "uuid": task_id,
                     "agent_ref": {"name": "harbor_agent"},
                     "responses_create_params": {"input": []},

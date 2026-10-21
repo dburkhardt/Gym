@@ -21,3 +21,11 @@ The explicit safety caps are 600 seconds per model request, 18,600 seconds for t
 Native model-free controls now pass on both pinned PySCF images through Harbor-owned solver isolation, separate verification and source-job replay. Gold passes4/4 and9/9; a behavior-preserving no-fix patch passes2/4 and8/9. **The raw percentage is not a solved-task rate**: most tests can pass before the requested repair. Empty patches produce the creator's explicit `git apply` rejection, zero tests and raw0. All eight native scores and individual test IDs match preserved creator controls; originals remain unchanged and owned containers were removed. These used2GiB control containers and saved patches, not live model execution.
 
 The maintained qualification layer always retains an available raw creator metric. Recognized patch rejection is a model outcome. Signal/missing-executable errors, unclassified zero-test runs, or incomplete test collection retain raw diagnostics and raise an unscored failure; they are not presented as scientific zeroes. Expected control counts4/9 and observed counts are reported separately, without replacing the creator metric. The qualifier was replayed against all eight saved controls and tested against injected import/collection/partial-run failures. Full native Gym model-server/agent acceptance and a guarded live run remain pending.
+
+Native Harbor routing uses `ainsteinbench::<task_id>` only for `instance_id`.
+The creator `task_id`, `uuid`, task directory and instruction remain unchanged.
+Preparation refuses an existing legacy unnamespaced manifest: choose a fresh,
+versioned `AINSTEIN_DATA` directory and point the native dataset path there.
+Do not reuse a cached legacy manifest or overwrite historical attempt inputs.
+A native plan alone does not exercise Harbor's `/run` routing contract; the
+preparation regression validates the request, parser and dataset job selection.

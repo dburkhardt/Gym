@@ -66,3 +66,20 @@ def test_prepared_row_routes_to_native_harbor_task(tmp_path, monkeypatch):
     assert (destination / "tasks" / task / "instruction.md").read_text() == task + "\n"
     assert job["datasets"][0]["path"] == str(destination / "tasks")
     assert job["datasets"][0]["task_names"] == [task]
+
+
+def test_legacy_routing_artifact_is_preserved(tmp_path, monkeypatch):
+    source, _, _ = fixture(tmp_path, monkeypatch)
+    path = prepare.stage(source, tmp_path / "old")
+    row = json.loads(path.read_text())
+    row["instance_id"] = row["task_id"]
+    legacy = json.dumps(row) + "\n"
+    path.write_text(legacy)
+    with pytest.raises(ValueError, match="fresh versioned"):
+        prepare.stage(source, tmp_path / "old")
+    assert path.read_text() == legacy
+    fresh = prepare.stage(source, tmp_path / "fresh")
+    assert json.loads(fresh.read_text())["instance_id"] == "corral::" + row["task_id"]
+    for original in (path.parent / "tasks").rglob("*"):
+        if original.is_file() and not original.name.endswith(".stage.lock"):
+            assert original.read_bytes() == (fresh.parent / "tasks" / original.relative_to(path.parent / "tasks")).read_bytes()

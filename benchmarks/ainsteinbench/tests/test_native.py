@@ -44,6 +44,58 @@ def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
             assert config.environment.workdir == "/opt/Cactus"
 
 
+def test_prepared_rows_route_through_native_harbor_contract(tmp_path):
+    from responses_api_agents.harbor_agent.app import HarborAgent, HarborAgentConfig, HarborRunRequest
+
+    staged = [json.loads(line) for line in stage(SOURCE, tmp_path).read_text().splitlines()]
+    config = HarborAgentConfig(
+        name="harbor_agent",
+        host="127.0.0.1",
+        port=1,
+        entrypoint="app.py",
+        concurrency=1,
+        model_server={"type": "responses_api_models", "name": "policy_model"},
+        harbor_datasets={"ainsteinbench": {"local_dataset_path": str(tmp_path / "tasks"), "workdir": "/home/pyscf"}},
+        harbor_agent_name=None,
+        harbor_agent_import_path="benchmarks.ainsteinbench.harbor_native:AInsteinAgent",
+        harbor_agent_kwargs={"source": str(SOURCE)},
+        harbor_verifier_import_path="benchmarks.ainsteinbench.harbor_native:AInsteinVerifier",
+        harbor_verifier_kwargs={"source": str(SOURCE)},
+    )
+    server = HarborAgent.model_construct(config=config)
+    for row in staged:
+        body = HarborRunRequest.model_validate(row)
+        alias, task = server._parse_instance_id(body.instance_id)
+        job = server._build_job_config(
+            alias, task, "nvidia/nvidia/nemotron-3.5-super-vl", "http://127.0.0.1:1/v1", "test", tmp_path / "jobs"
+        )
+        assert alias == "ainsteinbench"
+        assert task == row["task_id"] == row["uuid"] == row["verifier_metadata"]["source_task_id"]
+        assert job["datasets"][0]["task_names"] == [task]
+        assert Path(job["datasets"][0]["path"]) == tmp_path / "tasks"
+        assert (tmp_path / "tasks" / task / "instruction.md").read_bytes() == (task + "\n").encode()
+        assert job["retry"]["max_retries"] == 0
+        legacy = dict(row, instance_id=task)
+        with pytest.raises(ValueError, match="dataset_alias"):
+            server._parse_instance_id(HarborRunRequest.model_validate(legacy).instance_id)
+
+
+def test_new_namespace_preparation_does_not_overwrite_legacy_artifact(tmp_path):
+    old = tmp_path / "old"
+    path = stage(SOURCE, old)
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    legacy = "".join(json.dumps(dict(row, instance_id=row["task_id"])) + "\n" for row in rows).encode()
+    path.write_bytes(legacy)
+    with pytest.raises(ValueError, match="fresh versioned"):
+        stage(SOURCE, old)
+    assert path.read_bytes() == legacy
+    fresh = stage(SOURCE, tmp_path / "fresh")
+    assert fresh.read_bytes() != legacy
+    for old_file in (old / "tasks").rglob("*"):
+        if old_file.is_file() and not old_file.name.endswith(".stage.lock"):
+            assert old_file.read_bytes() == (fresh.parent / "tasks" / old_file.relative_to(old / "tasks")).read_bytes()
+
+
 @pytest.mark.asyncio
 async def test_creator_loop_matches_original_trace_and_truncation():
     raw = next(iter(checked_source(SOURCE)[0].values()))

@@ -17,6 +17,11 @@ def stage(source: Path, destination: Path) -> Path:
         path = source / relative
         if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != sha:
             raise ValueError(f"Corral pinned source mismatch: {relative}")
+    existing = destination / "benchmark.jsonl"
+    if existing.exists():
+        previous = [json.loads(line) for line in existing.read_text().splitlines() if line.strip()]
+        if any(row.get("instance_id") != f"corral::{row.get('task_id')}" for row in previous):
+            raise ValueError("Legacy Corral routing artifact: prepare into a fresh versioned destination")
     rows = []
     for task_id in manifest["frozen5"]:
         relative = f"tasks/retrosynthesis/environments/level_3/tasks_json/make_{task_id.split('_')[1]}.json"
