@@ -3,8 +3,10 @@
 """Creator subprocess using the shared task-scoped Gym model bridge."""
 
 import argparse
+import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,6 +75,29 @@ class GuardedTransport:
             raise TransportAbort(exc) from exc
 
 
+def record_runtime_identity(output: Path) -> None:
+    """Fail before dispatch if child imports or interpreter differ from selected files."""
+    from benchmarks.moosechem import native
+
+    expected = json.loads(Path(os.environ["MOOSE_EXECUTION_IDENTITY"]).read_text().splitlines()[0])
+    actual = {
+        "source": {
+            str(Path(path).resolve()): hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            for path in (native.__file__, __file__)
+        },
+        "interpreter": {
+            "path": str(Path(sys.executable).resolve()),
+            "sha256": hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
+        },
+        "python_version": sys.version,
+    }
+    append_durable(output / "runtime-imports.jsonl", actual)
+    if actual["interpreter"] != expected["interpreter"] or any(
+        expected["source"].get(path) != digest for path, digest in actual["source"].items()
+    ):
+        raise RuntimeError("Selected runtime/import identity mismatch before dispatch")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
@@ -87,6 +112,7 @@ def main() -> None:
         os.environ["MOOSE_CONFIG_SHA256"],
     )
     try:
+        record_runtime_identity(args.output)
         result = run(
             args.repo,
             args.output,

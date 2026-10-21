@@ -216,3 +216,31 @@ async def test_actual_unix_bridge_forwards_native_guard_identity(tmp_path, monke
     short_root.cleanup()
     assert calls[0][2]["headers"]["x-nemo-gym-logical-call-id"] == "moosechem:run:0"
     assert calls[0][2]["_max_num_tries"] == 1 and calls[-1] == "released"
+
+
+def test_runtime_import_receipt_rejects_drift_before_dispatch(tmp_path, monkeypatch):
+    import hashlib
+
+    from benchmarks.moosechem import guarded, native
+
+    expected = {
+        "source": {
+            str(Path(p).resolve()): hashlib.sha256(Path(p).read_bytes()).hexdigest()
+            for p in (native.__file__, guarded.__file__)
+        },
+        "interpreter": {
+            "path": str(Path(sys.executable).resolve()),
+            "sha256": hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
+        },
+    }
+    identity = tmp_path / "identity.jsonl"
+    identity.write_text(json.dumps(expected) + "\n")
+    monkeypatch.setenv("MOOSE_EXECUTION_IDENTITY", str(identity))
+    guarded.record_runtime_identity(tmp_path)
+    actual = json.loads((tmp_path / "runtime-imports.jsonl").read_text())
+    assert actual["source"] == expected["source"]
+    expected["source"][str(Path(native.__file__).resolve())] = "wrong"
+    identity.write_text(json.dumps(expected) + "\n")
+    with pytest.raises(RuntimeError, match="identity mismatch"):
+        guarded.record_runtime_identity(tmp_path)
+    assert not (tmp_path / "dispatch-intents.jsonl").exists()

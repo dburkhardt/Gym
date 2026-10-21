@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi import Request, Response
 from pydantic import Field, PrivateAttr
 
-from benchmarks.moosechem.native import MODEL
+from benchmarks.moosechem.native import MODEL, append_durable
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
@@ -100,17 +100,18 @@ class Agent(SimpleResponsesAPIAgent):
         source = Path(__file__).resolve().parents[2]
         lineage = uuid4().hex
         files = [source / "benchmarks/moosechem" / name for name in ("native.py", "guarded.py", "source-sha256.json")]
-        digest = hashlib.sha256(
-            json.dumps(
-                {
-                    "task": task_id,
-                    "model": MODEL,
-                    "budget": self.config.output_token_budget,
-                    "source": {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files},
-                },
-                sort_keys=True,
-            ).encode()
-        ).hexdigest()
+        files.append(Path(__file__).resolve())
+        interpreter = self.config.native_python.resolve()
+        identity = {
+            "task": task_id,
+            "model": MODEL,
+            "budget": self.config.output_token_budget,
+            "timeout_seconds": self.config.native_timeout_seconds,
+            "source": {str(f): hashlib.sha256(f.read_bytes()).hexdigest() for f in files},
+            "interpreter": {"path": str(interpreter), "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest()},
+        }
+        digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+        append_durable(out / "execution-identity.jsonl", {"config_sha256": digest, **identity})
         provider = LocalProvider(concurrency=1, workspace_root="/tmp")
         async with scoring_workspace(provider) as handle:
             socket = handle.raw["workspace"] / "model.sock"
@@ -147,6 +148,7 @@ class Agent(SimpleResponsesAPIAgent):
                         "PYTHONPATH": str(source),
                         "NEMO_GYM_EXTRA_ROOTS": str(source),
                         "MOOSE_SOCKET": str(socket),
+                        "MOOSE_EXECUTION_IDENTITY": str(out / "execution-identity.jsonl"),
                         "MOOSE_SOCKET_TOKEN": token,
                         "MOOSE_LINEAGE": lineage,
                         "MOOSE_CONFIG_SHA256": digest,
