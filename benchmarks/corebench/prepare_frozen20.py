@@ -8,8 +8,9 @@ import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from benchmarks.corebench.image_controls import qualification_digest, recipe_digest, source_digest
 from nemo_gym.dataset_staging import stage_file
-from benchmarks.corebench.image_controls import recipe_digest, source_digest
+
 
 MANIFEST = Path(__file__).with_name("frozen20.json")
 SHA = re.compile(r"sha256:[0-9a-f]{64}")
@@ -54,15 +55,29 @@ def validate_qualification(row, receipt):
         raise ValueError("Qualification binds a different creator image")
     if receipt.get("recipe_sha256") != recipe_digest(row) or receipt.get("source_sha256") != source_digest(row):
         raise ValueError("Qualification recipe/source differs")
+    if receipt.get("qualification_sha256") != qualification_digest(row):
+        raise ValueError("Qualification probe/task/runtime binding missing or stale")
     if not SHA.fullmatch(receipt["final_image"]):
         raise ValueError("Final image must be immutable")
     if not receipt["scientific_before"] or receipt["scientific_before"] != receipt["scientific_after"]:
         raise ValueError("Scientific interpreter/package state changed")
     if not all(
         receipt.get(k) is True
-        for k in ["harness_python_ok", "tmux_ok", "asciinema_ok", "reference_isolation_ok", "cleanup_ok"]
+        for k in [
+            "harness_python_ok",
+            "tmux_ok",
+            "asciinema_ok",
+            "reference_isolation_ok",
+            "cleanup_ok",
+            "image_source_verified",
+        ]
     ):
         raise ValueError("Image-specific control incomplete")
+    modes = receipt.get("image_source_modes", {})
+    if set(modes) != {f["path"] for f in row["medium_file_manifest"]} or any(
+        type(mode) is not int or not 0 <= mode <= 0o777 for mode in modes.values()
+    ):
+        raise ValueError("Image source modes missing or invalid")
     limits = receipt["resources"]
     if any(
         type(limits.get(k)) is not int or limits[k] <= 0
