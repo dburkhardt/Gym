@@ -120,3 +120,50 @@ def test_native_terminus_preflight_accepts_gym_model_options():
     )
     assert parsed.responses_create_params == {"max_output_tokens": 16384}
     assert parsed.parser_name == "json"
+
+
+def test_production_terminus_job_preflight_and_guard(tmp_path):
+    from harbor.job import Job
+    from harbor.models.job.config import JobConfig
+
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym import Terminus2NemoGym
+
+    kwargs = {
+        "interleaved_thinking": True,
+        "enable_summarize": False,
+        "collect_rollout_details": True,
+        "trajectory_config": {"raw_content": True},
+        "model_info": {
+            "max_input_tokens": 49152,
+            "max_output_tokens": 16384,
+            "input_cost_per_token": 0.0,
+            "output_cost_per_token": 0.0,
+        },
+        "max_turns": 40,
+        "parser_name": "json",
+        "responses_create_params": {"input": [], "temperature": 0.0, "max_output_tokens": 16384},
+    }
+    server = _make_server(
+        harbor_agent_import_path="responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym",
+        harbor_agent_kwargs=kwargs,
+    )
+    raw = server._build_job_config(
+        dataset_alias="scientific",
+        task_name="test_task_123",
+        model_name="authorized-model",
+        api_base="http://localhost:9999/ng-rollout/0-0/v1",
+        job_name="control",
+        jobs_dir=tmp_path,
+        gym_provider_dispatch_guard=True,
+    )
+    config = JobConfig.model_validate(raw)
+    Job._preflight_agents(config, config.agents)
+    options = config.agents[0].kwargs
+    assert options["gym_provider_dispatch_guard"] is True
+    agent = Terminus2NemoGym(logs_dir=tmp_path, model_name="authorized-model", **options)
+    assert agent._nemo_gym_llm._dispatch_path == tmp_path / "gym-call-state.json"
+    assert agent._nemo_gym_llm._dispatch_state["calls"] == {}
+    with pytest.raises(ValueError, match="rollout-bound"):
+        Terminus2NemoGym(
+            logs_dir=tmp_path, model_name="authorized-model", **{**options, "api_base": "http://localhost:9999/v1"}
+        )

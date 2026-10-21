@@ -26,6 +26,7 @@ from responses_api_agents.harbor_agent.custom_envs.singularity.singularity impor
 
 
 class Terminus2NemoGymOptions(Terminus2Options):
+    gym_provider_dispatch_guard: bool = False
     responses_create_params: dict[str, Any] | None = None
     nemo_model_server_timeout_sec: float = 120.0
 
@@ -63,9 +64,12 @@ class Terminus2NemoGym(Terminus2):
         interleaved_thinking: bool = False,
         responses_create_params: dict[str, Any] | None = None,
         nemo_model_server_timeout_sec: float = 120.0,
+        gym_provider_dispatch_guard: bool = False,
         *args: Any,
         **kwargs: Any,
     ) -> None:
+        if gym_provider_dispatch_guard and (api_base is None or "/ng-rollout/" not in api_base):
+            raise ValueError("Guarded Terminus requires a rollout-bound Gym model endpoint")
         if llm is None:
             if model_name is None:
                 raise ValueError("model_name is required for Terminus2NemoGym")
