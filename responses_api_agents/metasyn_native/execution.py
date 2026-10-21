@@ -12,10 +12,10 @@ async def run_creator(argv: list[str], output: Path, *, timeout_s: float = 3600,
     provider = LocalProvider(concurrency=1)
     command = shlex.join(argv) + ' > ' + shlex.quote(str(output / 'native-runtime.log')) + ' 2>&1'
     async with scoring_workspace(provider) as handle:
-        result = await provider.exec(handle, command, timeout_s=timeout_s, env=env)
+        result = await provider.exec(handle, command, timeout_s=timeout_s, env=env, terminate_background_children=True)
     _publish(output / 'execution.json', {
         'return_code': result.return_code, 'error_type': result.error_type,
-        'timeout_s': timeout_s, 'process_group_settled': True,
+        'timeout_s': timeout_s, 'cleanup_scope': 'owned_process_group', 'background_group_cleanup_requested': True,
         'scientific_score_assigned': False,
     })
     if result.error_type == 'timeout':

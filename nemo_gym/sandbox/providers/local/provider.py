@@ -97,6 +97,7 @@ class LocalProvider:
         env: dict[str, str] | None = None,
         timeout_s: int | float | None = None,
         user: str | int | None = None,
+        terminate_background_children: bool = False,
     ) -> SandboxExecResult:
         """Kill the process group on timeout or cancellation."""
         if user is not None:
@@ -137,6 +138,10 @@ class LocalProvider:
                     return_code=SANDBOX_RUNTIME_RETURN_CODE,
                     error_type="timeout",
                 )
+        if terminate_background_children:
+            # Trusted one-shot creators must not leave helpers behind after a
+            # successful parent exit. Other local callers can retain services.
+            await _kill_and_reap(process)
         return SandboxExecResult(
             stdout=stdout.decode(errors="replace"),
             stderr=stderr.decode(errors="replace"),
