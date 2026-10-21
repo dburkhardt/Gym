@@ -240,7 +240,7 @@ class Deployment:
                 checkpoint_generation_cuts=generation_cuts,
             ),
         )
-        if self.topology == "counter":
+        if self.topology in ("counter", "counter_missing_state"):
             resources = _server(
                 "resources_servers",
                 "example_session_state_mgmt",
@@ -248,7 +248,13 @@ class Deployment:
                 verified=False,
                 description="counter",
             )
-            add("resources", "resources_servers/example_session_state_mgmt", resources)
+            add(
+                "resources",
+                str(HERE / "missing_state_server")
+                if self.topology == "counter_missing_state"
+                else "resources_servers/example_session_state_mgmt",
+                resources,
+            )
         elif self.topology == "slow":
             resources = _server(
                 "resources_servers",
@@ -310,7 +316,7 @@ class Deployment:
                     cleanup_timeout_seconds=30,
                 ),
             )
-        if self.topology in ("legacy", "counter"):
+        if self.topology in ("legacy", "counter", "counter_missing_state"):
             environment = _server(
                 "environment_servers", "legacy_agent", agent_server=_ref("responses_api_agents", "agent")
             )

@@ -737,7 +737,8 @@ class ParticipantControlPlane:
                 # Fail closed: this participant holds none of a restart's state,
                 # so continuing it would resume a rollout whose other parts start over.
                 restarted = sorted(
-                    set(report.restarts) & {episode_id.capture_key for episode_id in request.episode_ids}
+                    (set(report.restarts) | self.participant.carried_restarts)
+                    & {episode_id.capture_key for episode_id in request.episode_ids}
                 )
                 if restarted:
                     raise RestartInScopeError(f"the commit scope names episodes that restart: {restarted}")

@@ -889,3 +889,33 @@ async def test_guarded_native_checkpoint_refuses_accepted_unresolved_dispatch(de
         assert len(deployment.backend_calls()) == 1
         first.cancel()
         await asyncio.gather(first, return_exceptions=True)
+
+
+async def test_native_continued_tool_state_loss_refuses_checkpoint(deploy, tmp_path: Path) -> None:
+    """Real resources process must not publish a continuation missing tool state."""
+    from checkpoint_deployment import TOKEN
+
+    deployment = deploy("counter_missing_state")
+    auth = {"authorization": f"Bearer {TOKEN}"}
+    async with GymHTTP(deployment.url("resources")) as http:
+        seed = await http.post(
+            "/ng-rollout/lost-state/seed_session",
+            json={"responses_create_params": {"input": "benign counter"}, "initial_count": 4},
+        )
+        assert seed.status_code == 200, seed.text
+        control = {"checkpoint_id": "missing-state", "deadline_ts": deadline()}
+        prepared = await http.post("/ng-control/v1/checkpoint/prepare", json=control, headers=auth)
+        assert prepared.status_code == 200, prepared.text
+        rejected = await http.post(
+            "/ng-control/v1/checkpoint/commit",
+            json={
+                **control,
+                "checkpoint_dir": str(tmp_path / "missing-state"),
+                "episode_ids": [{"rollout_id": "lost-state"}],
+            },
+            headers=auth,
+        )
+        assert rejected.status_code >= 400
+        assert "missing exported state" in rejected.text
+    assert not list((tmp_path / "missing-state").rglob("manifest.json"))
+    assert (await deployment.backend_call_count())["calls"] == 0

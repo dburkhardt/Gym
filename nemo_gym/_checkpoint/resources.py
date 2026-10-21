@@ -131,7 +131,11 @@ class ResourcesSessionHooks(Protocol):
     """
 
     async def export_session_states(self, session_ids: list[str]) -> dict[str, JsonValue]:
-        """Return the state of each session; leave out a session the server no longer holds."""
+        """Return every continued session state; a missing scoped session fails checkpoint commit.
+
+        Unscoped legacy exports may omit already-discarded sessions. Ended sessions
+        should be reported through the existing lifecycle before a scoped commit.
+        """
 
     async def restore_session_states(self, states: dict[str, JsonValue]) -> None:
         """Validate every state, then install all of them; never install a partial set."""
@@ -483,6 +487,14 @@ class ResourcesParticipant(CheckpointParticipant):
             if (scope is None or episode_id in scope) and session_id not in carried
         ]
         states = await self.hooks.export_session_states([session_id for session_id, _ in sessions])
+        missing = [session_id for session_id, _ in sessions if session_id not in states]
+        if scope is not None and missing:
+            # A continued agent can already be past a stateful tool operation. Publishing
+            # its continuation without the corresponding resource state would silently
+            # rebuild a different episode. Fail before dropping any tracked session.
+            raise ControlError(
+                f"continued resources sessions missing exported state: {missing[:10]}; checkpoint cannot be restored safely"
+            )
         records = []
         for session_id, episode_id in sessions:
             if session_id not in states:

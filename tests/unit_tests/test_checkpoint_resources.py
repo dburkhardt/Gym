@@ -752,13 +752,14 @@ async def test_a_restart_only_server_s_seeds_wait_out_a_checkpoint_so_its_restar
     assert seeded.status_code == 200
 
 
-async def test_a_restored_session_the_export_drops_does_not_break_the_commit(tmp_path: Path) -> None:
+async def test_a_restored_continued_session_missing_state_refuses_second_commit(tmp_path: Path) -> None:
     server, client = make_server()
     async with client:
         await client.post("/ng-rollout/r/seed_session", json=SEED)
         await client.post("/ng-control/v1/checkpoint/prepare", json=control(), headers=AUTH)
         await client.post("/ng-control/v1/checkpoint/commit", json=control(checkpoint_dir=str(tmp_path)), headers=AUTH)
 
+    original_files = {str(p.relative_to(tmp_path)): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
     restored, fresh = make_server()
     commit = control("c2", checkpoint_dir=str(tmp_path / "second"), episode_ids=[{"rollout_id": "r", "attempt": 1}])
     async with fresh:
@@ -773,8 +774,12 @@ async def test_a_restored_session_the_export_drops_does_not_break_the_commit(tmp
         await fresh.post("/ng-control/v1/checkpoint/prepare", json=control("c2"), headers=AUTH)
         committed = await fresh.post("/ng-control/v1/checkpoint/commit", json=commit, headers=AUTH)
 
-    assert committed.status_code == 200, committed.text
-    assert committed.json()["episode_ids"] == []
+    assert committed.status_code == 409, committed.text
+    assert "missing exported state" in committed.text
+    assert not list((tmp_path / "second").rglob("manifest.json"))
+    assert restored._checkpoint.readiness().counts["sessions"] == 1
+
+    assert all((tmp_path / name).read_bytes() == data for name, data in original_files.items())
 
 
 class GatedSeedServer(CounterServer):
@@ -1731,3 +1736,55 @@ async def test_a_request_in_flight_for_a_restart_an_earlier_stage_reported_does_
     assert commit["episode_ids"] == ["q"]
     assert running_through_the_commit
     assert missed["phase"] == "preparing" and missed["report"]["counts"]["inflight"] == 1
+
+
+async def test_continued_missing_state_refuses_checkpoint_without_losing_tracking(tmp_path: Path) -> None:
+    server, client = make_server()
+    async with client:
+        await client.post("/ng-rollout/r/seed_session", json=SEED)
+        server.counters.clear()
+        await client.post("/ng-control/v1/checkpoint/prepare", json=control(), headers=AUTH)
+        commit = await client.post(
+            "/ng-control/v1/checkpoint/commit",
+            json=control(checkpoint_dir=str(tmp_path), episode_ids=[{"rollout_id": "r"}]),
+            headers=AUTH,
+        )
+    assert commit.status_code >= 400
+    assert "missing exported state" in commit.text
+    assert not list(tmp_path.rglob("manifest.json"))
+    assert server._checkpoint.readiness().counts["sessions"] == 1
+
+
+async def test_ended_session_not_required_for_scoped_commit(tmp_path: Path) -> None:
+    server, client = make_server()
+    async with client:
+        await client.post("/ng-rollout/r/seed_session", json=SEED)
+        session_id = next(iter(server.counters))
+        server._checkpoint.ended(session_id)
+        server.counters.clear()
+        await client.post("/ng-control/v1/checkpoint/prepare", json=control(), headers=AUTH)
+        commit = await client.post(
+            "/ng-control/v1/checkpoint/commit",
+            json=control(checkpoint_dir=str(tmp_path), episode_ids=[{"rollout_id": "r"}]),
+            headers=AUTH,
+        )
+    assert commit.status_code == 200
+    assert commit.json()["manifest"]["record_count"] == 0
+
+
+async def test_carried_restart_cannot_be_continued_with_missing_resource_state(tmp_path: Path) -> None:
+    server, client = make_server()
+    async with client:
+        await client.post("/ng-rollout/r/seed_session", json=SEED)
+        await client.post("/ng-control/v1/checkpoint/prepare", json=control(), headers=AUTH)
+        await server.checkpoint_participant.carry_restarts(["r"])
+        server.counters.clear()
+        commit = await client.post(
+            "/ng-control/v1/checkpoint/commit",
+            json=control(checkpoint_dir=str(tmp_path), episode_ids=[{"rollout_id": "r"}]),
+            headers=AUTH,
+        )
+    assert commit.status_code == 409
+    assert commit.json()["error"]["code"] == "restart_in_scope"
+    assert not list(tmp_path.rglob("manifest.json"))
+    assert server._checkpoint.readiness().counts["sessions"] == 1
