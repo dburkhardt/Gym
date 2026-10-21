@@ -29,6 +29,7 @@ from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNo
 
 
 from responses_api_agents.metasyn_native.execution import run_creator
+from responses_api_agents.metasyn_native.trajectory import observations
 from responses_api_agents.metasyn_native.identity import creator_identity, scientific_assets
 
 
@@ -70,6 +71,7 @@ class VerifyResponse(BaseVerifyResponse):
     evaluation_status: str
     artifact_dir: str
     reward_metric: str = "inclusion_f1"
+    ng_trajectory: dict
 
 
 class MetaSynAgent(SimpleResponsesAPIAgent):
@@ -87,7 +89,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         source = Path(__file__).resolve().parents[2]
         files = [Path(__file__), self.config.runner_script,
                  Path(__file__).with_name("execution.py"), Path(__file__).with_name("guarded_clients.py"),
-                 Path(__file__).with_name("identity.py")]
+                 Path(__file__).with_name("identity.py"), Path(__file__).with_name("trajectory.py")]
         interpreter = Path(shutil.which(self.config.native_python) or self.config.native_python).resolve()
         identity = {"scientific_assets": scientific_assets(self.config.materialized_root, review_id),
                     "creator": creator_identity(self.config.creator_source_root),
@@ -142,6 +144,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         async with self._semaphore:
             out, evaluation = await self._evaluate(review_id, endpoint, lineage)
         report = (out / "report.md").read_text()
+        trajectory, usage = observations(out / "provider-calls", task_id=str(body.model_dump().get("task_id", f"metasyn::{review_id}")), rollout_id=lineage, model_ref=self.config.model_server)
         response = NeMoGymResponse.model_validate(
             {
                 "id": "resp_" + uuid4().hex,
@@ -149,6 +152,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                 "created_at": time.time(),
                 "model": MODEL,
                 "status": "completed",
+                "usage": usage,
                 "output": [
                     {
                         "id": "msg_" + uuid4().hex,
@@ -173,6 +177,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
             metrics=evaluation["metrics"],
             evaluation_status=evaluation["status"],
             artifact_dir=str(out),
+            ng_trajectory=trajectory.model_dump(mode="json"),
         )
 
 

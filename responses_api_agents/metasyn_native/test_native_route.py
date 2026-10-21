@@ -43,6 +43,16 @@ def test_collection_metadata_survives_validation_and_native_run_route(tmp_path, 
         seen.append((review_id, endpoint, lineage))
         return tmp_path, {"status": "succeeded", "metrics": {"inclusion_f1": 0.0}}
 
+    from nemo_gym.rollout_observability import TrajectoryRecord
+
+    monkeypatch.setattr(
+        module,
+        "observations",
+        lambda directory, **kwargs: (
+            TrajectoryRecord(task_id=kwargs["task_id"], rollout_id=kwargs["rollout_id"]),
+            None,
+        ),
+    )
     monkeypatch.setattr(module.MetaSynAgent, "_evaluate", evaluate)
     monkeypatch.setattr(module, "get_global_config_dict", lambda: config)
     payload = {
