@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from benchmarks.scienceqa.creator_recipe import score_ordered
-from nemo_gym.openai_utils import NeMoGymResponse
+from nemo_gym.openai_utils import NeMoGymCompletion, NeMoGymResponse
 from nemo_gym.provider_dispatch import configuration_digest
 
 
@@ -21,7 +21,22 @@ def regrade(repo: Path, packet_path: Path, results_path: Path) -> dict:
     if len(ids) != len(set(ids)) or set(ids) != set(expected):
         raise ValueError("Saved outputs must contain exactly the prepared task IDs")
     indexed = dict(zip(ids, rows))
-    outputs = [NeMoGymResponse.model_validate(indexed[key]["response"]).output_text for key in expected]
+    outputs = []
+    for request in packet["solver_requests"]:
+        row = indexed[request["task_id"]]
+        serialized = row["responses_create_params"]["input"]
+        if len(serialized) != 1 or json.loads(serialized[0]["content"]) != request["request"]:
+            raise ValueError("Saved row literal request differs from creator recipe")
+        response = NeMoGymResponse.model_validate(row["response"])
+        raw = NeMoGymCompletion.model_validate(row["response"]["raw_completion"])
+        actual_request = row["response"]["raw_completion_request"]
+        if actual_request != request["request"] | {"model": raw.model}:
+            raise ValueError("Captured completion request differs from creator recipe")
+        if raw.model != response.model or raw.id != response.id or raw.choices[0].text != response.output_text:
+            raise ValueError("Completion response identity/text mismatch")
+        if raw.choices[0].finish_reason == "content_filter":
+            raise ValueError("Content-filtered completion requires separate qualification")
+        outputs.append(response.output_text)
     identity = {
         "packet_sha256": hashlib.sha256(packet_bytes).hexdigest(),
         "results_sha256": hashlib.sha256(results_bytes).hexdigest(),

@@ -142,6 +142,7 @@ class SimpleCompletionAgent(NonExecutingSimpleAgent):
                 "usage": native_usage,
                 "ng_trajectory": trajectory.model_dump(mode="json"),
                 "raw_completion": data,
+                "raw_completion_request": payload,
             }
         )
         publish(directory / "result.json", result.model_dump(mode="json"))

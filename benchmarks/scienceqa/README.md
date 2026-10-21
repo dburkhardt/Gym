@@ -55,8 +55,9 @@ raw model route. Set `SCIENCEQA_CREATOR_REPO` to the pinned source checkout,
 provider qualification. The frozen literal request contains the original recipe
 sampling settings; general chat-generation overrides do not rewrite that request.
 
-Per-row verification reports strict extraction accuracy. Invalid formatting is
-masked, with `creator_raw_accuracy: null`, because the creator's random fallback
+Per-row reward is strict extraction accuracy, a separately named primary metric.
+Invalid formatting and genuine output-budget exhaustion remain strict zeros in
+its denominator, with `creator_raw_accuracy: null`, because the creator's random fallback
 depends on earlier malformed outputs. Run `benchmarks.scienceqa.regrade_recipe`
 on the completed result file and prepared `.packet.json` to calculate that raw
 metric in the exact frozen order without model calls. It records scorer/output

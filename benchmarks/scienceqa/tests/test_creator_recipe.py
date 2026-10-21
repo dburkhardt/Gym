@@ -143,11 +143,33 @@ def test_native_preparation_and_ordered_saved_regrade(tmp_path, monkeypatch):
                 },
             }
         )
+    for row, source in zip(result_rows, packet["solver_requests"]):
+        row["responses_create_params"] = {"input": [{"role": "user", "content": json.dumps(source["request"])}]}
+        row["response"]["raw_completion_request"] = source["request"] | {"model": "fixture"}
+        row["response"]["raw_completion"] = {
+            "id": row["task_id"],
+            "model": "fixture",
+            "object": "text_completion",
+            "created": 1,
+            "choices": [
+                {"index": 0, "text": row["response"]["output"][0]["content"][0]["text"], "finish_reason": "stop"}
+            ],
+        }
     saved = tmp_path / "saved.jsonl"
     saved.write_text("\n".join(json.dumps(row) for row in reversed(result_rows)) + "\n")
     result = regrade(REPO, staged.with_suffix(".packet.json"), saved)
     assert result["results"] == score_ordered(REPO, packet, outputs)
     assert result["model_calls"] == 0
+    changed = json.loads(json.dumps(result_rows))
+    changed[0]["responses_create_params"]["input"][0]["content"] = json.dumps({"prompt": "legacy variant"})
+    saved.write_text("\n".join(json.dumps(row) for row in changed) + "\n")
+    with pytest.raises(ValueError, match="literal request"):
+        regrade(REPO, staged.with_suffix(".packet.json"), saved)
+    changed = json.loads(json.dumps(result_rows))
+    changed[0]["response"]["raw_completion"]["model"] = "wrong-model"
+    saved.write_text("\n".join(json.dumps(row) for row in changed) + "\n")
+    with pytest.raises(ValueError, match="completion request"):
+        regrade(REPO, staged.with_suffix(".packet.json"), saved)
     saved.write_text(json.dumps(result_rows[0]) + "\n")
     with pytest.raises(ValueError, match="exactly"):
         regrade(REPO, staged.with_suffix(".packet.json"), saved)

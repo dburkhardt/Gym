@@ -60,7 +60,7 @@ def prepare(repo: Path, task_ids: list[str]) -> dict:
         "seed": 3,
         "creator_engine": "text-davinci-002",
         "execution_capability_required": "raw_text_completion",
-        "execution_status": "blocked_missing_native_guarded_raw_completion_route",
+        "execution_status": "prepared_native_route_requires_provider_qualification",
         "solver_requests": requests,
         "evaluator_references": references,
         "rng_scope": "Fresh seed3, consume two-shot selection, then fallback draws in this explicit task order; not full-test RNG parity for a subset",
@@ -70,7 +70,12 @@ def prepare(repo: Path, task_ids: list[str]) -> dict:
 def score_ordered(repo: Path, packet: dict, outputs: list[str]) -> list[dict]:
     """Preserve creator fallback stream for this explicitly ordered subset."""
     ids = [row["task_id"] for row in packet["solver_requests"]]
-    if packet != prepare(repo, ids):
+    expected = prepare(repo, ids)
+    comparison = dict(packet)
+    if comparison.get("execution_status") == "blocked_missing_native_guarded_raw_completion_route":
+        # Historical metadata only; requests/references/source/RNG still compare exactly.
+        comparison["execution_status"] = expected["execution_status"]
+    if comparison != expected:
         raise ValueError("Creator recipe packet differs from pinned preparation")
     if len(outputs) != len(ids) or any(not isinstance(text, str) for text in outputs):
         raise ValueError("Provide exactly one string completion for each ordered task")

@@ -44,20 +44,24 @@ class Server(SimpleResourcesServer):
         if type(answer) is not int or not 0 <= answer < len(choices) <= 5:
             raise ValueError("Invalid ScienceQA reference")
         matches = re.findall(r"The answer is ([A-Z]).", body.response.output_text.strip())
-        valid = len(matches) == 1 and matches[0] in "ABCDE"[: len(choices)]
+        filtered = (body.response.model_dump().get("raw_completion") or {}).get("choices", [{}])[0].get(
+            "finish_reason"
+        ) == "content_filter"
+        valid = not filtered and len(matches) == 1 and matches[0] in "ABCDE"[: len(choices)]
         strict = float(valid and "ABCDE".index(matches[0]) == answer)
         details = {
             "protocol": PROTOCOL,
             "strict_accuracy": strict,
+            "content_filtered": filtered,
             "creator_raw_accuracy": strict if valid else None,
             "fallback_randomized": not valid,
             "sequential_fallback_status": "not_needed" if valid else "uncomputed_pending_ordered_saved_output_regrade",
-            "measurement_valid": None if valid else False,
+            "metric_validity": {"strict_accuracy": not filtered, "creator_raw_accuracy": None if valid else False},
             "qualification": "Reference correctness not independently reviewed"
             if valid
             else "Ordered subset RNG requires prior outputs; strict zero is not a computed creator fallback score",
         }
-        payload = body.model_dump() | {"reward": strict, "mask_sample": not valid, "scoring_details": details}
+        payload = body.model_dump() | {"reward": strict, "mask_sample": filtered, "scoring_details": details}
         return VerifyResponse.model_validate(payload)
 
 

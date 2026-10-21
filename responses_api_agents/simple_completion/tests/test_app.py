@@ -126,5 +126,5 @@ async def test_fallback_uncomputed_and_length_preserved(tmp_path):
             verifier_metadata={"protocol": PROTOCOL, "choices": ["x", "y"], "answer": 1},
         )
     )
-    assert scored.mask_sample and scored.scoring_details["creator_raw_accuracy"] is None
+    assert not scored.mask_sample and scored.scoring_details["creator_raw_accuracy"] is None
     assert scored.scoring_details["strict_accuracy"] == 0
