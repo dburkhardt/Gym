@@ -7,7 +7,8 @@ scivis_agent:
       task_manifest: ${scivis_task_manifest}
       native_config: ${scivis_native_config}
       output_root: ${scivis_output_root}
-      endpoint: http://127.0.0.1:18883/v1
+      native_python: ${scivis_native_python}
+      runtime_packet: ${scivis_runtime_packet}
       max_tokens: 16384
       timeout_s: 7200
       inference_enabled: false
