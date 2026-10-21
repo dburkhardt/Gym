@@ -1,0 +1,67 @@
+provider_dispatch_guard: true
+disable_aggregation: true
+# SPDX-License-Identifier: Apache-2.0
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      entrypoint: app.py
+      domain: agent
+      description: BIABench frozen wound-healing CPU task with separate creator outcome and process verification.
+      concurrency: 1
+      harbor_datasets:
+        biabench:
+          local_dataset_path: benchmarks/biabench/data/tasks
+          workdir: /workspace
+      harbor_agent_name: null
+      harbor_agent_import_path: responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym
+      harbor_agent_kwargs:
+        max_turns: 40
+        temperature: 0.0
+        interleaved_thinking: true
+        enable_summarize: false
+        collect_rollout_details: true
+        trajectory_config:
+          raw_content: true
+        model_info:
+          max_input_tokens: 49152
+          max_output_tokens: 16384
+          input_cost_per_token: 0.0
+          output_cost_per_token: 0.0
+        parser_name: json
+        responses_create_params:
+          input: []
+          temperature: 0.0
+          max_output_tokens: 16384
+      harbor_environment_type: docker
+      harbor_environment_import_path: null
+      harbor_environment_kwargs: null
+      harbor_required_artifact_sources: ["/workspace"]
+      harbor_verifier_import_path: benchmarks.biabench.verifier:BIAVerifier
+      harbor_verifier_kwargs:
+        source: ${oc.env:BIABENCH_SOURCE}
+        task_source: ${oc.env:BIABENCH_TASK}
+        verifier_image: sha256:9229b10d07ace7834eadd86997816f8f8943b756f7cc9f91faa444dce8763740
+      harbor_no_delete: false
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      harbor_agent_override_timeout: null
+      harbor_agent_max_timeout: null
+      harbor_verifier_override_timeout: null
+      harbor_verifier_max_timeout: null
+      harbor_timeout_multiplier: null
+      harbor_jobs_dir: responses_api_agents/harbor_agent/jobs
+      datasets:
+      - name: biabench
+        type: benchmark
+        required_model_capabilities: [vision]
+        jsonl_fpath: benchmarks/biabench/data/benchmark.jsonl
+        prepare_script: benchmarks/biabench/harbor_prepare.py
+        num_repeats: 1
+harbor_agent_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: harbor_agent
