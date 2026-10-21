@@ -82,3 +82,23 @@ def test_regrade_identity_records_scientific_and_controller_versions():
     assert identity["regrade_source_sha256"] == hashlib.sha256(Path(regrade.__file__).read_bytes()).hexdigest()
     changed = dict(task, files=dict(task["files"], **{"tests/check.py": "changed"}))
     assert regrade.scorer_identity(changed) != identity
+
+
+def test_interrupted_overlay_accepts_known_files_but_rejects_stale_inputs(tmp_path):
+    from pathlib import Path
+    from benchmarks.airsbench.native_prepare import validate_existing_overlay
+
+    target = tmp_path / "task"
+    (target / "tests").mkdir(parents=True)
+    (target / "tests/check.py").write_text("partial")
+    (target / "tests/check.py.stage.lock").touch()
+    expected = {Path("tests/check.py"), Path("task.toml")}
+    validate_existing_overlay(target, expected)
+    (target / "old_answer.txt").write_text("stale")
+    with pytest.raises(ValueError, match="Unexpected prepared task file"):
+        validate_existing_overlay(target, expected)
+    (target / "old_answer.txt").unlink()
+    (target / "tests/check.py").unlink()
+    (target / "tests/check.py").symlink_to(tmp_path / "external")
+    with pytest.raises(ValueError, match="symlink"):
+        validate_existing_overlay(target, expected)
