@@ -1,6 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
 bioagent_agent:
   responses_api_agents:
     bioagent_native:
       entrypoint: app.py
-      trace_path: ${oc.env:BIOAGENT_NATIVE_TRACE}
-      provider_trace: ${oc.env:BIOAGENT_PROVIDER_TRACE}
+      native_python: ${oc.env:BIOAGENT_NATIVE_PYTHON}
+      creator_root: ${oc.env:BIOAGENT_CREATOR_ROOT}
+      metadata_path: ${oc.env:BIOAGENT_METADATA}
+      asset_manifest: ${oc.env:BIOAGENT_ASSET_MANIFEST}
+      asset_root: ${oc.env:BIOAGENT_ASSET_ROOT}
+      image: ${oc.env:BIOAGENT_IMAGE}
+      output_root: ${oc.env:BIOAGENT_OUTPUT_ROOT}

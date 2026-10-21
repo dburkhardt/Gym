@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- responses_api_agents/bioagent_native/configs/bioagent.yaml
+bioagent_agent:
+  responses_api_agents:
+    bioagent_native:
+      datasets:
+      - name: bioagentbench
+        type: benchmark
+        jsonl_fpath: benchmarks/bioagentbench/data/benchmark.jsonl
+        prepare_script: benchmarks/bioagentbench/prepare.py
+        num_repeats: 1

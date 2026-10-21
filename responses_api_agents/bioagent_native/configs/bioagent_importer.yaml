@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Historical completed-trace import only; does not execute benchmarks.
+bioagent_importer:
+  responses_api_agents:
+    bioagent_native:
+      entrypoint: importer.py
+      trace_path: ${oc.env:BIOAGENT_NATIVE_TRACE}
+      provider_trace: ${oc.env:BIOAGENT_PROVIDER_TRACE}
