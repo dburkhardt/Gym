@@ -63,6 +63,11 @@ class Agent(SimpleResponsesAPIAgent):
         calls = [json.loads(x) for x in provider_bytes.splitlines()]
         calls = [x for x in calls if native["timing"]["start"] <= x["time"] <= native["timing"]["scoring"]["end"]]
         assert calls and all(x["response"]["model"] == MODEL for x in calls)
+        # In this creator trace format, completed=True can coexist with no
+        # execution nodes. Time-window provider records cannot repair that gap.
+        # Node presence is necessary here, not proof of exact call attribution.
+        nodes = native.get("nodes")
+        execution_recorded = isinstance(nodes, list) and bool(nodes)
         reward = native["rewards"]["results_match"]
         assert reward in (0, 1)
         text = json.dumps({"native_metrics": native["metrics"], "native_assessment": native["info"]["assessment"]})
@@ -91,7 +96,16 @@ class Agent(SimpleResponsesAPIAgent):
             **body.model_dump(),
             response=response,
             reward=reward,
+            mask_sample=not execution_recorded,
+            failure_kind=None if execution_recorded else "historical_execution_unverified",
+            failure_reason=None
+            if execution_recorded
+            else "Completed creator trace has no recorded execution nodes; overlapping provider records do not establish execution",
             native_metrics={
+                "execution_nodes": len(nodes) if isinstance(nodes, list) else None,
+                "execution_evidence": "nodes_present_not_full_attribution"
+                if execution_recorded
+                else "missing_execution_nodes",
                 "metrics": native["metrics"],
                 "rewards": native["rewards"],
                 "provider_records_in_time_window": len(calls),
