@@ -397,7 +397,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
         async with self.sem:
             global_config_dict = get_global_config_dict()
 
-            policy_model_name = global_config_dict["policy_model_name"]
+            policy_model_name = self._resolve_model_name(global_config_dict)
             base_url = self._resolve_model_base_url(global_config_dict)
             from nemo_gym.rollout_correlation import current_rollout_id, maybe_rollout_id_from_run_body
             from nemo_gym.server_utils import rollout_path_prefix
@@ -648,6 +648,22 @@ class HarborAgent(SimpleResponsesAPIAgent):
         sanitized = re.sub(r"\s+", "_", sanitized)
         sanitized = sanitized.strip("._")
         return sanitized or "unknown"
+
+    def _resolve_model_name(self, global_config_dict: Any) -> str:
+        """Bind output and Harbor identity to the selected model service."""
+        service = get_first_server_config_dict(global_config_dict, self.config.model_server.name)
+        declared = [service.get(key) for key in ("openai_model", "model") if service.get(key) is not None]
+        alias = global_config_dict.get("policy_model_name")
+        if any(not isinstance(value, str) or not value.strip() for value in declared):
+            raise ValueError("Selected model service has an invalid model identity")
+        if len(set(declared)) > 1:
+            raise ValueError("Selected model service declares conflicting model identities")
+        selected = declared[0] if declared else alias
+        if not isinstance(selected, str) or not selected.strip():
+            raise ValueError("Selected model service needs a model identity or legacy policy_model_name")
+        if alias is not None and alias != selected:
+            raise ValueError("policy_model_name disagrees with the selected model service")
+        return selected
 
     def _resolve_model_base_url(self, global_config_dict: Any) -> str:
         """Resolve model base URL from required model_server reference."""

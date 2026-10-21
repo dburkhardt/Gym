@@ -150,6 +150,12 @@ python responses_api_agents/harbor_agent/custom_envs/singularity/scripts/write_m
 Before starting NeMo Gym, launch your vLLM server and update `env.yaml` with the
 corresponding `policy_base_url`, `policy_api_key`, and `policy_model_name` values.
 
+Harbor binds its model identity to the referenced model service (`openai_model`
+for the OpenAI backend or `model` for inference_provider). A supplied legacy
+`policy_model_name` must agree with that service; it remains a fallback for
+services without an explicit model declaration. Conflicting identities fail
+before creating a Harbor job, rather than mislabelling its artifacts or response.
+
 If using the harbor agent for RL training, the companion vLLM model server config
 must enable token ID information and disable thinking history truncation. Use
 `configs/vllm_model_for_training.yaml`.
