@@ -87,7 +87,10 @@ class Agent(SimpleResponsesAPIAgent):
         if (
             frozen is None
             or body.verifier_metadata != frozen["verifier_metadata"]
-            or body.responses_create_params.model_dump()["input"] != frozen["responses_create_params"]["input"]
+            or body.responses_create_params.model_dump()["input"]
+            != NeMoGymResponseCreateParamsNonStreaming.model_validate(frozen["responses_create_params"]).model_dump()[
+                "input"
+            ]
         ):
             raise ValueError("Frozen task prompt or metadata changed")
         if task_id in self.config.blocked_task_ids:
@@ -95,7 +98,10 @@ class Agent(SimpleResponsesAPIAgent):
         global_config = get_global_config_dict()
         if not global_config.get("provider_dispatch_guard") or global_config.get("policy_model_name") != MODEL:
             raise ValueError("Guarded exact-model inference required")
-        capture = current_rollout_id() or maybe_rollout_id_from_run_body(body)
+        context_capture, body_capture = current_rollout_id(), maybe_rollout_id_from_run_body(body)
+        if context_capture is not None and body_capture is not None and context_capture != body_capture:
+            raise ValueError("BioAgent transport and body episode identities disagree")
+        capture = context_capture or body_capture
         if capture is None:
             raise ValueError("Stable Gym rollout identity required")
         server = get_first_server_config_dict(global_config, self.config.model_server.name)
