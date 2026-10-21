@@ -39,6 +39,7 @@ from rich.table import Table
 from tqdm.auto import tqdm
 
 from nemo_gym import PARENT_DIR, _resolve_under_cwd_or_install, component_search_roots
+from nemo_gym.cli.port_ownership import PortOwnership
 from nemo_gym.cli.setup_command import get_venv_path, run_command, setup_env_command
 from nemo_gym.cli.utils import (
     exit_cleanly_on_config_error,
@@ -541,6 +542,7 @@ class RunHelper:  # pragma: no cover
         self._processes = dict()
         self._head_server = None
         self._h2_ping_sidecar = None
+        self._port_ownership = None
         try:
             self._start(global_config_dict_parser_config)
         except BaseException as error:
@@ -558,6 +560,14 @@ class RunHelper:  # pragma: no cover
         # e2e rollout-collection path, which both start servers via this method).
         GlobalConfigDictParser().raise_on_no_server_instances(global_config_dict)
         self._server_spinup_timeout_seconds = _server_spinup_timeout_seconds(global_config_dict)
+        listeners = [
+            ("head_server", global_config_dict["head_server"]["host"], global_config_dict["head_server"]["port"])
+        ]
+        listeners.extend(
+            (name, config["host"], config["port"])
+            for name, _, _, config, _, _ in _configured_servers(global_config_dict)
+        )
+        self._port_ownership = PortOwnership(listeners)
         self._startup.mark("load_config")
 
         # Translate the `telemetry:` block into NEMO_GYM_OTEL_* env vars *before* anything is
@@ -928,6 +938,13 @@ rpc_client.h:203: Failed to connect to GCS within 60 seconds. GCS may have been 
 
         self._head_server = None
         self._head_server_thread = None
+
+        port_ownership = getattr(self, "_port_ownership", None)
+        if port_ownership is not None:
+            if unreaped_process_names:
+                raise RuntimeError("Native services remain unreaped; retaining cooperative port ownership")
+            port_ownership.close()
+            self._port_ownership = None
 
         ownership = getattr(self, "_service_ownership", None)
         if ownership is not None:
