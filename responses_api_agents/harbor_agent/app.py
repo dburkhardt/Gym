@@ -348,7 +348,8 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 input_messages = HarborAgentUtils.extract_input_from_trajectory(trajectory)
 
                 # Populate usage from trajectory final_metrics or agent_result
-                usage = HarborAgentUtils.extract_usage(trial_result, trajectory)
+                usage, usage_provenance = HarborAgentUtils.extract_usage_with_provenance(trial_result, trajectory)
+                trial_result = {**trial_result, "usage_provenance": usage_provenance}
                 if agent_error_flags.get("llm_call_failure"):
                     # Preserve inference diagnostics alongside native scores.
                     # measurement_failure distinguishes provider failures from

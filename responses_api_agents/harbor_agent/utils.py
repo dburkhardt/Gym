@@ -123,13 +123,7 @@ class HarborAgentUtils:
             "text": {"format": {"type": "text"}, "verbosity": "medium"},
             "top_logprobs": 0,
             "truncation": "disabled",
-            "usage": {
-                "input_tokens": 0,
-                "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
-                "output_tokens": 0,
-                "output_tokens_details": {"reasoning_tokens": 0},
-                "total_tokens": 0,
-            },
+            "usage": None,
             "user": None,
             "prompt_cache_key": None,
             "safety_identifier": None,
@@ -206,39 +200,71 @@ class HarborAgentUtils:
     def extract_usage(
         trial_result: Dict[str, Any],
         trajectory: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Build the ``usage`` dict for the NeMo Gym response.
+    ) -> Optional[Dict[str, Any]]:
+        """Return a complete reported token pair, or unknown usage (None)."""
+        return HarborAgentUtils.extract_usage_with_provenance(trial_result, trajectory)[0]
 
-        Prefers ATIF ``final_metrics`` (exact totals from the trajectory) and
-        falls back to ``agent_result`` token counts from ``result.json``.
+    @staticmethod
+    def extract_usage_with_provenance(
+        trial_result: Dict[str, Any],
+        trajectory: Optional[Dict[str, Any]] = None,
+    ) -> tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """Prefer a complete ATIF pair; never combine counts from different sources.
+
+        Zero is a reported value, not a fallback signal. Raw partial counts remain
+        in provenance when the integer-valued response usage cannot represent them.
         """
-        input_tokens = 0
-        output_tokens = 0
-        cached_tokens = 0
-
-        # Try trajectory final_metrics first
-        if trajectory:
-            fm = trajectory.get("final_metrics", {})
-            input_tokens = fm.get("total_prompt_tokens", 0)
-            output_tokens = fm.get("total_completion_tokens", 0)
-            cached_tokens = fm.get("total_cached_tokens", 0)
-
-        # Fall back to trial result agent_result
-        if input_tokens == 0 and output_tokens == 0:
-            agent_result = trial_result.get("agent_result") or {}
-            input_tokens = agent_result.get("n_input_tokens", 0) or 0
-            output_tokens = agent_result.get("n_output_tokens", 0) or 0
-            cached_tokens = agent_result.get("n_cache_tokens", 0) or 0
-
-        return {
-            "input_tokens": input_tokens,
-            # cache_write_tokens is required by openai>=2.40 InputTokensDetails;
-            # vLLM backends do not report cache writes.
-            "input_tokens_details": {"cached_tokens": cached_tokens, "cache_write_tokens": 0},
-            "output_tokens": output_tokens,
-            "output_tokens_details": {"reasoning_tokens": 0},
-            "total_tokens": input_tokens + output_tokens,
+        final_metrics = (trajectory or {}).get("final_metrics") or {}
+        agent_result = trial_result.get("agent_result") or {}
+        final_extra = final_metrics.get("extra") or {}
+        agent_metadata = agent_result.get("metadata") or {}
+        candidates = {
+            "trajectory.final_metrics": {
+                "input_tokens": final_metrics.get("total_prompt_tokens"),
+                "output_tokens": final_metrics.get("total_completion_tokens"),
+                "cached_tokens": final_metrics.get("total_cached_tokens"),
+                "cache_write_tokens": final_extra.get("total_cache_write_tokens"),
+                "reasoning_tokens": final_extra.get("total_reasoning_tokens"),
+            },
+            "trial_result.agent_result": {
+                "input_tokens": agent_result.get("n_input_tokens"),
+                "output_tokens": agent_result.get("n_output_tokens"),
+                "cached_tokens": agent_result.get("n_cache_tokens"),
+                "cache_write_tokens": agent_metadata.get("n_cache_write_tokens"),
+                "reasoning_tokens": agent_metadata.get("n_reasoning_tokens"),
+            },
         }
+
+        def known_count(value: Any) -> bool:
+            return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+        completeness = {
+            "trajectory.final_metrics.extra": final_extra.get("provider_usage_complete"),
+            "trial_result.agent_result.metadata": agent_metadata.get("provider_usage_complete"),
+        }
+        provenance = {"source": None, "reported_counts": candidates, "provider_usage_complete": completeness}
+        if any(value is False for value in completeness.values()):
+            return None, provenance
+        for source, counts in candidates.items():
+            if not all(known_count(counts[key]) for key in ("input_tokens", "output_tokens")):
+                continue
+            provenance["source"] = source
+            cached = counts["cached_tokens"]
+            return {
+                "input_tokens": counts["input_tokens"],
+                "input_tokens_details": {
+                    "cached_tokens": cached if known_count(cached) else None,
+                    "cache_write_tokens": counts["cache_write_tokens"]
+                    if known_count(counts["cache_write_tokens"])
+                    else None,
+                },
+                "output_tokens": counts["output_tokens"],
+                "output_tokens_details": {
+                    "reasoning_tokens": counts["reasoning_tokens"] if known_count(counts["reasoning_tokens"]) else None
+                },
+                "total_tokens": counts["input_tokens"] + counts["output_tokens"],
+            }, provenance
+        return None, provenance
 
     # ------------------------------------------------------------------ #
     #  Raw content parsing — extract function calls from raw LLM JSON     #

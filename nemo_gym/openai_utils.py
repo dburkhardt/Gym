@@ -1089,6 +1089,7 @@ _register_item_tags(NeMoGymResponseOutputItem, _RESPONSE_OUTPUT_ITEM_TAG_BY_CLAS
 
 class NeMoGymResponseInputTokensDetails(ResponseInputTokensDetails):
     cached_tokens: Optional[int]
+    cache_write_tokens: Optional[int] = None
 
 
 class NeMoGymResponseOutputTokensDetails(ResponseOutputTokensDetails):

@@ -491,8 +491,21 @@ class TestApp:
         assert response.mask_sample is False
         assert response.failure_kind is None
         assert response.failure_reason is None
-        assert response.metadata == trial_result
+        assert {k: v for k, v in response.metadata.items() if k != "usage_provenance"} == trial_result
+        assert response.metadata["usage_provenance"]["source"] == "trajectory.final_metrics"
         assert response.response.usage.total_tokens > 0
+
+    async def test_unknown_usage_preserves_native_partial_provenance(self):
+        server = _make_server()
+        trial = {**DEFAULT_TRIAL_RESULT, "agent_result": None}
+        trajectory = {**DEFAULT_TRAJECTORY, "final_metrics": {"total_prompt_tokens": 17}}
+        with _harbor_run_mocks(trial_result=trial, trajectory=trajectory):
+            response = await server.run(_make_run_request())
+        assert response.response.usage is None
+        provenance = response.metadata["usage_provenance"]
+        assert provenance["source"] is None
+        assert provenance["reported_counts"]["trajectory.final_metrics"]["input_tokens"] == 17
+        assert response.metadata["agent_result"] is None
 
     async def test_partial_nonzero_reward_after_llm_failure_is_masked(self):
         server = _make_server()
@@ -697,11 +710,84 @@ class TestExtractUsage:
         [
             (DEFAULT_TRIAL_RESULT, DEFAULT_TRAJECTORY, 1380),
             (DEFAULT_TRIAL_RESULT, None, 150),
-            ({"agent_result": None}, None, 0),
         ],
     )
     def test_extract_usage(self, trial_result, trajectory, expected_total) -> None:
         assert HarborAgentUtils.extract_usage(trial_result, trajectory)["total_tokens"] == expected_total
+
+    @pytest.mark.parametrize("metrics", [None, {}, {"total_prompt_tokens": None, "total_completion_tokens": None}])
+    def test_unknown_usage_is_not_zero(self, metrics) -> None:
+        usage, provenance = HarborAgentUtils.extract_usage_with_provenance(
+            {"agent_result": None}, {"final_metrics": metrics}
+        )
+        assert usage is None
+        assert provenance["source"] is None
+        assert HarborAgentUtils.get_default_response_object()["usage"] is None
+
+    def test_known_zero_has_priority_over_nonzero_fallback(self) -> None:
+        usage, provenance = HarborAgentUtils.extract_usage_with_provenance(
+            DEFAULT_TRIAL_RESULT, {"final_metrics": {"total_prompt_tokens": 0, "total_completion_tokens": 0}}
+        )
+        assert usage["total_tokens"] == 0
+        assert provenance["source"] == "trajectory.final_metrics"
+        assert usage["input_tokens_details"] == {"cached_tokens": None, "cache_write_tokens": None}
+        assert usage["output_tokens_details"]["reasoning_tokens"] is None
+
+    def test_partial_trajectory_uses_complete_fallback_pair(self) -> None:
+        usage, provenance = HarborAgentUtils.extract_usage_with_provenance(
+            {"agent_result": {"n_input_tokens": 10, "n_output_tokens": 5, "n_cache_tokens": 0}},
+            {"final_metrics": {"total_prompt_tokens": 99, "total_completion_tokens": None}},
+        )
+        assert usage["total_tokens"] == 15
+        assert usage["input_tokens_details"]["cached_tokens"] == 0
+        assert provenance["source"] == "trial_result.agent_result"
+        assert provenance["reported_counts"]["trajectory.final_metrics"]["input_tokens"] == 99
+
+    def test_partial_sources_do_not_form_invented_total(self) -> None:
+        usage, provenance = HarborAgentUtils.extract_usage_with_provenance(
+            {"agent_result": {"n_output_tokens": 5}}, {"final_metrics": {"total_prompt_tokens": 99}}
+        )
+        assert usage is None
+        assert provenance["reported_counts"]["trial_result.agent_result"]["output_tokens"] == 5
+
+    @pytest.mark.parametrize("location", ["agent", "trajectory"])
+    def test_explicit_incomplete_usage_vetoes_partial_aggregates(self, location) -> None:
+        trial = {"agent_result": {"n_input_tokens": 10, "n_output_tokens": 5}}
+        trajectory = {"final_metrics": {"total_prompt_tokens": 10, "total_completion_tokens": 5}}
+        target = trial["agent_result"] if location == "agent" else trajectory["final_metrics"]
+        target["metadata" if location == "agent" else "extra"] = {"provider_usage_complete": False}
+        usage, provenance = HarborAgentUtils.extract_usage_with_provenance(trial, trajectory)
+        assert usage is None
+        assert provenance["reported_counts"]["trajectory.final_metrics"]["input_tokens"] == 10
+
+    def test_explicit_detail_extensions_preserved(self) -> None:
+        usage = HarborAgentUtils.extract_usage(
+            {},
+            {
+                "final_metrics": {
+                    "total_prompt_tokens": 10,
+                    "total_completion_tokens": 5,
+                    "extra": {"total_cache_write_tokens": 3, "total_reasoning_tokens": 2},
+                }
+            },
+        )
+        assert usage["input_tokens_details"]["cache_write_tokens"] == 3
+        assert usage["output_tokens_details"]["reasoning_tokens"] == 2
+
+    def test_response_schema_preserves_unknown_details_and_known_cache_writes(self) -> None:
+        from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseInputTokensDetails
+
+        response = HarborAgentUtils.get_default_response_object()
+        response.update(model="fixture", output=[])
+        assert NeMoGymResponse.model_validate(response).usage is None
+        response["usage"] = HarborAgentUtils.extract_usage(
+            {"agent_result": {"n_input_tokens": 0, "n_output_tokens": 0}}
+        )
+        parsed = NeMoGymResponse.model_validate(response)
+        assert parsed.usage.total_tokens == 0
+        assert parsed.usage.input_tokens_details.cache_write_tokens is None
+        assert parsed.usage.output_tokens_details.reasoning_tokens is None
+        assert NeMoGymResponseInputTokensDetails(cached_tokens=0, cache_write_tokens=7).cache_write_tokens == 7
 
 
 class TestExtractReward:
