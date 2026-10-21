@@ -113,19 +113,34 @@ async def command(argv, *, env=None, timeout=60, receipt=None):
     process = await asyncio.create_subprocess_exec(
         *argv, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
+    # Keep one reader alive across timeout/cancellation so already-read bytes survive.
+    communication = asyncio.create_task(process.communicate())
+    error_type = None
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
-    except BaseException:
+        stdout, stderr = await asyncio.wait_for(asyncio.shield(communication), timeout)
+    except BaseException as error:
+        error_type = type(error).__name__
         if process.returncode is None:
-            process.kill()
-        await process.communicate()
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        stdout, stderr = await communication
         raise
-    if receipt is not None:
-        receipt.write_text(
-            json.dumps(
-                {"return_code": process.returncode, "stdout": stdout.decode(), "stderr": stderr.decode()}, indent=2
+    finally:
+        if receipt is not None and communication.done() and not communication.cancelled():
+            stdout, stderr = communication.result()
+            receipt.write_text(
+                json.dumps(
+                    {
+                        "return_code": process.returncode,
+                        "stdout": stdout.decode(errors="replace"),
+                        "stderr": stderr.decode(errors="replace"),
+                        "error_type": error_type,
+                    },
+                    indent=2,
+                )
             )
-        )
     if process.returncode:
         raise RuntimeError(f"Qualification command failed ({process.returncode}): {stderr.decode()[:2000]}")
     return stdout.decode()

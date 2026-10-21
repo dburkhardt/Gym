@@ -135,6 +135,26 @@ def short_socket():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("timeout_case", [False, True])
+async def test_failed_command_preserves_diagnostics(tmp_path, timeout_case):
+    import asyncio
+    import sys
+
+    from benchmarks.bioagentbench.qualify_giab_isolation import command
+
+    receipt = tmp_path / "command.json"
+    code = "import sys,time; print('before failure',flush=True); print('diagnostic',file=sys.stderr,flush=True); "
+    code += "time.sleep(60)" if timeout_case else "sys.exit(7)"
+    with pytest.raises(asyncio.TimeoutError if timeout_case else RuntimeError):
+        await command([sys.executable, "-c", code], timeout=1, receipt=receipt)
+    observed = json.loads(receipt.read_text())
+    assert observed["stdout"] == "before failure\n"
+    assert observed["stderr"] == "diagnostic\n"
+    assert observed["return_code"] != 0
+    assert observed["error_type"] == ("TimeoutError" if timeout_case else None)
+
+
+@pytest.mark.asyncio
 async def test_real_runtime_channel_requires_start_handshake(tmp_path, short_socket):
     import time
 
