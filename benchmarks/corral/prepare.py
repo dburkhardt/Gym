@@ -26,7 +26,7 @@ def stage(source: Path, destination: Path) -> Path:
         rows.append(
             {
                 "task_id": task_id,
-                "instance_id": task_id,
+                "instance_id": f"corral::{task_id}",
                 "uuid": task_id,
                 "agent_ref": {"name": "harbor_agent"},
                 "responses_create_params": {"input": []},

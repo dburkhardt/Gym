@@ -40,3 +40,29 @@ def test_source_mismatch_fails_before_publish(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="source mismatch"):
         prepare.stage(source, tmp_path / "out")
     assert not (tmp_path / "out").exists()
+
+
+def test_prepared_row_routes_to_native_harbor_task(tmp_path, monkeypatch):
+    from pathlib import Path
+    import yaml
+    from responses_api_agents.harbor_agent.app import HarborAgent, HarborAgentConfig, HarborRunRequest
+
+    source, _, native = fixture(tmp_path, monkeypatch)
+    destination = tmp_path / "prepared"
+    row = json.loads(prepare.stage(source, destination).read_text())
+    request = HarborRunRequest.model_validate(row)
+    alias, task = HarborAgent._parse_instance_id(request.instance_id)
+    config_path = Path(__file__).parents[1] / "config.yaml"
+    settings = yaml.safe_load(config_path.read_text())["harbor_agent"]["responses_api_agents"]["harbor_agent"]
+    settings["harbor_datasets"]["corral"]["local_dataset_path"] = str(destination / "tasks")
+    config = HarborAgentConfig(name="harbor_agent", host="127.0.0.1", port=24000, **settings)
+    server = HarborAgent.model_construct(config=config)
+    job = server._build_job_config(
+        dataset_alias=alias, task_name=task, model_name="fixture-model",
+        api_base="http://127.0.0.1:1/v1", job_name="route-contract", jobs_dir=tmp_path / "jobs",
+    )
+    assert alias == "corral"
+    assert task == row["task_id"] == row["uuid"] == native["id"]
+    assert (destination / "tasks" / task / "instruction.md").read_text() == task + "\n"
+    assert job["datasets"][0]["path"] == str(destination / "tasks")
+    assert job["datasets"][0]["task_names"] == [task]
