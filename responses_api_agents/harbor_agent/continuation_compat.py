@@ -7,6 +7,7 @@ by the native agent. A controller must bind validated agent, tool, workspace and
 remaining-budget state before using it; ordinary tmux does not attest quiescence.
 """
 
+import asyncio
 import hashlib
 import inspect
 import textwrap
@@ -41,12 +42,29 @@ def _patched_method(original: FunctionType, name: str) -> FunctionType:
                 "    if (continuation is not None or getattr(self, '_gym_completed_turn', None) is not None) and self.options.enable_summarize:\n"
                 "        raise RuntimeError('Continuation requires summarization disabled')\n"
                 "    if continuation is None:\n"
-                "        self._gym_next_episode = 0\n" + textwrap.indent(setup, "    ") + "    else:\n"
+                "        self._gym_next_episode = 0\n"
+                "        self._gym_absolute_deadline = None\n" + textwrap.indent(setup, "    ") + "    else:\n"
                 "        initial_prompt = await continuation.restore(self, instruction, environment, context)\n"
                 "        self._gym_continuation = None\n"
                 "\n"
             )
             + source[end:]
+        )
+        source = _replace_once(
+            source,
+            "        await self._run_agent_loop(\n"
+            "            initial_prompt=initial_prompt,\n"
+            "            chat=self._chat,\n"
+            "            original_instruction=instruction,\n"
+            "        )\n",
+            "        deadline = getattr(self, '_gym_absolute_deadline', None)\n"
+            "        remaining = None if deadline is None else max(0.0, deadline - time.time())\n"
+            "        async with asyncio.timeout(remaining):\n"
+            "            await self._run_agent_loop(\n"
+            "                initial_prompt=initial_prompt,\n"
+            "                chat=self._chat,\n"
+            "                original_instruction=instruction,\n"
+            "            )\n",
         )
     else:
         source = _replace_once(
@@ -86,6 +104,7 @@ def _patched_method(original: FunctionType, name: str) -> FunctionType:
             "            await checkpoint_hook(self, episode + 1, observation)\n",
         )
     namespace = dict(original.__globals__)
+    namespace["asyncio"] = asyncio
     exec(compile(source, f"<gym-pinned-harbor-{name}>", "exec"), namespace)
     result = namespace[name]
     result.__gym_continuation_original__ = original

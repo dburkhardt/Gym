@@ -5,6 +5,7 @@
 import copy
 import hashlib
 import json
+import time
 
 import pytest
 
@@ -13,8 +14,10 @@ pytest.importorskip("harbor")
 from harbor.agents.terminus_2.terminus_2 import Terminus2
 from harbor.llms.base import BaseLLM, LLMResponse
 from harbor.models.agent.context import AgentContext
+from harbor.models.metric import UsageInfo
 
 from responses_api_agents.harbor_agent.continuation_compat import install_continuation_hooks
+from responses_api_agents.harbor_agent.continuation_state import capture_turn_cursor, validate_turn_cursor
 
 
 class StopAtBoundary(BaseException):
@@ -27,13 +30,22 @@ class LocalModel(BaseLLM):
 
     async def call(self, prompt, **kwargs):
         history = kwargs.get("message_history", [])
-        self.calls.append(copy.deepcopy({"prompt": prompt, "history": history}))
+        self.calls.append(
+            copy.deepcopy(
+                {
+                    "prompt": prompt,
+                    "history": history,
+                    "settings": {k: v for k, v in kwargs.items() if k not in {"message_history", "logging_path"}},
+                }
+            )
+        )
         turn = len(history) // 2
         commands = [{"keystrokes": "write-a" if turn == 0 else "write-b", "duration": 0}] if turn < 2 else []
         return LLMResponse(
+            usage=UsageInfo(prompt_tokens=7, completion_tokens=3, cache_tokens=1, cost_usd=0.001),
             content=json.dumps(
                 {"analysis": "fixture", "plan": "fixture", "commands": commands, "task_complete": turn >= 2}
-            )
+            ),
         )
 
     def get_model_context_limit(self):
@@ -73,6 +85,8 @@ class LocalSession:
                 (self.root / "b").write_text((self.root / "a").read_text().upper())
             else:
                 raise ValueError("Unsupported fixture tool")
+            with (self.root / "effects").open("a") as handle:
+                handle.write(keys + "\n")
             self.output = keys + " complete"
         finally:
             self.active = False
@@ -93,46 +107,31 @@ class RestoredCursor:
         assert not agent._session.active
         self.episode = episode
         self.prompt = prompt
-        self.chat = {k: copy.deepcopy(v) for k, v in vars(agent._chat).items() if k != "_model"}
-        self.agent = {
-            k: copy.deepcopy(getattr(agent, k))
-            for k in (
-                "_pending_completion",
-                "_trajectory_steps",
-                "_api_request_times",
-                "_n_episodes",
-                "_summarization_count",
-                "_subagent_metrics",
-                "_subagent_rollout_details",
-                "_pending_subagent_refs",
-                "_pending_handoff_prompt",
-                "_session_id",
-            )
-        }
+        self.deadline = time.time() + 60
+        self.cursor = capture_turn_cursor(
+            agent,
+            episode,
+            prompt,
+            binding="fixture-task",
+            instruction="Transform a molecule file",
+            absolute_deadline=self.deadline,
+        )
         self.files = {p.name: p.read_bytes() for p in agent._session.root.iterdir()}
         self.digest = hashlib.sha256(b"".join(k.encode() + v for k, v in sorted(self.files.items()))).hexdigest()
 
     async def restore(self, agent, instruction, environment, context):
-        from harbor.llms.chat import Chat
-
         if self.digest != hashlib.sha256(b"".join(k.encode() + v for k, v in sorted(self.files.items()))).hexdigest():
             raise ValueError("Corrupt fixture workspace")
-        if type(self.episode) is not int or not 0 < self.episode < agent._max_episodes:
-            raise ValueError("Invalid fixture cursor")
-        if agent.options.enable_summarize:
-            raise ValueError("Unsupported summarization")
-        # Validate all before publishing files or modifying agent state.
-        chat = Chat(agent._llm)
-        for k, v in self.chat.items():
-            setattr(chat, k, copy.deepcopy(v))
+        validated = validate_turn_cursor(
+            agent,
+            json.loads(json.dumps(self.cursor)),
+            binding="fixture-task",
+            instruction=instruction,
+            absolute_deadline=self.deadline,
+        )
         for name, data in self.files.items():
             (agent._session.root / name).write_bytes(data)
-        for k, v in self.agent.items():
-            setattr(agent, k, copy.deepcopy(v))
-        agent._chat = chat
-        agent._context = context
-        agent._gym_next_episode = self.episode
-        return self.prompt
+        return validated.install(agent, context)
 
 
 def agent(root):
@@ -250,3 +249,200 @@ async def test_unsupported_summarization_fails_before_any_model_call(tmp_path):
     with pytest.raises(RuntimeError, match="summarization disabled"):
         await candidate.run("Transform a molecule file", None, AgentContext())
     assert candidate._llm.calls == []
+
+
+def test_native_gym_checkpoint_clean_process_restore(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "LITELLM_LOCAL_MODEL_COST_MAP": "True"}
+    command = [sys.executable, "-m", "responses_api_agents.harbor_agent.tests.continuation_process_control"]
+    log = (tmp_path / "initial.log").open("w")
+    process = subprocess.Popen(command + ["initial", str(tmp_path)], env=env, stdout=log, stderr=log)
+    try:
+        deadline = time.monotonic() + 20
+        while not (tmp_path / "ready.json").exists():
+            if process.poll() is not None or time.monotonic() > deadline:
+                raise AssertionError((tmp_path / "initial.log").read_text())
+            time.sleep(0.05)
+        ready = json.loads((tmp_path / "ready.json").read_text())
+        assert ready["pid"] == process.pid
+        process.kill()
+        process.wait(timeout=5)
+        completed = subprocess.run(
+            command + ["restore", str(tmp_path)], env=env, capture_output=True, text=True, timeout=20
+        )
+        assert completed.returncode == 0, completed.stderr
+        result = json.loads((tmp_path / "restored.json").read_text())
+        assert result["pid"] != ready["pid"]
+        assert result["files"]["effects"].splitlines() == ["write-a", "write-b"]
+        assert result["score_count"] == result["score"] == 1
+        first = json.loads((tmp_path / "initial-calls.json").read_text())
+        assert len(first) == 1 and len(result["calls"]) == 3
+        assert result["calls"][0]["prompt"] == "write-a complete"
+        assert len(result["calls"][0]["history"]) == 2
+        full_process = subprocess.run(
+            command + ["full", str(tmp_path)], env=env, capture_output=True, text=True, timeout=20
+        )
+        assert full_process.returncode == 0, full_process.stderr
+        full = json.loads((tmp_path / "full.json").read_text())
+        assert first + result["calls"] == full["calls"]
+        assert result["messages"] == full["messages"]
+        assert result["episodes"] == full["episodes"]
+        for key in ("n_input_tokens", "n_output_tokens", "n_cache_tokens", "cost_usd"):
+            assert result["context"][key] == full["context"][key]
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        log.close()
+
+
+@pytest.mark.asyncio
+async def test_deadline_and_usage_survive_staging_and_early_timeout(tmp_path, monkeypatch):
+    import asyncio
+
+    import responses_api_agents.harbor_agent.continuation_state as state_module
+
+    install_continuation_hooks(LoopAgent)
+    first = agent(tmp_path / "first")
+    saved = []
+
+    async def boundary(owner, episode, prompt):
+        saved.append((owner, episode, prompt))
+        raise StopAtBoundary()
+
+    first._gym_completed_turn = boundary
+    with pytest.raises(StopAtBoundary):
+        await first.run("Transform a molecule file", None, AgentContext())
+    owner, episode, prompt = saved[0]
+    deadline = time.time() + 0.2
+    cursor = capture_turn_cursor(
+        owner, episode, prompt, binding="task", instruction="Transform a molecule file", absolute_deadline=deadline
+    )
+    restored = agent(tmp_path / "restored")
+    prepared = validate_turn_cursor(
+        restored, cursor, binding="task", instruction="Transform a molecule file", absolute_deadline=deadline
+    )
+    with pytest.raises(ValueError, match="changed or expired"):
+        validate_turn_cursor(
+            restored, cursor, binding="task", instruction="Transform a molecule file", absolute_deadline=deadline + 60
+        )
+    context = AgentContext()
+
+    class Restore:
+        async def restore(self, *args):
+            return prepared.install(restored, context)
+
+    restored._gym_continuation = Restore()
+
+    async def never_ready():
+        await asyncio.Event().wait()
+
+    restored._session.is_session_alive = never_ready
+    with pytest.raises(TimeoutError):
+        await restored.run("Transform a molecule file", None, context)
+    assert restored._llm.calls == []
+    assert (context.n_input_tokens, context.n_output_tokens, context.n_cache_tokens) == (7, 3, 1)
+    assert context.cost_usd == 0.001
+    before = restored._chat
+    with monkeypatch.context() as patch:
+        patch.setattr(state_module.time, "time", lambda: deadline + 1)
+        with pytest.raises(ValueError, match="expired during staging"):
+            prepared.install(restored, AgentContext())
+    assert restored._chat is before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["invalid_second", "write_second"])
+async def test_two_session_restore_failure_discards_staging(tmp_path, monkeypatch, failure):
+    from pathlib import Path
+
+    from nemo_gym._checkpoint.agent import RestoredAgentSession
+    from nemo_gym.episode_types import EpisodeId
+    from responses_api_agents.harbor_agent.tests.continuation_process_control import Hooks, digest
+
+    install_continuation_hooks(LoopAgent)
+    first = agent(tmp_path / "source")
+    saved = []
+
+    async def boundary(owner, episode, prompt):
+        saved.append((owner, episode, prompt))
+        raise StopAtBoundary()
+
+    first._gym_completed_turn = boundary
+    with pytest.raises(StopAtBoundary):
+        await first.run("Transform a molecule file", None, AgentContext())
+    owner, episode, prompt = saved[0]
+    deadline = time.time() + 60
+    files = {p.name: p.read_text() for p in owner._session.root.iterdir()}
+    sessions = []
+    for key in ("one", "two"):
+        cursor = capture_turn_cursor(
+            owner, episode, prompt, binding=key, instruction="Transform a molecule file", absolute_deadline=deadline
+        )
+        sessions.append(
+            RestoredAgentSession(
+                session_key=key,
+                episode_id=EpisodeId(rollout_id=key),
+                session={"cursor": cursor, "files": files, "files_sha256": digest(files)},
+            )
+        )
+    hooks = Hooks(tmp_path / "staging", deadline)
+    original = agent(tmp_path / "original")
+    (original._session.root / "a").write_text("preserved")
+    hooks.agents = {"original": original}
+    if failure == "invalid_second":
+        sessions[1].session["files_sha256"] = "wrong"
+    else:
+        native_write = Path.write_text
+
+        def fail_second(path, *args, **kwargs):
+            if "owned-restore-" in str(path) and path.parts[-3:] == ("1", "workspace", "a"):
+                raise OSError("Injected second workspace write failure")
+            return native_write(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", fail_second)
+    with pytest.raises((ValueError, OSError)):
+        await hooks.restore_agent_sessions(sessions)
+    assert hooks.agents == {"original": original}
+    assert (original._session.root / "a").read_text() == "preserved"
+    assert list((tmp_path / "staging").glob("owned-restore-*")) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("contradiction", ["reasoning", "trajectory", "effective_kwargs", "instruction"])
+async def test_self_consistent_but_incompatible_cursor_refused(tmp_path, contradiction):
+    from responses_api_agents.harbor_agent.continuation_state import _digest
+
+    install_continuation_hooks(LoopAgent)
+    first = agent(tmp_path / "first")
+    saved = []
+
+    async def boundary(owner, episode, prompt):
+        saved.append(RestoredCursor(owner, episode, prompt))
+        raise StopAtBoundary()
+
+    first._gym_completed_turn = boundary
+    with pytest.raises(StopAtBoundary):
+        await first.run("Transform a molecule file", None, AgentContext())
+    saved = saved[0]
+    candidate = agent(tmp_path / "candidate")
+    instruction = "Transform a molecule file"
+    if contradiction == "reasoning":
+        saved.cursor["state"]["chat"]["_interleaved_thinking"] = True
+    elif contradiction == "trajectory":
+        saved.cursor["state"]["trajectory"] = saved.cursor["state"]["trajectory"][:1]
+    elif contradiction == "effective_kwargs":
+        candidate._llm_call_kwargs["temperature"] = 0.85
+    else:
+        instruction = "Different scientific task"
+    saved.cursor["sha256"] = _digest(saved.cursor["state"])
+    with pytest.raises(ValueError):
+        validate_turn_cursor(
+            candidate, saved.cursor, binding="fixture-task", instruction=instruction, absolute_deadline=saved.deadline
+        )
+    assert candidate._chat is None
+    assert candidate._llm.calls == []
+    assert list(candidate._session.root.iterdir()) == []
