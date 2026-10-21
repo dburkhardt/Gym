@@ -20,7 +20,9 @@ Select model and harness through the configuration, preserving the benchmark's s
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl --plan-only
 ```
 
-Check `results_dispatch_plan.json` and `results_planned_inputs.jsonl` for exact task IDs, ordering, repetitions and resolved model admission settings. Planning does not execute the benchmark. It also does not produce execution's materialized-input artifact.
+Check `results_dispatch_plan.json` and `results_planned_inputs.jsonl` for exact task IDs, ordering, repetitions and resolved model admission settings. Planning does not execute the benchmark, but it can invoke preparation and its dependency setup. Use the approved prepared input/cache settings if no new setup is intended. It also does not produce execution's materialized-input artifact.
+
+The run configuration must set the selected dataset split (for these benchmark datasets, `split: benchmark`, or pass `--split benchmark`). If it sets `dispatch_budget_s`, it must also set a finite `num_samples_in_parallel` (or pass the reviewed `--concurrency` value) or `max_resident_rollout_tasks`; otherwise native validation refuses the run. Keep the same settings in plan, execution and resume.
 
 Before dispatch, verify actual component imports, assets, memory, disk, ports and the complete task-plus-cleanup allowance. Enable the reviewed dispatch guard, captures and owned supervisor configuration described in the operator reference. Keep this campaign within its remaining $500 total compute/storage cap.
 
