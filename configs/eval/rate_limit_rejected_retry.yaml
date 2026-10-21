@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Explicit policy variant: at most three physical attempts per logical request.
+# Cooldown mode retries only observed HTTP 429; unknown outcomes are not retried.
+# Waiting consumes the caller's original task deadline. Provider timeout remains
+# per physical attempt, not a deadline for the whole retry schedule.
+config_paths:
+- configs/eval/rate_limit_peer_safe.yaml
+policy_model:
+  responses_api_models:
+    openai_model:
+      upstream_retry_policy:
+        max_attempts: 3
