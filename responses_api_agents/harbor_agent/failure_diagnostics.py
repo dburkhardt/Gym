@@ -42,6 +42,8 @@ _VERIFIER_ERRORS = frozenset(
 
 
 def _failure_kind(name: object, cause: object = None) -> str:
+    if name == "ModelMissingSubmissionError":
+        return "model_missing_submission"
     if name in {"NativeAgentIterationLimitError", "NativeAgentSurrenderError"}:
         return "harbor:agent_outcome_unscored"
     if name in _VERIFIER_ERRORS or cause == "verifier_failed":

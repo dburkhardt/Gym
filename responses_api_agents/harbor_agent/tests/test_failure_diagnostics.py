@@ -115,3 +115,12 @@ def test_required_empty_capture_is_not_itself_model_or_infrastructure_failure(st
     from responses_api_agents.harbor_agent.failure_diagnostics import required_artifact_failure
     assert required_artifact_failure([{"source": "/workspace", "status": status}], ["/workspace"]) == (None, None)
     assert required_artifact_failure([{"source": "/optional-log", "status": "failed"}], []) == (None, None)
+
+
+def test_missing_model_submission_is_not_infrastructure_failure():
+    for native in ({}, {"reward_valid": False, "failure_cause": "verifier_failed"}):
+        receipt = {**native, "exception_info": {"exception_type": "ModelMissingSubmissionError", "exception_message": "No submission"}, "verifier_result": None}
+        kind, reason = measurement_failure(receipt)
+        assert kind == "model_missing_submission"
+        assert reason
+        assert receipt["verifier_result"] is None
