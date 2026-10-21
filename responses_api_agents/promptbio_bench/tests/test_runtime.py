@@ -132,3 +132,24 @@ async def test_gym_run_response_contract(monkeypatch):
         result.response.output[0].content[0].text
         == '{"artifact_dir": "/artifacts/test", "scoring": "upstream avg_similarity"}'
     )
+
+
+def test_completion_never_resends_ambiguous_provider_failure(monkeypatch):
+    import urllib.error
+    from responses_api_agents.promptbio_bench.runtime import completion
+    failures = [TimeoutError("ambiguous"), urllib.error.URLError("disconnected"),
+                urllib.error.HTTPError("http://local", 503, "unavailable", {}, None),
+                urllib.error.HTTPError("http://local", 429, "limited", {}, None)]
+    for failure in failures:
+        calls = []
+        def fail(request, **kwargs):
+            calls.append(request)
+            raise failure
+        monkeypatch.setattr("urllib.request.urlopen", fail)
+        try:
+            completion("http://local/v1", "placeholder", {"model": "test"}, timeout=1)
+        except type(failure):
+            pass
+        else:
+            raise AssertionError("Expected original provider failure")
+        assert len(calls) == 1

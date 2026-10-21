@@ -13,7 +13,6 @@ import re
 import shutil
 import subprocess
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 from uuid import uuid4
@@ -88,18 +87,12 @@ def completion(base_url: str, api_key: str, payload: dict, *, timeout: float) ->
         data=json.dumps(payload).encode(),
         headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
     )
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as exc:
-            if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                raise RuntimeError(f"Inference HTTP {exc.code}") from None
-        except (TimeoutError, urllib.error.URLError):
-            if attempt == 2:
-                raise
-        time.sleep(2**attempt)
-    raise RuntimeError("Inference retry limit")
+    # A timeout or gateway error does not establish that inference was never
+    # forwarded. Admission/backoff belongs before dispatch in the shared gateway;
+    # this adapter must not create a second physical request after ambiguity.
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.load(response)
+
 
 
 def solve(
