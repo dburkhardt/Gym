@@ -16,7 +16,7 @@ SCORER_REVISION = "e2a1947894eac530900247f00c0b726363b540ed"
 FROZEN_SELECTION_SHA256 = "6432f4c88a94e4f5c14ae9aa0ccfecbf61a6e01cf947ef561e99fdc2cc5edd01"
 
 
-def prepare_frozen(snapshot: Path, selection: Path, output: Path) -> str:
+def prepare_frozen(snapshot: Path, selection: Path, output: Path) -> Path:
     """Recover the exact frozen sample from checksum-verified cached task definitions."""
     from tempfile import TemporaryDirectory
     from nemo_gym.dataset_staging import stage_file
@@ -38,10 +38,10 @@ def prepare_frozen(snapshot: Path, selection: Path, output: Path) -> str:
     with TemporaryDirectory() as directory:
         candidate = Path(directory) / "tasks.jsonl"
         candidate.write_text("".join(json.dumps(row) + "\n" for row in frozen))
-        return str(stage_file(candidate, output))
+        return stage_file(candidate, output)
 
 
-def prepare() -> str:
+def prepare() -> Path:
     """Prepare all released task definitions, retaining authoritative IDs."""
     if os.environ.get("PROMPTBIO_FROZEN_SELECTION"):
         return prepare_frozen(Path(os.environ["PROMPTBIO_TASK_SNAPSHOT"]),
@@ -70,7 +70,7 @@ def prepare() -> str:
         raise ValueError(f"Expected 244 published tasks, found {len(rows)}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    return str(output)
+    return output
 
 
 if __name__ == "__main__":
