@@ -654,7 +654,20 @@ def _eval_submit(args: argparse.Namespace, overrides: list[str]) -> None:
 
 
 def _eval_run(args: argparse.Namespace, overrides: list[str]) -> None:
+    plan_only = getattr(args, "plan_only", False)
+    # Include the documented Hydra-style spelling, with last override winning.
+    for override in overrides:
+        key, sep, value = override.lstrip("+").partition("=")
+        if key == "plan_only" and sep:
+            plan_only = value.lower() in ("true", "1")
     target = getattr(args, "target", None)
+    if plan_only:
+        if args.no_serve or target:
+            raise SystemExit(
+                "--plan-only requires end-to-end configured datasets; cannot combine with --no-serve or TARGET"
+            )
+        dispatch("nemo_gym.cli.eval:plan_rollout_collection", overrides)
+        return
     if target:
         # A task folder or `harbor:<dataset>` reference: prepare it, then run end to end.
         from nemo_gym.tasks.harbor.cli import run_target

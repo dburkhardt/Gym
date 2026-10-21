@@ -1506,6 +1506,14 @@ Pass each config with --config (it builds the list for you), e.g.:
                     dummy_value, top_level_value["responses_api_models"][actual_key]
                 )
 
+        # Planning is offline even when requested in YAML rather than by the CLI flag.
+        # Do not mutate the caller's parser options or accept truthy strings/numbers.
+        if "plan_only" in global_config_dict:
+            if type(global_config_dict["plan_only"]) is not bool:
+                raise ConfigError("plan_only must be a boolean")
+            if global_config_dict["plan_only"]:
+                parse_config = parse_config.model_copy(update={"offline": True})
+
         # Almost-server detection and reporting
         almost_servers = self.detect_and_report_almost_servers(global_config_dict)
 

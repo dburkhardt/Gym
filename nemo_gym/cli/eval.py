@@ -545,6 +545,15 @@ def _validate_prepared_split_file_exists(input_jsonl_fpath: Path, split: str, ou
 
 
 @exit_cleanly_on_config_error
+def plan_rollout_collection():
+    """Resolve an execution plan without allocating ports or starting services."""
+    config = get_global_config_dict(global_config_dict_parser_config=GlobalConfigDictParserConfig(offline=True))
+    with open_dict(config):
+        config["plan_only"] = True
+    e2e_rollout_collection()
+
+
+@exit_cleanly_on_config_error
 def e2e_rollout_collection():  # pragma: no cover
     from nemo_gym.rollout_collection import (
         E2ERolloutCollectionConfig,
@@ -750,6 +759,8 @@ def collect_rollouts():  # pragma: no cover
     )
 
     global_config_dict = get_global_config_dict()
+    if global_config_dict.get("plan_only", False):
+        raise ConfigError("plan_only cannot combine with --no-serve; use configured end-to-end eval run --plan-only")
     validate_eval_compatibility(global_config_dict)
     config = RolloutCollectionConfig.model_validate(global_config_dict)
     rch = RolloutCollectionHelper()

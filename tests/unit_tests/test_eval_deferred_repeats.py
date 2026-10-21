@@ -95,3 +95,143 @@ def test_invalid_deferred_repeat_rejected(tmp_path, value):
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
     with pytest.raises(ValueError, match="positive integer"):
         collect(path)
+
+
+@pytest.mark.parametrize("plan_mode", ["flag", "yaml"])
+def test_actual_plan_only_never_probes_ports_or_starts_services(tmp_path, plan_mode):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2]
+    sample = tmp_path / "sample.jsonl"
+    sample.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "task_id": f"benign-{i}",
+                    "responses_create_params": {"input": [{"role": "user", "content": "Choose Option 1"}]},
+                    "verifier_metadata": {"expected_answer": 1, "option_count": 2},
+                }
+            )
+            + "\n"
+            for i in range(4)
+        )
+    )
+    config = {
+        "config_paths": ["benchmarks/proteinlmbench/config.yaml"],
+        "policy_api_key": "offline",
+        "policy_base_url": "http://127.0.0.1:1/v1",
+        "use_cached_prepared_benchmarks": True,
+        "proteinlmbench": {
+            "resources_servers": {
+                "proteinlmbench": {
+                    "datasets": [
+                        {
+                            "name": "proteinlmbench",
+                            "type": "benchmark",
+                            "jsonl_fpath": str(sample),
+                            "prepare_script": "benchmarks/proteinlmbench/prepare.py",
+                            "num_repeats": 2,
+                        }
+                    ]
+                }
+            }
+        },
+    }
+    if plan_mode == "yaml":
+        config["plan_only"] = True
+    cfg = tmp_path / "runtime.json"
+    cfg.write_text(json.dumps(config))
+    script = """from unittest.mock import patch
+from nemo_gym.cli.main import main
+with patch("nemo_gym.global_config._find_open_port_using_range", side_effect=AssertionError("port probe forbidden")), patch("nemo_gym.cli.env.RunHelper.start", side_effect=AssertionError("services forbidden")):
+    main()
+"""
+    env = dict(os.environ, PYTHONPATH=str(source), NEMO_GYM_EXTRA_ROOTS=str(source))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            "eval",
+            "run",
+            "--config",
+            str(cfg),
+            "--model-type",
+            "openai_model",
+            "--model",
+            "fixture",
+            "--split",
+            "benchmark",
+            "--limit",
+            "4",
+            *(["--plan-only"] if plan_mode == "flag" else []),
+            "--output",
+            str(tmp_path / "results.jsonl"),
+        ],
+        cwd=source,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    plan = json.loads((tmp_path / "results_dispatch_plan.json").read_text())
+    assert plan["rollouts"] == 8
+    assert {row["task_id"]: row["rollouts"] for row in plan["task_distribution"]} == {
+        f"benign-{i}": 2 for i in range(4)
+    }
+    assert not (tmp_path / "results.jsonl").exists()
+
+
+def test_plan_only_no_serve_refused_before_dispatch(monkeypatch):
+    from argparse import Namespace
+
+    from nemo_gym.cli.main import _eval_run
+
+    monkeypatch.setattr("nemo_gym.cli.main.dispatch", lambda *args: pytest.fail("must not dispatch"))
+    with pytest.raises(SystemExit, match="cannot combine"):
+        _eval_run(Namespace(plan_only=True, no_serve=True, target=None), ["+plan_only=true"])
+
+
+@pytest.mark.parametrize("value", ["true", "false", 1, 0, None])
+def test_plan_only_parser_rejects_non_boolean(value):
+    from nemo_gym.config_types import ConfigError
+    from nemo_gym.global_config import GlobalConfigDictParserConfig
+
+    config = GlobalConfigDictParserConfig(
+        skip_load_from_cli=True,
+        skip_load_from_dotenv=True,
+        initial_global_config_dict=OmegaConf.create({"plan_only": value}),
+    )
+    with pytest.raises(ConfigError, match="must be a boolean"):
+        GlobalConfigDictParser().parse(config)
+
+
+def test_cli_false_overrides_yaml_plan_only(monkeypatch):
+    from nemo_gym.global_config import GlobalConfigDictParserConfig
+
+    parser = GlobalConfigDictParser()
+    monkeypatch.setattr(
+        GlobalConfigDictParser,
+        "parse_global_config_dict_from_cli",
+        lambda self: OmegaConf.create({"plan_only": False}),
+    )
+    # A real component with no port ensures runtime parsing probes, rather than
+    # silently inheriting offline mode from the YAML setting.
+    initial = OmegaConf.create(
+        {
+            "plan_only": True,
+            "resource": {
+                "resources_servers": {"impl": {"entrypoint": "app.py", "domain": "knowledge", "verified": False}}
+            },
+        }
+    )
+    monkeypatch.setattr(
+        "nemo_gym.global_config._find_open_port_using_range",
+        lambda **kw: (_ for _ in ()).throw(RuntimeError("runtime port probe")),
+    )
+    with pytest.raises(RuntimeError, match="runtime port probe"):
+        parser.parse(GlobalConfigDictParserConfig(skip_load_from_dotenv=True, initial_global_config_dict=initial))
