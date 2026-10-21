@@ -18,6 +18,7 @@ from benchmarks.ainsteinbench.native import MODEL
 from benchmarks.ainsteinbench.scoring import qualification
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log, prompt
 from benchmarks.ainsteinbench.trajectory import publish as publish_trajectory
+from nemo_gym.openai_utils import NeMoGymChatCompletionCreateParamsNonStreaming
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox.lifecycle import _publish
 from nemo_gym.server_utils import request
@@ -65,6 +66,32 @@ async def _execute_tool(environment, name, arguments):
             )
         return f"Exit code: {result.return_code}\nStdout:\n{result.stdout or ''}\nStderr:\n{result.stderr or ''}"
     return f"Unknown tool: {name}"
+
+
+def completion_payload(messages, tools):
+    """Convert response history to the shared request contract without changing the trace.
+
+    The creator appends message.to_dict() verbatim. Gym's response serializer
+    includes response-only annotations, which its strict request schema rejects.
+    Keep the original message (including annotations) in saved creator history;
+    omit only that response-only field from outbound assistant messages.
+    """
+    history = []
+    for message in messages:
+        if message.get("role") == "assistant" and "annotations" in message:
+            message = {key: value for key, value in message.items() if key != "annotations"}
+        history.append(message)
+    payload = {
+        "model": MODEL,
+        "messages": history,
+        "tools": tools,
+        "tool_choice": "auto",
+        "max_tokens": 16384,
+    }
+    # Validate with the existing endpoint contract, not an expanding field allowlist.
+    # Return the original supported values so reasoning/tool arguments are unchanged.
+    NeMoGymChatCompletionCreateParamsNonStreaming.model_validate(payload)
+    return payload
 
 
 async def creator_loop(*, raw, source, environment, completion, save):
@@ -187,13 +214,7 @@ class AInsteinAgent(BaseAgent):
         await isolate(environment, raw, output)
 
         async def completion(ordinal, messages, tools):
-            payload = {
-                "model": MODEL,
-                "messages": messages,
-                "tools": tools,
-                "tool_choice": "auto",
-                "max_tokens": 16384,
-            }
+            payload = completion_payload(messages, tools)
             headers = {
                 "x-nemo-gym-logical-call-id": f"ainstein:{lineage}:{ordinal}",
                 "x-nemo-gym-call-config-sha256": digest,

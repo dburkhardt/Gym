@@ -519,3 +519,123 @@ else:
     assert result.returncode == 0, result.stderr
     assert ("guard-accepted" if guard is True else "guard-refused") in result.stdout
     assert "unrecognized arguments" not in result.stderr
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "annotations",
+    [
+        None,
+        [
+            {
+                "type": "url_citation",
+                "url_citation": {
+                    "start_index": 0,
+                    "end_index": 1,
+                    "title": "fixture",
+                    "url": "https://example.invalid/fixture",
+                },
+            }
+        ],
+    ],
+)
+async def test_response_history_roundtrip_through_shared_chat_dispatch(annotations):
+    from functools import partial
+    from unittest.mock import AsyncMock
+
+    import httpx
+    from fastapi import FastAPI
+
+    from benchmarks.ainsteinbench.harbor_native import completion_payload
+    from benchmarks.ainsteinbench.native import MODEL
+    from nemo_gym.base_responses_api_model import SimpleResponsesAPIModel
+    from nemo_gym.openai_utils import NeMoGymChatCompletion
+
+    raw = next(iter(checked_source(SOURCE)[0].values()))
+    calls = []
+    returned = []
+    saved = []
+
+    async def provider(request, params):
+        calls.append(params.model_dump(exclude_unset=True))
+        message = (
+            {
+                "role": "assistant",
+                "content": None,
+                "reasoning_content": "fixture reasoning",
+                "tool_calls": [
+                    {
+                        "id": "fixture-tool",
+                        "type": "function",
+                        "function": {"name": "read_file", "arguments": '{"path":"x"}'},
+                    }
+                ],
+            }
+            if len(calls) == 1
+            else {"role": "assistant", "content": "```diff\n--- a/x\n+++ b/x\n```"}
+        )
+        message["annotations"] = annotations
+        return NeMoGymChatCompletion.model_validate(
+            {
+                "id": f"fixture-{len(calls)}",
+                "object": "chat.completion",
+                "created": 0,
+                "model": MODEL,
+                "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+            }
+        )
+
+    # Exercise the maintained shared dispatcher/parser/response serializer with a
+    # deterministic backend. Neither the creator loop nor parser is replaced.
+    server = SimpleNamespace(_invoke_chat_completions=provider, _finalize_served_response=AsyncMock())
+    api = FastAPI()
+    api.post("/v1/chat/completions")(partial(SimpleResponsesAPIModel.chat_completions_dispatch, server))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="http://fixture") as client:
+
+        async def completion(ordinal, messages, tools):
+            payload = completion_payload(messages, tools)
+            response = await client.post("/v1/chat/completions", json=payload)
+            assert response.status_code == 200, response.text
+            body = response.json()
+            returned.append(copy.deepcopy(body))
+            return body
+
+        class Env:
+            async def exec(self, *args, **kwargs):
+                return SimpleNamespace(return_code=0, stdout="file content", stderr="")
+
+        answer = await creator_loop(
+            raw=raw,
+            source=SOURCE,
+            environment=Env(),
+            completion=completion,
+            save=lambda messages: saved.append(copy.deepcopy(messages)),
+        )
+    assert answer == "--- a/x\n+++ b/x"
+    assert len(calls) == 2
+    original = returned[0]["choices"][0]["message"]
+    assert "annotations" in original and original["annotations"] == annotations
+    assert saved[0][-1] == original  # Full creator response remains preserved.
+    expected = {key: value for key, value in original.items() if key != "annotations"}
+    assert calls[1]["messages"][2] == expected
+    assert calls[1]["messages"][3] == {"role": "tool", "tool_call_id": "fixture-tool", "content": "file content"}
+    assert calls[1]["max_tokens"] == 16384 and "temperature" not in calls[1]
+
+
+def test_history_conversion_does_not_mutate_or_silently_drop_unknown_fields():
+    from pydantic import ValidationError
+
+    from benchmarks.ainsteinbench.harbor_native import completion_payload
+
+    message = {
+        "role": "assistant",
+        "content": "answer",
+        "annotations": [{"preserved": "raw trace"}],
+        "reasoning_content": "unchanged",
+    }
+    original = copy.deepcopy(message)
+    converted = completion_payload([message], creator_methods(SOURCE)["TOOLS"])
+    assert message == original
+    assert converted["messages"][0] == {key: value for key, value in original.items() if key != "annotations"}
+    with pytest.raises(ValidationError):
+        completion_payload([{**message, "unknown_response_extension": "reject"}], creator_methods(SOURCE)["TOOLS"])
