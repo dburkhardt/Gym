@@ -8,11 +8,11 @@ from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
 
-async def run_creator(argv: list[str], output: Path, *, timeout_s: float = 3600) -> None:
+async def run_creator(argv: list[str], output: Path, *, timeout_s: float = 3600, env: dict[str, str] | None = None) -> None:
     provider = LocalProvider(concurrency=1)
     command = shlex.join(argv) + ' > ' + shlex.quote(str(output / 'native-runtime.log')) + ' 2>&1'
     async with scoring_workspace(provider) as handle:
-        result = await provider.exec(handle, command, timeout_s=timeout_s)
+        result = await provider.exec(handle, command, timeout_s=timeout_s, env=env)
     _publish(output / 'execution.json', {
         'return_code': result.return_code, 'error_type': result.error_type,
         'timeout_s': timeout_s, 'process_group_settled': True,
