@@ -1,0 +1,161 @@
+{
+  "source_sha256": "22953574b3458e10ce52a3a0b7d5b2c928605fa1be7fab416a45a6738896cf26",
+  "note": "Saved public benchmark judge structured outputs only; deterministic control, not fresh model performance. File mapping paths are rebound to supplied control paths.",
+  "responses": [
+    {
+      "name": "StrategyRecommendation",
+      "arguments": {
+        "strategy": "approximate",
+        "parameters": {
+          "question": "Identify genes with significantly different mutation frequencies between tumor and matched normal samples using Fisher's exact test and return top 10 hits. The 10 gene records must match the reference; frequencies and odds ratio must match within 1% relative absolute error; p-value must match within +/-0.001; row order, column order, and header labels may differ."
+        },
+        "confidence": 0.95,
+        "reasoning": "The task is deterministic (Fisher's exact test) and produces a small CSV table of 10 records. The eval guideline explicitly permits row/column reordering and header differences, and specifies numeric tolerances (1% for frequencies/odds ratio, +/-0.001 for p-value), which aligns with the approximate strategy's 3-phase alignment for tabular data."
+      }
+    },
+    {
+      "name": "FileMappingResult",
+      "arguments": {
+        "mappings": [
+          {
+            "reference_file": "/home/ubuntu/projects/promptbio-overnight/cache/datasets--promptbio-ai--promptbio-bench-data/snapshots/078420b69e25c41c99a79135724b6ae6a6c82b69/tasks/b-4-3/ref_answer/top_10_differential_mutations.csv",
+            "candidate_file": "/home/ubuntu/projects/broad-eval-campaign/promptbio/pilot20-original-image/b-4-3/ecbddc5645a5484d/workspace/outputs/top_10_differential_mutations.csv",
+            "confidence": 0.98,
+            "reasoning": "Both files have the identical filename 'top_10_differential_mutations.csv' and are CSV format, directly matching the task output of top 10 differential mutations from Fisher's exact test on mutation frequency data."
+          }
+        ]
+      }
+    },
+    {
+      "name": "TableMeta",
+      "arguments": {
+        "delimiter": ",",
+        "comment_char": null,
+        "has_header": true,
+        "skip_rows": 0,
+        "reasoning": "The file uses commas to separate columns. The first line contains descriptive column names (Gene, Tumor_Mutated, etc.), indicating a header row. There are no comment lines (no # or % markers) and no non-comment metadata lines at the top.",
+        "confidence": 1.0
+      }
+    },
+    {
+      "name": "TableMeta",
+      "arguments": {
+        "delimiter": ",",
+        "comment_char": null,
+        "has_header": true,
+        "skip_rows": 0,
+        "reasoning": "The file uses commas to separate columns. The first line contains descriptive column names (Gene, Tumor_Mutated, etc.), so it is a header row. There are no comment lines (no lines starting with # or %) and no non-comment metadata lines at the top, so skip_rows is 0.",
+        "confidence": 1.0
+      }
+    },
+    {
+      "name": "AlignPlan",
+      "arguments": {
+        "needs_transpose": false,
+        "align_rows": true,
+        "align_columns": false,
+        "column_mapping": null,
+        "id_columns": [
+          "Gene"
+        ],
+        "row_order_sensitive": true,
+        "column_order_sensitive": false,
+        "pre_sort": false,
+        "sort_by": null,
+        "check_permutation": false,
+        "reasoning": "Both dataframes have identical column names, shapes (10x10), and structure. No transpose is needed. Column names match exactly, so no column mapping is required. The 'Gene' column uniquely identifies each row and serves as the natural ID for row alignment. Row order matters because the task requests 'top 10 hits' (a ranked list by significance). The data appears to already be in the same order, so pre-sorting is not necessary. Confidence is high due to exact column name matches and clear row identifier.",
+        "confidence": 1.0
+      }
+    },
+    {
+      "name": "ComparisonPlan",
+      "arguments": {
+        "column_configs": [
+          {
+            "name": "Tumor_Mutated",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0,
+            "cell_threshold": null,
+            "confidence": 0.95,
+            "reasoning": "Integer count column requiring exact match; RAE with tolerance 0 enforces cell-by-cell equality of mutation counts."
+          },
+          {
+            "name": "Tumor_Total",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0,
+            "cell_threshold": null,
+            "confidence": 0.95,
+            "reasoning": "Integer count column requiring exact match; RAE with tolerance 0 enforces cell-by-cell equality of total tumor samples."
+          },
+          {
+            "name": "Tumor_Frequency",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0.01,
+            "cell_threshold": null,
+            "confidence": 0.9,
+            "reasoning": "Float frequency column; task requires 1% relative absolute error, so RAE threshold of 0.01 (1%) is applied."
+          },
+          {
+            "name": "Normal_Mutated",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0,
+            "cell_threshold": null,
+            "confidence": 0.95,
+            "reasoning": "Integer count column requiring exact match; RAE with tolerance 0 enforces cell-by-cell equality of normal mutation counts."
+          },
+          {
+            "name": "Normal_Total",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0,
+            "cell_threshold": null,
+            "confidence": 0.95,
+            "reasoning": "Integer count column requiring exact match; RAE with tolerance 0 enforces cell-by-cell equality of total normal samples."
+          },
+          {
+            "name": "Normal_Frequency",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0.01,
+            "cell_threshold": null,
+            "confidence": 0.9,
+            "reasoning": "Float frequency column; task requires 1% relative absolute error, so RAE threshold of 0.01 (1%) is applied."
+          },
+          {
+            "name": "Frequency_Difference",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0.01,
+            "cell_threshold": null,
+            "confidence": 0.9,
+            "reasoning": "Float difference column; task requires 1% relative absolute error, so RAE threshold of 0.01 (1%) is applied."
+          },
+          {
+            "name": "Odds_Ratio",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": 0.01,
+            "cell_threshold": null,
+            "confidence": 0.9,
+            "reasoning": "Float odds ratio column; task requires 1% relative absolute error, so RAE threshold of 0.01 (1%) is applied."
+          },
+          {
+            "name": "P_Value",
+            "data_type": "numerical",
+            "strategy": "rae",
+            "cell_tolerance": null,
+            "cell_threshold": null,
+            "confidence": 0.85,
+            "reasoning": "P-values span orders of magnitude (8e-07 to 6e-03) and require absolute +/-0.001 tolerance rather than relative; cell_tolerance=None averages raw RAE values to capture overall similarity without imposing an inappropriate relative threshold."
+          }
+        ],
+        "overall_reasoning": "Gene is the ID column used for alignment and is excluded from comparison. All remaining 9 columns are numerical (int64 counts or float64 frequencies/ratios/p-values). Count columns use RAE with cell_tolerance=0 for exact integer matching. Frequency, difference, and odds ratio columns use RAE with cell_tolerance=0.01 to enforce the 1% relative absolute error requirement. P_Value uses RAE with cell_tolerance=None because its wide dynamic range makes a single relative tolerance unsuitable for the absolute +/-0.001 requirement. No categorical columns are present, so exact/overlap strategies and delimiters are not applicable.",
+        "overall_confidence": 0.92
+      }
+    }
+  ]
+}

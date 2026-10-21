@@ -250,9 +250,12 @@ async def grade_managed(
     endpoint: str,
     rollout_id: str,
     scorer_image: str | None = None,
+    scorer_memory_mib: int = 4096,
 ) -> list[float]:
     """One owned creator invocation preserves shared Detect/Recommend across runs."""
     validate_image(scorer_image)
+    if scorer_memory_mib <= 0:
+        raise ValueError("Invalid scorer memory bound")
     for run in runs:
         validate_saved_outputs(run / "workspace/outputs")
     output.mkdir(parents=True, exist_ok=False)
@@ -266,6 +269,7 @@ async def grade_managed(
         "run_receipts": [hashlib.sha256((r / "receipt.json").read_bytes()).hexdigest() for r in runs],
         "implementation": source_hashes(),
         "scorer_image": scorer_image,
+        "scorer_memory_mib": scorer_memory_mib,
     }
     digest = configuration_digest(signature)
     _publish(output / "identity.json", {"lineage": lineage, "signature": signature})
@@ -326,7 +330,7 @@ async def grade_managed(
             image=scorer_image,
             ttl_s=3660,
             workdir="/creator",
-            resources=SandboxResources(cpu=2, memory_mib=4096),
+            resources=SandboxResources(cpu=2, memory_mib=scorer_memory_mib),
             metadata={"workload": "promptbio-judge", "run": lineage},
             env={
                 "PYTHONPATH": "/controller",

@@ -54,3 +54,16 @@ Set `PROMPTBIO_FROZEN_SELECTION` to the existing campaign `selection.json` and `
 ## Native scorer safety variant
 
 The pinned matcher accepts arbitrary model-selected candidate paths. The maintained wrapper validates that each returned reference is in the supplied reference list, rejects duplicate reference mappings, and permits only null or supplied candidate paths after resolving paths. An attempted reference-as-candidate self-comparison is a verifier failure, with the raw mapping retained. This is an explicit scoring-safety variant; ordinary valid mappings and creator metrics are unchanged, but unsafe historical outputs are not silently reclassified. A model-free normal/malicious/null/duplicate control covers the boundary. Full paired image controls remain pending.
+
+## Reproducible evaluator-image qualification
+
+`Scorer.Dockerfile` and `scorer-requirements.txt` reproduce the historical Python judge package versions recovered from the existing worker. Build from the verified historical solver digest `sha256:7020e2509833989127e3404131d4897e33ff0b922635f98ca194a6dc88f6fcb1` (Python 3.12), then record the resulting image ID and package manifests. This is a version-pinned definition, not a claim of bitwise rebuild reproducibility: system packages are captured after installation. It does not add every optional R, Julia or single-cell dependency listed by the creator. Missing handlers stay explicit runtime blockers; the fixed20 is not resampled.
+
+The `qualify_runtime` module executes the actual creator pipeline inside the managed judge container against the original frozen `b-4-3` reference copied as an oracle output, paired with missing output. A loopback-only deterministic provider returns preserved structured judge fixtures through the real shared UDS bridge/guard. Expected scores are `[1, 0]`; the shared strategy pass must occur once. These are infrastructure controls, not benchmark results or native Gym model-capture acceptance. No provider key is accepted by this command.
+
+```bash
+docker build --pull=false --build-arg BASE_IMAGE=sha256:7020e2509833989127e3404131d4897e33ff0b922635f98ca194a6dc88f6fcb1 -f responses_api_agents/promptbio_bench/Scorer.Dockerfile -t promptbio-scorer-qualified .
+python -m responses_api_agents.promptbio_bench.qualify_runtime --task /pinned/tasks/b-4-3 --task-sha256 VERIFIED_TASK_SHA --scorer /pinned/creator --image sha256:BUILT_IMAGE_SHA --output /new/control-directory
+```
+
+Before either command, validate worker identity, available memory/disk, total spending and any existing lease deadline. No image build or runtime control has yet been accepted for this new isolated scorer. The historical host judge environment is not an approved fallback.
