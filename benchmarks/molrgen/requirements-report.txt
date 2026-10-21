@@ -1,0 +1,4 @@
+# Qualified local reporting runtime; exact versions are retained in every report.
+rdkit==2026.9.1
+numpy==2.3.2
+scipy==1.18.0
