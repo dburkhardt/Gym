@@ -86,6 +86,16 @@ def owned_members(token, created_after):
                 members.append(process)
         except (psutil.NoSuchProcess, ProcessLookupError):
             continue
+        except psutil.AccessDenied:
+            # A process can exit between the status and environment reads.
+            # Only a fresh observation of termination permits omission; a live
+            # inaccessible process still prevents ownership confirmation.
+            try:
+                if process.status() == psutil.STATUS_ZOMBIE:
+                    continue
+            except (psutil.NoSuchProcess, ProcessLookupError):
+                continue
+            raise
     return members
 
 

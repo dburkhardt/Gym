@@ -150,3 +150,46 @@ def test_nonfinite_identity_refused(tmp_path):
     receipt(tmp_path, coordinator={"pid": 99999999, "created": float("nan")})
     with pytest.raises(RuntimeError, match="Invalid service process identity"):
         ServiceOwnership(tmp_path, {"source": "frozen"})
+
+
+@pytest.mark.parametrize("after_denial", ["gone", "zombie", "running", "denied"])
+def test_environment_access_race_requires_observed_termination(monkeypatch, after_denial):
+    from types import SimpleNamespace
+
+    from nemo_gym.cli.service_ownership import TOKEN, owned_members
+
+    class RacingProcess:
+        denied = False
+
+        def create_time(self):
+            return 10
+
+        def uids(self):
+            return SimpleNamespace(real=os.getuid())
+
+        def status(self):
+            if self.denied:
+                if after_denial == "gone":
+                    raise psutil.NoSuchProcess(123)
+                if after_denial == "denied":
+                    raise psutil.AccessDenied(123)
+                if after_denial == "zombie":
+                    return psutil.STATUS_ZOMBIE
+            return psutil.STATUS_RUNNING
+
+        def environ(self):
+            self.denied = True
+            raise psutil.AccessDenied(123)
+
+    owned = SimpleNamespace(
+        create_time=lambda: 10,
+        uids=lambda: SimpleNamespace(real=os.getuid()),
+        status=lambda: psutil.STATUS_RUNNING,
+        environ=lambda: {TOKEN: "owned"},
+    )
+    monkeypatch.setattr(psutil, "process_iter", lambda: iter([RacingProcess(), owned]))
+    if after_denial in {"gone", "zombie"}:
+        assert owned_members("owned", 0) == [owned]
+    else:
+        with pytest.raises(psutil.AccessDenied):
+            owned_members("owned", 0)
