@@ -15,6 +15,10 @@ class PBenchVerifier(BaseVerifier):
         self.source = Path(source)
 
     async def verify(self):
+        if self.task.config.verifier.environment_mode != "separate":
+            raise ValueError("P-Bench requires separate artifact-only verification")
+        # Harbor rematerializes declared /workspace artifacts at their original
+        # path in the separate verifier, including source-job regrades.
         workspace = self.trial_paths.verifier_dir / "saved-workspace"
         await self.environment.download_dir("/workspace", workspace)
         result = await regrade_managed(

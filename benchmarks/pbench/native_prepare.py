@@ -52,6 +52,7 @@ def native_prepare(source: Path, destination: Path, size: int = 5) -> Path:
             text = (
                 config.read_text()
                 .replace("allow_internet = false", 'network_mode = "no-network"')
+                .replace("[verifier]\n", '[verifier]\nenvironment_mode = "separate"\n')
                 .replace("[environment]\n", f'[environment]\ndocker_image = "{IMAGE}"\nworkdir = "/workspace"\n')
             )
             config.write_text('artifacts = ["/workspace"]\n' + text)
