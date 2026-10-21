@@ -35,6 +35,12 @@ def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
         assert config.environment.network_mode.value == "no-network"
         assert config.verifier.environment_mode == "separate"
         assert not (task / "environment").exists()
+        if row["verifier_metadata"]["blocked_reason"]:
+            assert (
+                config.environment.docker_image
+                == "sha256:44e33aeed3ba691bcff99846141ffd329edf6b32060841b0f151d3867adc9df0"
+            )
+            assert config.environment.workdir == "/opt/Cactus"
 
 
 @pytest.mark.asyncio
@@ -336,3 +342,23 @@ async def test_native_scorer_accepts_absent_stderr(tmp_path):
     )
     result = await verifier.verify()
     assert result.rewards == {"score": 100, "tests_passed": 1, "tests_total": 1}
+
+
+@pytest.mark.asyncio
+async def test_tool_error_observation_preserved_but_cancellation_propagates():
+    import asyncio
+
+    from benchmarks.ainsteinbench.harbor_native import execute_tool
+
+    class Env:
+        async def exec(self, *args):
+            raise RuntimeError("missing path")
+
+    assert await execute_tool(Env(), "read_file", {"path": "/missing"}) == "Error: missing path"
+
+    class Cancelled:
+        async def exec(self, *args):
+            raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await execute_tool(Cancelled(), "read_file", {"path": "x"})

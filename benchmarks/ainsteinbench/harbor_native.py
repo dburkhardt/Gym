@@ -32,6 +32,17 @@ class NativeNoSolutionError(RuntimeError):
 
 
 async def execute_tool(environment, name, arguments):
+    try:
+        return await _execute_tool(environment, name, arguments)
+    except KeyError:
+        raise
+    except Exception as error:
+        # Creator DockerAgent returns tool execution errors to the model.
+        # Cancellation remains BaseException and propagates to Harbor cleanup.
+        return f"Error: {error}"
+
+
+async def _execute_tool(environment, name, arguments):
     if name == "write_file":
         with TemporaryDirectory() as directory:
             file = Path(directory) / "content"

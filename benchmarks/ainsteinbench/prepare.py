@@ -19,13 +19,18 @@ def stage(source: Path, destination: Path):
         temp = Path(temporary)
         for task_id, raw in rows.items():
             supported = raw["question_type"] == "multi_swe_bench"
-            image = IMAGES[int(raw["content"]["pr_number"])] if supported else IMAGES[2373]
-            # ET uses the inert carrier only and fails before solver/model work.
+            image = (
+                IMAGES[int(raw["content"]["pr_number"])]
+                if supported
+                else "sha256:44e33aeed3ba691bcff99846141ffd329edf6b32060841b0f151d3867adc9df0"
+            )
+            # ET remains registered against its actual preserved image, but blocked.
             blocker = (
                 None
                 if supported
                 else "ET gold native build timeout; reference/cache isolation and perturbation validity unresolved"
             )
+            workdir = "/home/pyscf" if supported else raw["environment"]["working_directory"]
             records.append(
                 {
                     "task_id": task_id,
@@ -51,7 +56,7 @@ timeout_sec = 3600
 environment_mode = "separate"
 [environment]
 docker_image = "{image}"
-workdir = "/home/pyscf"
+workdir = "{workdir}"
 cpus = 1
 memory_mb = 4096
 storage_mb = 10240
