@@ -26,25 +26,7 @@ def validate_identity(packet: dict, config: dict) -> dict:
     for relative, expected in pins["creator"].items():
         if hashlib.sha256((root / relative).read_bytes()).hexdigest() != expected:
             raise ValueError("Creator source drift: " + relative)
-    for relative in ("harnesses/opencode", "tasksets/bioagent", "judges/pipeline"):
-        sys.path.insert(0, str(root / relative))
-    modules = {
-        name: importlib.import_module(name)
-        for name in (
-            "verifiers.v1",
-            "bioagent_opencode.harness",
-            "bioagent_taskset.taskset",
-            "bioagent_taskset.scoring",
-            "bioagent_judge.judge",
-        )
-    }
-    vfroot = Path(modules["verifiers.v1"].__file__).parent
-    for relative, expected in pins["verifiers"].items():
-        if hashlib.sha256((vfroot / relative).read_bytes()).hexdigest() != expected:
-            raise ValueError("Verifiers source drift: " + relative)
-    for name, module in modules.items():
-        if name != "verifiers.v1" and not Path(module.__file__).resolve().is_relative_to(root):
-            raise ValueError("Creator imported from an unexpected checkout")
+    modules = {}
     metadata = Path(config["taskset"]["metadata_path"])
     if hashlib.sha256(metadata.read_bytes()).hexdigest() != pins["metadata_sha256"]:
         raise ValueError("Frozen metadata changed")
@@ -70,8 +52,9 @@ def validate_identity(packet: dict, config: dict) -> dict:
         if hashlib.sha256(Path(path).read_bytes()).hexdigest() != expected:
             raise ValueError("Selected Gym source changed")
     if (
-        os.path.abspath(sys.executable) != packet["interpreter"]["path"]
-        or hashlib.sha256(Path(sys.executable).resolve().read_bytes()).hexdigest() != packet["interpreter"]["sha256"]
+        os.path.abspath(sys.executable) != packet["parent_interpreter"]["path"]
+        or hashlib.sha256(Path(sys.executable).resolve().read_bytes()).hexdigest()
+        != packet["parent_interpreter"]["sha256"]
     ):
         raise ValueError("Native interpreter changed")
     manifest_path = Path(packet["asset_manifest"])
@@ -160,6 +143,32 @@ def main() -> None:
     packet["creator_root"] = str(snapshot_creator(Path(packet["creator_root"]), args.packet.parent / "creator-source"))
     config = packet["native_config"]
     identity = validate_identity(packet, config)
+    # Import qualification runs under the creator lock, never this Gym environment.
+    import subprocess
+
+    child_packet = args.packet.parent / "creator-validation-packet.json"
+    publish(child_packet, packet)
+    validation = subprocess.run(
+        [
+            packet["interpreter"]["path"],
+            "-m",
+            "benchmarks.bioagentbench.creator_worker",
+            "--packet",
+            str(child_packet),
+            "--validate-only",
+        ],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(args.packet.parent),
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        },
+        capture_output=True,
+        timeout=60,
+    )
+    (args.packet.parent / "creator-validation.log").write_bytes(validation.stdout + validation.stderr)
+    if validation.returncode:
+        raise RuntimeError("Exact creator runtime import qualification failed before execution")
+    identity["creator_runtime"] = json.loads((args.packet.parent / "creator-imports.json").read_text())
     packet["digest"] = hashlib.sha256(
         json.dumps({"selected_packet_digest": packet["digest"], "actual_runtime": identity}, sort_keys=True).encode()
     ).hexdigest()

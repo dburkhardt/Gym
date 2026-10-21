@@ -113,7 +113,7 @@ async def qualify(packet: dict, directory: Path) -> None:
                 handle,
                 shlex.join(
                     [
-                        packet["interpreter"]["path"],
+                        packet["parent_interpreter"]["path"],
                         "-m",
                         "benchmarks.bioagentbench.worker",
                         "--packet",

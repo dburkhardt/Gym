@@ -3,6 +3,7 @@
 """Run creator Verifiers unchanged, replacing only owned runtime and transport."""
 
 import asyncio
+import hashlib
 import hmac
 import json
 import shutil
@@ -14,7 +15,6 @@ from urllib.parse import urlsplit
 
 import httpx
 from aiohttp import web
-from openai import AsyncOpenAI
 
 from benchmarks.bioagentbench.runtime import runtime_class
 from benchmarks.bioagentbench.transport import NativeTransport
@@ -72,33 +72,75 @@ async def interception_relay(*, endpoint: str, secret: str, socket_path: Path):
 
 
 async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
-    """Delegate one frozen task to native Environment/run_eval; never native resume."""
-    import verifiers.v1 as vf
-    import verifiers.v1.runtimes as runtimes
-    from bioagent_opencode.harness import OpenCodeHarness
-    from verifiers.v1 import judge
-    from verifiers.v1.cli.eval import runner
-    from verifiers.v1.cli.resolve import narrow_config
-    from verifiers.v1.clients import config as clients
-    from verifiers.v1.clients.eval import EvalClient
-    from verifiers.v1.configs.eval import EvalConfig
+    """Parent owns one sandbox and bridge; exact creator lock runs in a child."""
+    import os
+    import secrets
+    import shlex
+    import time
+    from types import SimpleNamespace
+
+    from benchmarks.bioagentbench.runtime_channel import RuntimeServer
+    from nemo_gym.sandbox.guarded_chat_transport import publish
+    from nemo_gym.sandbox.providers.local.provider import LocalProvider
+    from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
     if config.get("resume") or config.get("num_rollouts") != 1 or config.get("max_concurrent") != 1:
         raise ValueError("Exactly one fresh creator rollout is supported")
-    if config["taskset"].get("task_ids") or config["taskset"]["task_id"] != packet["task_id"]:
-        raise ValueError("Frozen native task selection changed")
-    if config["model"] != packet["model"] or config["taskset"]["task"]["judge"]["model"] != packet["model"]:
-        raise ValueError("All native model roles must match the admitted model")
-    if config["taskset"]["staging"] != "local":
-        raise ValueError("Qualified public assets must be staged before native execution")
-    if config.get("retries", {}).get("rollout", {}).get("max_retries", 0) != 0:
-        raise ValueError("Whole-rollout retries are not permitted")
+    if config["taskset"]["task_id"] != packet["task_id"] or config["model"] != packet["model"]:
+        raise ValueError("Creator task/model binding changed")
+    if config["taskset"]["task"]["judge"]["model"] != packet["model"]:
+        raise ValueError("Creator judge model changed")
+    if config["timeout"] != {"setup": 3600, "rollout": 14400, "finalize": 3600, "scoring": 3600}:
+        raise ValueError("Creator phase budgets changed")
+    runtime = {
+        "type": "docker",
+        "image": packet["image"],
+        "workdir": "/app",
+        "cpu": 2,
+        "memory": 8,
+        "gpu": None,
+        "disk": None,
+    }
+    if any(runtime.get(k) != v for k, v in config["harness"]["runtime"].items()):
+        raise ValueError("Unqualified native runtime override")
     output.mkdir(parents=True, exist_ok=False)
-    with tempfile.TemporaryDirectory(prefix="bioagent-", dir="/tmp") as temporary:
+    deadline = time.time() + 25980
+    with tempfile.TemporaryDirectory(prefix="bioagent-parent-", dir="/tmp") as temporary:
         bridge = Path(temporary)
-        shutil.copyfile(Path(__file__).with_name("relay.py"), bridge / "relay.py")
+        os.chmod(bridge, 0o700)
+        public_bridge = bridge / "container"
+        public_bridge.mkdir()
+        shutil.copyfile(Path(__file__).with_name("relay.py"), public_bridge / "relay.py")
         workspace = output / "workspace"
-        workspace.mkdir()
+        workspace.mkdir(exist_ok=False)
+
+        class Base:
+            def __init__(self, name):
+                self.name = name
+
+        class Config(SimpleNamespace):
+            def model_dump(self):
+                return vars(self)
+
+        Managed = runtime_class(
+            workspace=workspace,
+            source_dir=Path(config["taskset"]["data_root"]) / packet["task_id"],
+            receipt=output / "sandbox-lifecycle.json",
+            image=packet["image"],
+            bridge_dir=public_bridge,
+            runtime_types=(Base, SimpleNamespace, SimpleNamespace),
+        )
+        backend = Managed(
+            Config(**runtime), name="bioagent-" + hashlib.sha256(packet["lineage"].encode()).hexdigest()[:24]
+        )
+        token = secrets.token_hex(32)
+        operations = RuntimeServer(
+            backend,
+            socket=bridge / "runtime.sock",
+            token=token,
+            deadline=deadline,
+            receipts=output.parent / "runtime-operations",
+        )
         transport = NativeTransport(
             endpoint=packet["endpoint"],
             lineage=packet["lineage"],
@@ -106,80 +148,131 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
             model=packet["model"],
             output=output / "calls",
         )
-        Managed = runtime_class(
-            workspace=workspace,
-            source_dir=Path(config["taskset"]["data_root"]) / packet["task_id"],
-            receipt=output / "sandbox-lifecycle.json",
-            image=packet["image"],
-            bridge_dir=bridge,
-        )
-        # Verifiers must produce a host-loopback interception URL, which launch below
-        # explicitly tunnels into the isolated container. This is not host networking.
-        Managed.is_local = True
+        interception = None
+        interception_used = False
+        app = web.Application(client_max_size=16 * 1024 * 1024)
 
-        class GuardedEvalClient(EvalClient):
-            def __init__(self, base_url, api_key, headers=None):
-                self.base_url, self.api_key, self.headers = base_url, api_key, dict(headers or {})
-                self.http = httpx.AsyncClient(transport=transport, timeout=600)
+        async def authenticated(incoming):
+            if not hmac.compare_digest(incoming.headers.get("x-bioagent-ipc-token", ""), token):
+                raise web.HTTPUnauthorized()
 
-        def sdk(config):
-            return AsyncOpenAI(
-                base_url="http://native/v1",
-                api_key="task-local-placeholder",
-                http_client=httpx.AsyncClient(transport=transport, timeout=600),
-                max_retries=0,
+        async def model(incoming):
+            await authenticated(incoming)
+            response = await transport.handle_async_request(
+                httpx.Request("POST", "http://native/v1/chat/completions", content=await incoming.read())
             )
-
-        original = (runtimes.DockerRuntime, clients.EvalClient, judge.build_async_openai, OpenCodeHarness.launch)
-        original_launch = OpenCodeHarness.launch
-
-        async def launch(self, ctx, trace, runtime, endpoint, secret, mcp_urls):
-            if mcp_urls:
-                raise ValueError("Unqualified external MCP services are not exposed by this frozen recipe")
-            async with interception_relay(endpoint=endpoint, secret=secret, socket_path=bridge / "intercept.sock"):
-                await runtime.run_background(
-                    [
-                        "python",
-                        "/gym-bridge/relay.py",
-                        "--socket",
-                        "/gym-bridge/intercept.sock",
-                        "--port-file",
-                        ".vf-relay-port.json",
-                    ],
-                    {},
-                    ".vf-relay.log",
-                )
-                async with asyncio.timeout(30):
-                    while True:
-                        try:
-                            port = json.loads(await runtime.read(".vf-relay-port.json"))["port"]
-                            break
-                        except (RuntimeError, ValueError, KeyError):
-                            await asyncio.sleep(0.1)
-                return await original_launch(
-                    self, ctx, trace, runtime, f"http://127.0.0.1:{port}/v1", secret, mcp_urls
-                )
-
-        if not _OWNER.acquire(blocking=False):
-            raise RuntimeError("Native creator module patches already owned by another invocation")
-        try:
-            runtimes.DockerRuntime = Managed
-            clients.EvalClient = GuardedEvalClient
-            judge.build_async_openai = sdk
-            OpenCodeHarness.launch = launch
-            selected = narrow_config(
-                EvalConfig, ["--taskset.id", "bioagent-taskset", "--harness.id", "bioagent-opencode"]
-            )
-            resolved = selected.model_validate(
-                {**config, "output_dir": str(output / "native"), "push": False, "rich": False}
-            )
-            traces = await runner.run_eval(vf.Environment(resolved), resolved)
-            result = [trace.model_dump(mode="json") for trace in traces]
-            (output / "traces.json").write_text(json.dumps(result, indent=2))
-            return result
-        finally:
-            runtimes.DockerRuntime, clients.EvalClient, judge.build_async_openai, OpenCodeHarness.launch = original
             try:
-                await transport.aclose()
+                downstream = web.StreamResponse(
+                    status=response.status_code,
+                    headers={"Content-Type": response.headers.get("content-type", "application/json")},
+                )
+                await downstream.prepare(incoming)
+                async for chunk in response.aiter_raw():
+                    await downstream.write(chunk)
+                await downstream.write_eof()
+                return downstream
             finally:
-                _OWNER.release()
+                await response.aclose()
+
+        async def start_interception(incoming):
+            nonlocal interception, interception_used
+            await authenticated(incoming)
+            if interception_used:
+                raise web.HTTPConflict(text="Interception replay forbidden")
+            body = await incoming.json()
+            if set(body) != {"endpoint", "secret"}:
+                raise web.HTTPBadRequest()
+            interception_used = True
+            interception = interception_relay(
+                endpoint=body["endpoint"], secret=body["secret"], socket_path=public_bridge / "intercept.sock"
+            )
+            await interception.__aenter__()
+            return web.json_response({"started": True})
+
+        async def stop_interception(incoming):
+            nonlocal interception
+            await authenticated(incoming)
+            if interception is None:
+                raise web.HTTPConflict(text="No owned interception")
+            owned, interception = interception, None
+            await owned.__aexit__(None, None, None)
+            return web.json_response({"stopped": True})
+
+        app.router.add_post("/v1/chat/completions", model)
+        app.router.add_post("/interception/start", start_interception)
+        app.router.add_post("/interception/stop", stop_interception)
+        runner = web.AppRunner(app, shutdown_timeout=610)
+        original_error = None
+        try:
+            await operations.start()
+            await runner.setup()
+            await web.UnixSite(runner, str(bridge / "model.sock")).start()
+            child = {
+                **packet,
+                "native_config": config,
+                "runtime_config": runtime,
+                "runtime_socket": str(bridge / "runtime.sock"),
+                "model_socket": str(bridge / "model.sock"),
+                "ipc_token": token,
+                "deadline": deadline,
+                "execution_output": str(output),
+                "receipt_root": str(output.parent),
+            }
+            child_path = bridge / "creator-packet.json"
+            publish(child_path, child)
+            os.chmod(child_path, 0o600)
+            provider = LocalProvider(concurrency=1, workspace_root="/tmp")
+            async with scoring_workspace(provider) as handle:
+                command = shlex.join(
+                    [
+                        "env",
+                        "-i",
+                        "PATH=/usr/bin:/bin",
+                        "HOME=" + str(output.parent),
+                        "PYTHONPATH=" + str(Path(__file__).resolve().parents[2]),
+                        "BIOAGENT_LOCAL_KEY=task-local-placeholder",
+                        packet["interpreter"]["path"],
+                        "-m",
+                        "benchmarks.bioagentbench.creator_worker",
+                        "--packet",
+                        str(child_path),
+                    ]
+                )
+                command += " > " + shlex.quote(str(output.parent / "creator.log")) + " 2>&1"
+                result = await provider.exec(
+                    handle,
+                    command,
+                    timeout_s=max(0, deadline - time.time()),
+                    terminate_background_children=True,
+                    env={
+                        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+                        "BIOAGENT_LOCAL_KEY": "task-local-placeholder",
+                    },
+                )
+                if result.error_type or result.return_code:
+                    raise RuntimeError("Creator process failed; not a scientific zero")
+            return json.loads((output.parent / "creator-result.json").read_text())["traces"]
+        except BaseException as error:
+            original_error = error
+            raise
+        finally:
+
+            async def cleanup():
+                try:
+                    await operations.close()
+                finally:
+                    try:
+                        if interception is not None:
+                            await interception.__aexit__(None, None, None)
+                    finally:
+                        try:
+                            await runner.cleanup()
+                        finally:
+                            await transport.aclose()
+
+            try:
+                await _settle(asyncio.create_task(cleanup()))
+            except BaseException as cleanup_error:
+                if original_error is None:
+                    raise
+                original_error.add_note(f"Parent owned cleanup also failed: {cleanup_error}")

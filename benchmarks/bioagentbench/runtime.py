@@ -24,11 +24,21 @@ from nemo_gym.sandbox.lifecycle import _owned_sandbox
 
 
 def runtime_class(
-    *, workspace: Path, source_dir: Path, receipt: Path, image: str, ttl_s: int = 25380, bridge_dir: Path | None = None
+    *,
+    workspace: Path,
+    source_dir: Path,
+    receipt: Path,
+    image: str,
+    ttl_s: int = 25380,
+    bridge_dir: Path | None = None,
+    runtime_types=None,
 ) -> type[Runtime]:
     """Create a single-task native Runtime class without a second orchestration loop."""
-    from verifiers.v1.runtimes.base import ProgramResult, Runtime
-    from verifiers.v1.runtimes.docker import DockerRuntimeInfo
+    if runtime_types is None:
+        from verifiers.v1.runtimes.base import ProgramResult, Runtime
+        from verifiers.v1.runtimes.docker import DockerRuntimeInfo
+    else:
+        Runtime, ProgramResult, DockerRuntimeInfo = runtime_types
 
     if not re.fullmatch(r"(?:[^\s]+@)?sha256:[0-9a-f]{64}", image):
         raise ValueError("An immutable qualified BioAgent image is required")

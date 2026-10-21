@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shlex
+import sys
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -166,6 +167,7 @@ class Agent(SimpleResponsesAPIAgent):
             "native_config": native,
             "selected_sources": {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in files},
             "interpreter": interpreter_receipt,
+            "parent_interpreter": selected_interpreter(Path(sys.executable))[1],
         }
         packet["digest"] = hashlib.sha256(json.dumps(packet, sort_keys=True).encode()).hexdigest()
         publish(out / "packet.json", packet)
@@ -176,7 +178,7 @@ class Agent(SimpleResponsesAPIAgent):
                     handle,
                     shlex.join(
                         [
-                            str(interpreter),
+                            sys.executable,
                             "-m",
                             "benchmarks.bioagentbench.worker",
                             "--packet",
