@@ -58,6 +58,7 @@ from responses_api_agents.harbor_agent.failure_diagnostics import (
     required_artifact_failure,
 )
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
+from responses_api_agents.harbor_agent.resource_admission import StaticRayResourceError, static_resource_feasibility
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
 
@@ -83,6 +84,9 @@ class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
     # Logical reservation for the whole trial on its Ray worker, including local
     # Docker children and sidecars. This is admission, not a container memory limit.
     harbor_ray_task_memory_bytes: Optional[int] = Field(default=None, gt=0, strict=True)
+
+    # Explicit static placement only; not suitable for unconstrained autoscaling pools.
+    harbor_ray_static_resource_preflight: bool = False
 
     # --- Harbor agent settings ---
     # Name of a built-in Harbor agent (e.g. "terminus-2", "claude-code", "aider").
@@ -482,6 +486,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
             failure_reason = None
             failure_kind = None
             failure_metadata = {}
+            resource_admission = None
             try:
                 params = dict(
                     job_config_dict=job_config_dict,
@@ -508,6 +513,16 @@ class HarborAgent(SimpleResponsesAPIAgent):
                     resource_options["num_cpus"] = self.config.harbor_ray_task_num_cpus
                 if self.config.harbor_ray_task_memory_bytes is not None:
                     resource_options["memory"] = self.config.harbor_ray_task_memory_bytes
+                if self.config.harbor_ray_static_resource_preflight:
+                    resource_admission = static_resource_feasibility(await asyncio.to_thread(ray.nodes), resource_options)
+                    admission_path = jobs_dir / f"{job_name}.ray-admission.json"
+                    admission_path.parent.mkdir(parents=True, exist_ok=True)
+                    _publish(admission_path, resource_admission)
+                    if not resource_admission["feasible"]:
+                        raise StaticRayResourceError(
+                            f"No ALIVE node in declared static Ray pool can satisfy {resource_admission['requested']}; "
+                            f"see {admission_path}"
+                        )
                 if resource_options:
                     runner = runner_ray_remote.options(**resource_options)
                 future = runner.remote(_run_harbor_job_sync, params)
@@ -608,9 +623,11 @@ class HarborAgent(SimpleResponsesAPIAgent):
                         "exception_type": type(e).__name__,
                         "exception_message": str(e),
                         "job_dir": str(jobs_dir / job_name),
-                        "model_execution_status": "unknown",
+                        "model_execution_status": "not_started" if isinstance(e, StaticRayResourceError) else "unknown",
                     }
                 }
+                if resource_admission is not None:
+                    failure_metadata["ray_resource_admission"] = resource_admission
                 trial_result = None
                 trajectory = None
                 agent_error_flags = {}

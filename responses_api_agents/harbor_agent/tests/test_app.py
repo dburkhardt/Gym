@@ -1136,3 +1136,28 @@ async def test_run_passes_parent_guard_decision_to_worker_job(authoritative):
         ):
             await server.run(body)
         assert build.call_args.kwargs["gym_provider_dispatch_guard"] is (authoritative is True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("feasible", [False, True])
+async def test_static_resource_preflight_before_remote(tmp_path, feasible):
+    server = _make_server(harbor_ray_task_memory_bytes=22, harbor_ray_static_resource_preflight=True)
+    inventory = [{"Alive": True, "NodeID": "fixed", "Resources": {"CPU": 1, "memory": 22 if feasible else 21}}]
+    with (
+        _harbor_run_mocks() as runner,
+        patch("responses_api_agents.harbor_agent.app.ray.nodes", return_value=inventory),
+        patch.object(HarborAgent, "_get_jobs_output_dir", return_value=tmp_path),
+    ):
+        result = await server.run(_make_run_request())
+        receipts = list(tmp_path.glob("*.ray-admission.json"))
+        assert len(receipts) == 1
+        assert json.loads(receipts[0].read_text())["feasible"] is feasible
+        if feasible:
+            runner.options.assert_called_once_with(memory=22)
+            runner.options.return_value.remote.assert_called_once()
+            assert not result.mask_sample
+        else:
+            runner.options.assert_not_called()
+            runner.remote.assert_not_called()
+            assert result.mask_sample and result.failure_kind == "agent_run_error"
+            assert "No ALIVE node" in result.failure_reason

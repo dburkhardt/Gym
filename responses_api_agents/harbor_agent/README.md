@@ -625,3 +625,14 @@ operational allowance. Service shutdown also needs the supervisor's separate
 cleanup reserve. Use this check together with the supervisor's
 `--collector-cleanup-reserve` admission deadline; it does not independently establish
 provider capacity or guarantee that operational I/O finishes inside its allowance.
+
+For a fixed Ray node pool, opt in with `harbor_ray_static_resource_preflight: true`.
+Before submitting a trial, this checks its unchanged CPU (default 1) and memory
+reservation against each ALIVE node's total advertised resources, and writes a
+`*.ray-admission.json` receipt beside the job directory. An impossible request
+is an infrastructure failure before worker submission. A feasible but busy node
+still queues normally. This declares static placement; it does not establish
+resource ownership and must not be enabled for an autoscaling pool unless
+placement is intentionally limited to its current nodes. Host available RAM
+alone does not establish Ray schedulability, because the object store has a
+separate reservation. Defaults and scientific task limits are unchanged.

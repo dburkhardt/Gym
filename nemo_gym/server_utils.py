@@ -80,6 +80,7 @@ from nemo_gym.global_config import (
     NEMO_GYM_CONFIG_PATH_ENV_VAR_NAME,
     OBSERVABILITY_ENABLED_KEY_NAME,
     RAY_HEAD_NODE_ADDRESS_KEY_NAME,
+    RAY_LOCAL_OBJECT_STORE_MEMORY_KEY_NAME,
     UVICORN_TIMEOUT_WORKER_HEALTHCHECK,
     GlobalConfigDictParser,
     GlobalConfigDictParserConfig,
@@ -1199,6 +1200,13 @@ def initialize_ray() -> None:
         ray_init_kwargs["address"] = ray_head_node_address
     else:
         print("NeMo Gym is starting a new Ray cluster...")
+        object_store_bytes = global_config_dict.get(RAY_LOCAL_OBJECT_STORE_MEMORY_KEY_NAME)
+        if object_store_bytes is not None:
+            if isinstance(object_store_bytes, bool) or not isinstance(object_store_bytes, int) or object_store_bytes <= 0:
+                raise ValueError("ray_local_object_store_memory_bytes must be a positive integer")
+            # Ray retains responsibility for minimum size and real host capacity.
+            # Never override its task-memory resource or resize an existing cluster.
+            ray_init_kwargs["object_store_memory"] = object_store_bytes
 
     ray.init(**ray_init_kwargs)
 
