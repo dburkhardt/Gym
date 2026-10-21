@@ -3,7 +3,9 @@
 """Native SDK adapter to guarded Gym; one physical request per durable intent."""
 
 import asyncio
+import hashlib
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -47,7 +49,15 @@ class CapturedStream(httpx.AsyncByteStream):
                 parsed = ChatCompletion.model_validate_json(body)
                 if parsed.model != self.owner.model or not parsed.choices:
                     raise ValueError("Invalid native completion body")
-            publish(self.stem.with_suffix(".complete.json"), {"status": self.response.status, "bytes": len(body)})
+            publish(
+                self.stem.with_suffix(".complete.json"),
+                {
+                    "status": self.response.status,
+                    "bytes": len(body),
+                    "sha256": hashlib.sha256(body).hexdigest(),
+                    "completed_at": time.time(),
+                },
+            )
             self.owner.failed = False
         finally:
             await self.aclose()
@@ -87,6 +97,14 @@ class NativeTransport(httpx.AsyncBaseTransport):
                 "x-nemo-gym-call-config-sha256": self.digest,
             }
             publish(stem.with_suffix(".request.json"), body)
+            publish(
+                stem.with_suffix(".intent.json"),
+                {
+                    "started_at": time.time(),
+                    "headers": headers,
+                    "request_sha256": hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest(),
+                },
+            )
             self.ordinal += 1
             self.failed = True
             response = await request(

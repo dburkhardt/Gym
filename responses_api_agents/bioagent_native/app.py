@@ -26,6 +26,7 @@ from nemo_gym.sandbox.guarded_chat_transport import publish
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 from nemo_gym.server_utils import rollout_path_prefix
+from responses_api_agents.bioagent_native.trajectory import observations
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
@@ -65,6 +66,7 @@ class VerifyResponse(BaseVerifyResponse):
     model_config = ConfigDict(extra="allow")
 
     native_metrics: dict
+    ng_trajectory: dict | None = None
     artifact_dir: str
     imported_saved_execution: bool = False
     synthetic_summary_response: bool = True
@@ -104,6 +106,7 @@ class Agent(SimpleResponsesAPIAgent):
         root = Path(__file__).resolve().parents[2]
         files = [
             Path(__file__).resolve(),
+            Path(__file__).with_name("trajectory.py"),
             *(root / "benchmarks/bioagentbench").glob("*.py"),
             root / "benchmarks/bioagentbench/source-sha256.json",
             root / "nemo_gym/sandbox/api.py",
@@ -227,11 +230,20 @@ class Agent(SimpleResponsesAPIAgent):
                 "tools": [],
             }
         )
+        trajectory, usage = observations(
+            out / "execution/calls",
+            trace,
+            task_id=task_id,
+            rollout_id=str(capture),
+            model_ref=self.config.model_server,
+        )
+        response.usage = usage
         return VerifyResponse(
             **body.model_dump(),
             response=response,
             reward=reward,
             artifact_dir=str(out),
+            ng_trajectory=trajectory.model_dump(mode="json"),
             native_metrics={
                 "metrics": trace["metrics"],
                 "rewards": trace["rewards"],
