@@ -5,10 +5,11 @@
 import asyncio
 import re
 from collections import defaultdict
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, ClassVar
 
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
@@ -43,6 +44,8 @@ class SciKnowEvalResourcesServerConfig(BaseResourcesServerConfig):
 
 
 class SciKnowEvalVerifyRequest(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: TaskData
 
 
@@ -68,15 +71,26 @@ class SciKnowEvalResourcesServer(SimpleResourcesServer):
         super().model_post_init(context)
 
     async def verify(self, body: SciKnowEvalVerifyRequest) -> SciKnowEvalVerifyResponse:
+        payload = body.model_dump(
+            exclude={
+                "reward",
+                "predicted_answer",
+                "symbolic_correct",
+                "symbolic_correct_normalized",
+                "extraction_ok",
+                "judgement",
+                "judge_score",
+                "judge_parse_ok",
+                "judge_response",
+            }
+        )
         text = THINK_END.split(THINK_BLOCK.sub("", body.response.output_text or ""))[-1].strip()
         metadata = body.verifier_metadata
         result = grade_task(metadata.model_dump(), text)
         if "symbolic_correct" in result:
-            return SciKnowEvalVerifyResponse(**body.model_dump(), **result, reward=float(result["symbolic_correct"]))
+            return SciKnowEvalVerifyResponse(**payload, **result, reward=float(result["symbolic_correct"]))
         if not result["predicted_answer"]:
-            return SciKnowEvalVerifyResponse(
-                **body.model_dump(), **result, reward=0.0, judge_score=0.0, judge_parse_ok=False
-            )
+            return SciKnowEvalVerifyResponse(**payload, **result, reward=0.0, judge_score=0.0, judge_parse_ok=False)
         if self.config.judge_model_server is None:
             raise JudgeError("Configure judge_model_server to evaluate SciKnowEval judged tasks")
         params = NeMoGymResponseCreateParamsNonStreaming.model_validate(
@@ -98,11 +112,32 @@ class SciKnowEvalResourcesServer(SimpleResourcesServer):
                 url_path="/v1/responses",
                 json=params,
                 response_model=NeMoGymResponse,
+                verification_id=body.verification_id,
+                call_id="sciknoweval-rubric",
+                scorer_identity={
+                    "protocol": "sciknoweval-v2-task-rubric-v1",
+                    "rubric": {
+                        key: getattr(metadata, key)
+                        for key in (
+                            "judge_system",
+                            "judge_prefix",
+                            "judge_suffix",
+                            "judge_scale",
+                            "judge_rubric",
+                        )
+                    },
+                    "scorer_sha256": sha256(Path(__file__).with_name("grading.py").read_bytes()).hexdigest(),
+                    "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                    "judge_server": self.config.judge_model_server.name,
+                    "parameters": self.config.judge_responses_create_params.model_dump(
+                        mode="json", exclude_unset=True
+                    ),
+                },
             )
         verdict = THINK_END.split(THINK_BLOCK.sub("", judged.output_text or ""))[-1].strip()
         score = parse_judgement(verdict, metadata.judge_scale)
         return SciKnowEvalVerifyResponse(
-            **body.model_dump(),
+            **payload,
             **result,
             reward=score if score is not None else 0.0,
             judgement=verdict,

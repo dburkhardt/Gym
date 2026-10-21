@@ -41,7 +41,7 @@ def test_discovery_and_judge_wiring(benchmark, monkeypatch):
     resolved = GlobalConfigDictParser().parse_no_environment(initial_global_config_dict=initial)
     verifier = resolved[name]["resources_servers"][name]
     assert not verifier["verified"]
-    assert verifier["judge_model_server"]["name"] == "policy_model"
+    assert verifier["judge_model_server"]["name"] == "judge_model"
     assert verifier["judge_responses_create_params"]["max_output_tokens"] == 16384
 
 

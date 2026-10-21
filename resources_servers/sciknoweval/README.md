@@ -47,8 +47,7 @@ question before averaging questions within the level.
 
 ## Run
 
-The benchmark config uses the policy model as judge. To use a separate
-Responses-compatible judge, append `--config resources_servers/sciknoweval/configs/judge_model.yaml`
+The benchmark config requires an independent `judge_model` binding. Append `--config resources_servers/sciknoweval/configs/judge_model.yaml`
 and supply `judge_base_url`, `judge_api_key`, and `judge_model_name` in your private
 model configuration. A Chat Completions judge can instead use Gym's `vllm_model`
 adapter. Apply judge/model overlays after the benchmark or resource config.
@@ -76,3 +75,5 @@ Run `gym env test --resources-server sciknoweval`. Tests cover each answer famil
 Integration and grading code: Apache-2.0. Source dataset: MIT, as declared by the [dataset card](https://huggingface.co/datasets/hicai-zju/SciKnowEval). Dataset reference revision: `92ef969ad0a8bd6e195e0ac18af2c46e307e0cc2`. Dependency: Gym (Apache-2.0).
 
 Judge rubrics are downloaded at preparation time from pinned upstream source and checked by SHA-256. The source repository has no standalone code license notice; its rubrics are not vendored or relicensed here.
+
+Guarded judge calls retain the native `verification_id`, fixed rubric call ID, exact rendered rubric, scorer source hashes and generation settings. Missing persisted verification identity refuses dispatch when the shared guard is enabled. Solver model changes do not change the judge binding. For this campaign, set `judge_model_name` to `nvidia/nvidia/nemotron-3.5-super-vl`; retain temperature 0 and the existing 16,384-token judge limit. This wiring change does not alter prepared prompts, rubric adaptations or scoring rules.

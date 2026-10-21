@@ -87,8 +87,7 @@ adapter; whether they are honored depends on the endpoint. Inspect failure
 sidecars, judge parsing diagnostics, and response truncation as well as rewards.
 A five-question sample is a runtime check, not a benchmark baseline.
 
-The benchmark config defaults to the policy model as judge. To use a separate
-Responses-compatible judge, add `--config resources_servers/sciknoweval/configs/judge_model.yaml`
+The benchmark config requires an independent `judge_model` binding. Add `--config resources_servers/sciknoweval/configs/judge_model.yaml`
 and configure `judge_base_url`, `judge_api_key`, and `judge_model_name` privately.
 An OpenAI-compatible Chat Completions judge can instead be wired through Gym's
 `vllm_model` adapter. The rubric stays benchmark-specific. Judge temperature,
@@ -115,3 +114,5 @@ configuration above, temperature 0, one repeat, concurrency 4, and a 16,384-toke
 output budget. All five produced scores without verifier errors or truncation.
 The 2 required judge responses were parsed successfully using the same model.
 This is integration smoke evidence, not reproduction of a published full score.
+
+Guarded judge calls retain the native `verification_id`, fixed rubric call ID, exact rendered rubric, scorer source hashes and generation settings. Missing persisted verification identity refuses dispatch when the shared guard is enabled. Solver model changes do not change the judge binding. For this campaign, set `judge_model_name` to `nvidia/nvidia/nemotron-3.5-super-vl`; retain temperature 0 and the existing 16,384-token judge limit. This wiring change does not alter prepared prompts, rubric adaptations or scoring rules.

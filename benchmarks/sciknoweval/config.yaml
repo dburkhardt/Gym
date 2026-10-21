@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 config_paths:
 - resources_servers/sciknoweval/configs/sciknoweval.yaml
+- resources_servers/sciknoweval/configs/judge_model.yaml
 sciknoweval_simple_agent:
   responses_api_agents:
     simple_agent:
@@ -11,7 +12,7 @@ sciknoweval:
     sciknoweval:
       judge_model_server:
         type: responses_api_models
-        name: policy_model
+        name: judge_model
       judge_responses_create_params:
         input: []
         temperature: 0
@@ -19,6 +20,11 @@ sciknoweval:
       datasets:
       - name: sciknoweval
         type: benchmark
+        required_model_roles:
+          judge:
+            component: sciknoweval
+            binding_field: judge_model_server
+            capabilities: [text_generation]
         jsonl_fpath: benchmarks/sciknoweval/data/test.jsonl
         prepare_script: benchmarks/sciknoweval/prepare.py
         num_repeats: 1
