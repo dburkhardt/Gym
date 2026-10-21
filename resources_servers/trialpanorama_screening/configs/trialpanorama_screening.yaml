@@ -4,6 +4,7 @@ trialpanorama_screening:
   resources_servers:
     trialpanorama_screening:
       entrypoint: app.py
+      creator_root: ${oc.env:TRIALPANORAMA_SOURCE}
       domain: knowledge
       verified: false
 trialpanorama_screening_simple_agent:
