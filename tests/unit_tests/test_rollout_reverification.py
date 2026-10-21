@@ -3728,8 +3728,7 @@ async def test_guarded_input_preflight_preserves_results_and_identity(tmp_path, 
     assert _verification_run_identity(output, resume=True, overwrite=False, append=False) == original
 
 
-@pytest.mark.parametrize("server_guard,run_id", [(True, None), (False, "persisted")])
-def test_reverify_rejects_mismatched_guard_configuration(monkeypatch, server_guard, run_id):
+def test_guarded_reverify_rejects_missing_lineage(monkeypatch):
     from types import SimpleNamespace
 
     from nemo_gym.config_types import ConfigError
@@ -3737,10 +3736,32 @@ def test_reverify_rejects_mismatched_guard_configuration(monkeypatch, server_gua
 
     monkeypatch.setattr(
         "nemo_gym.rollout_reverification.setup_server_client",
-        lambda: SimpleNamespace(global_config_dict={"provider_dispatch_guard": server_guard}),
+        lambda: SimpleNamespace(global_config_dict={"provider_dispatch_guard": True}),
     )
-    with pytest.raises(ConfigError, match="must match"):
-        _run_verification_payloads([], verification_run_id=run_id)
+    with pytest.raises(ConfigError, match="persisted run lineage"):
+        _run_verification_payloads([], verification_run_id=None)
+
+
+@pytest.mark.parametrize("server_guard", [False, True])
+async def test_reverify_persisted_lineage_posts_to_resource_with_or_without_guard(monkeypatch, server_guard):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import nemo_gym.rollout_reverification as rr
+
+    client = SimpleNamespace(
+        global_config_dict={"provider_dispatch_guard": server_guard},
+        post=AsyncMock(return_value=object()),
+    )
+    monkeypatch.setattr(rr, "setup_server_client", lambda: client)
+    monkeypatch.setattr(rr, "_build_agent_to_resources_server_mapping", lambda config: {})
+    monkeypatch.setattr(rr, "_rs_for_row", lambda *args: "deterministic_resource")
+    monkeypatch.setattr(rr, "raise_for_status", AsyncMock())
+    monkeypatch.setattr(rr, "get_response_json", AsyncMock(return_value={"reward": 1}))
+    row = {"verification_id": "persisted:task", "response": {"output": []}}
+    results = [await future for future in rr._run_verification_payloads([row], verification_run_id="persisted")]
+    assert results == [(row, {"reward": 1})]
+    client.post.assert_awaited_once_with(server_name="deterministic_resource", url_path="/verify", json=row)
 
 
 async def test_guarded_rejected_fresh_run_never_publishes_identity(tmp_path):

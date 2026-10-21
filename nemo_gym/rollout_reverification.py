@@ -1023,10 +1023,10 @@ def _run_verification_payloads(
 ) -> Iterator[Future]:  # pragma: no cover
     semaphore = semaphore or nullcontext[None]()
     server_client = setup_server_client()
-    if bool(server_client.global_config_dict.get("provider_dispatch_guard", False)) != bool(verification_run_id):
-        raise ConfigError(
-            "reverification guard configuration must match model servers; persisted run lineage required"
-        )
+    # Every regrade persists lineage, including deterministic resources-only runs.
+    # Guarded model calls require it; its presence does not imply a model guard.
+    if server_client.global_config_dict.get("provider_dispatch_guard", False) and not verification_run_id:
+        raise ConfigError("guarded reverification requires persisted run lineage")
     agent_to_rs = _build_agent_to_resources_server_mapping(server_client.global_config_dict)
 
     async def _post_subroutine(row: Dict) -> Tuple[Dict, Dict]:
