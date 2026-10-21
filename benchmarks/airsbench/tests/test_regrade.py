@@ -35,3 +35,30 @@ def test_missing_reference_cache_is_not_model_failure(tmp_path):
     (workspace / "submission.csv").write_text("prediction\n1\n")
     with pytest.raises(ValueError, match="scorer asset"):
         validate_inputs("GraphRegressionZincMae", tmp_path / "source", workspace)
+
+
+def test_native_overlay_preserves_budgets_and_declares_separate_scoring():
+    import tomllib
+    from benchmarks.airsbench.native_prepare import runtime_config
+
+    original = """version = "1.0"
+[agent]
+timeout_sec = 3600
+[verifier]
+timeout_sec = 300
+[environment]
+docker_image = "mutable-old-tag"
+cpus = 2
+memory_mb = 3072
+allow_internet = false
+"""
+    image = "sha256:" + "a" * 64
+    parsed = tomllib.loads(runtime_config(original, image))
+    assert parsed["agent"]["timeout_sec"] == 3600
+    assert parsed["verifier"] == {"timeout_sec": 300, "environment_mode": "separate"}
+    assert parsed["environment"]["docker_image"] == image
+    assert parsed["environment"]["network_mode"] == "no-network"
+    assert parsed["environment"]["memory_mb"] == 3072
+    assert parsed["artifacts"] == ["/workspace"]
+    with pytest.raises(ValueError, match="Immutable"):
+        runtime_config(original, "mutable-tag")
