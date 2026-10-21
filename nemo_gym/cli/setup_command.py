@@ -256,6 +256,7 @@ def run_command(
     stderr_target: IO[Any] | None = None,
     extra_env: Mapping[str, str] | None = None,
     owned_server_group: bool = False,
+    service_ownership=None,
 ) -> Popen:
     if global_config_dict is None:
         global_config_dict = get_global_config_dict()
@@ -299,10 +300,11 @@ def run_command(
 
     redirect_stdout = stdout if stdout_target is None else stdout_target
     redirect_stderr = stderr if stderr_target is None else stderr_target
+    durable_command = service_ownership.command(command, custom_env) if service_ownership is not None else None
     process = Popen(
-        command,
-        executable="/bin/bash",
-        shell=True,
+        durable_command or command,
+        executable=None if durable_command else "/bin/bash",
+        shell=durable_command is None,
         env=custom_env,
         stdout=redirect_stdout,
         stderr=redirect_stderr,

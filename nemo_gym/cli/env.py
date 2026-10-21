@@ -630,6 +630,7 @@ class RunHelper:  # pragma: no cover
                 server_name=top_level_path,
                 extra_env=extra_env,
                 owned_server_group=True,
+                service_ownership=getattr(self, "_service_ownership", None),
                 project_root=PARENT_DIR if (PARENT_DIR / "pyproject.toml").is_file() else None,
             )
             self._processes[top_level_path] = process
@@ -927,6 +928,11 @@ rpc_client.h:203: Failed to connect to GCS within 60 seconds. GCS may have been 
 
         self._head_server = None
         self._head_server_thread = None
+
+        ownership = getattr(self, "_service_ownership", None)
+        if ownership is not None:
+            ownership.close()
+            self._service_ownership = None
 
         print("NeMo Gym finished!")
 

@@ -14,7 +14,7 @@ import yaml
 from aiohttp import web
 
 
-async def main(out, *, logged=False):
+async def main(out, *, logged=False, completed=False):
     out = out.absolute()
     out.mkdir(exist_ok=False)
     source = Path.cwd()
@@ -28,7 +28,7 @@ async def main(out, *, logged=False):
         body = await req.json()
         calls.append(body)
         (out / "provider-calls.json").write_text(json.dumps(calls))
-        if len(calls) > 1:
+        if len(calls) > 1 and not completed:
             await asyncio.sleep(180)
         return web.json_response(
             {
@@ -173,7 +173,14 @@ async def main(out, *, logged=False):
         child = await asyncio.create_subprocess_exec(*command, env=env, stdout=log, stderr=asyncio.subprocess.STDOUT)
         children.append(child)
         for _ in range(1800):
-            if len(calls) == 2 and (out / "results.jsonl").exists() and (out / "results.jsonl").read_text().strip():
+            if completed and child.returncode == 0:
+                break
+            if (
+                not completed
+                and len(calls) == 2
+                and (out / "results.jsonl").exists()
+                and (out / "results.jsonl").read_text().strip()
+            ):
                 break
             if child.returncode is not None:
                 raise RuntimeError("initial native process terminated early")
@@ -183,22 +190,14 @@ async def main(out, *, logged=False):
         prior = (out / "results.jsonl").read_bytes()
         (out / "before-results.jsonl").write_bytes(prior)
         shutil.copytree(out / "capture", out / "before-capture")
-        descendants = psutil.Process(child.pid).children(recursive=True)
+        descendants = [] if completed else psutil.Process(child.pid).children(recursive=True)
         report["killed_coordinator_pid"] = child.pid
         report["owned_descendants"] = [p.pid for p in descendants]
-        child.kill()
+        if not completed:
+            child.kill()
         await child.wait()
         report["coordinator_exit"] = child.returncode
-        # Settle exact orphaned children after killing coordinator; do not reuse their memory.
-        for p in descendants:
-            try:
-                p.kill()
-            except psutil.NoSuchProcess:
-                pass
-        await asyncio.sleep(2)
-        report["orphan_cleanup_scope"] = (
-            "exact captured descendants killed after top-level SIGKILL; not autonomous lifecycle proof"
-        )
+        report["orphan_cleanup_scope"] = "fresh native CLI reconciles durable exact-owned service receipts"
         log2 = (out / "resume.log").open("w")
         resume = await asyncio.create_subprocess_exec(
             *(command + ["--resume"]), env=env, stdout=log2, stderr=asyncio.subprocess.STDOUT
@@ -209,9 +208,12 @@ async def main(out, *, logged=False):
             if psutil.pid_exists(resume.pid):
                 for owned in psutil.Process(resume.pid).children(recursive=True):
                     resume_children[(owned.pid, owned.create_time())] = owned
-            if resume.returncode is not None or len(calls) > 2:
+            if resume.returncode is not None or len(calls) > (3 if completed else 2):
                 break
             await asyncio.sleep(0.1)
+        report["initial_owned_children_alive"] = [
+            p.pid for p in descendants if p.is_running() and p.status() != psutil.STATUS_ZOMBIE
+        ]
         report["resume_owned_children_alive"] = [
             p.pid for p in resume_children.values() if p.is_running() and p.status() != psutil.STATUS_ZOMBIE
         ]
@@ -222,21 +224,31 @@ async def main(out, *, logged=False):
         )
         report["source_hashes"] = {
             name: hashlib.sha256((source / name).read_bytes()).hexdigest()
-            for name in ["nemo_gym/base_responses_api_model.py", "nemo_gym/rollout_collection.py"]
+            for name in [
+                "nemo_gym/base_responses_api_model.py",
+                "nemo_gym/rollout_collection.py",
+                "nemo_gym/cli/eval.py",
+                "nemo_gym/cli/env.py",
+                "nemo_gym/cli/setup_command.py",
+                "nemo_gym/cli/service_ownership.py",
+            ]
         }
-        report["untouched_task_ids"] = ["fixture-2"]
+        report["untouched_task_ids"] = [] if completed else ["fixture-2"]
         report["unrelated_sentinel_survived"] = sentinel.returncode is None
         report["logged_server_launch"] = logged
         report["resume_exit"] = resume.returncode
         report["calls_after_resume"] = len(calls)
         report["completed_result_preserved"] = (out / "results.jsonl").read_bytes() == prior
-        report["resumed_unknown_resend"] = len(calls) > 2
+        report["resumed_unknown_resend"] = not completed and len(calls) > 2
+        report["completed_run_control"] = completed
         report["status"] = (
             "passed"
-            if len(calls) == 2
-            and resume.returncode not in (None, 0)
+            if len(calls) == (3 if completed else 2)
+            and (resume.returncode == 0 if completed else resume.returncode not in (None, 0))
             and report["completed_result_preserved"]
             and report["capture_evidence_preserved"]
+            and not report["initial_owned_children_alive"]
+            and (completed or "unresolved provider dispatch" in (out / "resume.log").read_text())
             and not report["resume_owned_children_alive"]
             and report["unrelated_sentinel_survived"]
             else "failed"

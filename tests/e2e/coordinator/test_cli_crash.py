@@ -12,3 +12,8 @@ from control import main
 @pytest.mark.parametrize("logged", [False, True])
 async def test_top_level_cli_crash_refuses_ambiguous_resume(tmp_path, logged):
     await main(tmp_path / "control", logged=logged)
+
+
+@pytest.mark.skipif(os.environ.get("NEMO_GYM_COORDINATOR_E2E") != "1", reason="local native CLI processes")
+async def test_completed_run_resume_retains_calls(tmp_path):
+    await main(tmp_path / "control", logged=True, completed=True)

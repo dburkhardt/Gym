@@ -603,6 +603,36 @@ def e2e_rollout_collection():  # pragma: no cover
     )
 
     rh = RunHelper()
+    if global_config_dict.get("provider_dispatch_guard", False):
+        import hashlib
+
+        from nemo_gym.cli.service_ownership import ServiceOwnership, component_binding
+
+        components = {
+            key: OmegaConf.to_container(value, resolve=True)
+            for key, value in global_config_dict.items()
+            if OmegaConf.is_dict(value)
+            and any(
+                kind in value
+                for kind in (
+                    "responses_api_models",
+                    "responses_api_agents",
+                    "resources_servers",
+                    "environment_servers",
+                )
+            )
+        }
+        source_root = Path(__file__).parent
+        binding = {
+            "output": str(output_fpath.absolute()),
+            "components": component_binding(components),
+            "dataset": hashlib.sha256(input_jsonl_fpath.read_bytes()).hexdigest(),
+            "source": {
+                name: hashlib.sha256((source_root / name).read_bytes()).hexdigest()
+                for name in ("env.py", "eval.py", "setup_command.py", "service_ownership.py")
+            },
+        }
+        rh._service_ownership = ServiceOwnership(output_fpath.with_suffix("") / "native_services", binding)
     rh.start(None)
 
     rch = RolloutCollectionHelper()
