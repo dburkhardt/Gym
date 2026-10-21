@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
@@ -31,12 +31,15 @@ class Config(BaseResourcesServerConfig):
 
 
 class VerifyRequest(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
     uuid: str
     verifier_metadata: dict
 
 
 class VerifyResponse(BaseVerifyResponse, VerifyRequest):
+    model_config = ConfigDict(extra="allow")
     scoring_details: dict
+    metadata: dict = Field(default_factory=dict)
 
 
 async def run_score(*, benchmark: str, upstream_repo: Path, task: dict, answer: str, timeout_s: float) -> dict:
@@ -96,9 +99,59 @@ class CreatorResourcesServer(SimpleResourcesServer):
                 "failure_kind": "model_budget" if reason == "max_output_tokens" else "incomplete_response",
                 "failure_reason": "Model response incomplete: " + str(reason),
             }
-        return VerifyResponse(
-            **body.model_dump(by_alias=True), reward=details["reward"], scoring_details=details, **accounting
+        metadata = {}
+        if self.config.benchmark == "qcbench":
+            evidence = details.get("measurement_evidence")
+            task = {"uuid": body.uuid, "verifier_metadata": body.verifier_metadata}
+            task_sha = hashlib.sha256(json.dumps(task, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if not isinstance(evidence, dict) or evidence.get("task_sha256") != task_sha:
+                raise ValueError("QCBench score lacks matching task/reference evidence")
+            if not isinstance(details.get("measurement_valid"), bool):
+                raise ValueError("QCBench score lacks explicit reference measurement validity")
+            invalid = details["measurement_valid"] is False
+            if invalid:
+                accounting = {
+                    "mask_sample": True,
+                    "failure_kind": "qcbench:invalid_reference_measurement",
+                    "failure_reason": details["measurement_invalid_reason"],
+                }
+            metadata = {
+                "source": "qcbench",
+                "verifier_result": {"rewards": {"creator_numeric": details["reward"]}},
+                "measurement_review": {
+                    "version": "qcbench-reference-self-consistency-v1",
+                    "implementation": {
+                        "import_path": "resources_servers.campaign_creator_scoring.app:CreatorResourcesServer.verify",
+                        "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                    },
+                    "evidence": evidence,
+                    "metrics": {
+                        "creator_numeric": {
+                            "status": "invalid" if invalid else "unresolved",
+                            "reason": details.get("measurement_invalid_reason")
+                            or "Reference self-consistency passed; scientific reference correctness has not been reviewed",
+                        }
+                    },
+                },
+            }
+        payload = body.model_dump(by_alias=True)
+        # Preserve native task/rollout lineage, but never retain a prior regrade's
+        # reward, mask or measurement review as if it were this verification.
+        previous_metadata = payload.get("metadata")
+        merged_metadata = dict(previous_metadata) if isinstance(previous_metadata, dict) else {}
+        for key in ("measurement_review", "verifier_result"):
+            merged_metadata.pop(key, None)
+        merged_metadata.update(metadata)
+        payload.update(
+            reward=details["reward"],
+            scoring_details=details,
+            metadata=merged_metadata,
+            mask_sample=False,
+            failure_kind=None,
+            failure_reason=None,
         )
+        payload.update(accounting)
+        return VerifyResponse(**payload)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,21 @@ from benchmarks.scientific_agent_campaign import deterministic
 
 def main() -> None:
     request = json.loads(Path(sys.argv[1]).read_text())
+    evidence = None
+    if request["benchmark"] == "qcbench":
+        scorer_path = Path(request["repo"]) / "eval.py"
+        evidence = {
+            "creator_scorer_sha256": hashlib.sha256(scorer_path.read_bytes()).hexdigest(),
+            "task_sha256": hashlib.sha256(
+                json.dumps(request["task"], sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "source_revision": deterministic.PINS["qcbench"],
+        }
     result = deterministic.score(request["benchmark"], Path(request["repo"]), request["task"], request["answer"])
+    if evidence is not None:
+        if hashlib.sha256(scorer_path.read_bytes()).hexdigest() != evidence["creator_scorer_sha256"]:
+            raise RuntimeError("QCBench creator scorer changed during scoring")
+        result["measurement_evidence"] = evidence
     source = Path(deterministic.__file__).resolve()
     Path(sys.argv[2]).write_text(
         json.dumps(
