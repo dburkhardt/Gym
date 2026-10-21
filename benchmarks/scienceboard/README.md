@@ -39,3 +39,45 @@ operator attestations, not cryptographic proof of producer honesty. The evidence
 hash binds metadata, audit and placement inputs. Actual application initialization,
 frozen task binding, model transport and creator verifier controls remain required.
 The fixtures test the gate and do not claim a real image passed.
+
+## Maintained preparation and desktop lifecycle boundary
+
+`prepare.py` now stages the exact creator `scripts/materialize_smoke_subset.py`
+20-task list. This is **a new, explicitly named creator-parity20 selection**:
+the campaign previously recorded no frozen ScienceBoard task IDs. The checked-in
+manifest binds all creator Python modules, relevant runtime definitions and each
+exact task JSON. Instructions become native input rows; initializer and evaluator
+JSON stay in a separate trusted host-side directory and must not be mounted into
+the solver. Task steps, snapshots and verifiers are unchanged. No synthetic task
+or shortened scientific protocol is introduced.
+
+```bash
+SCIENCEBOARD_SOURCE_ROOT=/path/to/pinned/ScienceBoard python -m benchmarks.scienceboard.prepare
+```
+
+`managed_desktop.creator_desktop_factory` validates the existing image-evidence
+packet and source imports, and returns a constructor with the pinned creator
+`DockerDesktopEnv` interface. An isolated creator worker can assign it to
+`sci.docker.DockerDesktopEnv` before constructing the unchanged creator Tester.
+Creation, resource limits and exact-owned cleanup use Gym's shared `Sandbox`;
+no independent docker launcher or cleanup registry is added. Reset removes the
+owned sandbox and starts fresh state. Health **and** PNG readiness are required.
+The controller and scientific verification remain the creator implementations.
+
+This adapter preserves the native entrypoint, Mesa environment, guest hostname,
+2GiB shared memory and bridge networking. It requests8 CPUs/24GiB RAM using the
+existing admission recommendation; actual minimum performance is unmeasured.
+No host network, published port, secret environment or host task/reference mount
+is used. Linux-host reachability of its private bridge address is required because
+native application clients use fixed guest ports. A proxy-free creator process is
+required until its module-level HTTP clients have a qualified scoped transport.
+
+**Not yet a runnable Gym benchmark:** no config registration is supplied until
+an actual native guarded multimodal agent transport and full Tester result mapping
+are qualified. The lifecycle controls use substituted Sandbox/HTTP backends; actual
+image startup, GUI initializers, actions, creator verifiers, source/asset isolation,
+and cancellation while creator threads are active remain untested. Custom image
+entrypoint also disables the shared Docker provider's sleep-based TTL; successful
+`close` is checked in local controls, but abrupt-controller termination requires a
+separate owned-resource supervisor/cleanup proof before live admission. The
+17GB reference VM route is not equivalent to an admitted sanitized Docker image.

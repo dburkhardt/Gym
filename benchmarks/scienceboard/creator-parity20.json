@@ -1,0 +1,156 @@
+{
+  "source_revision": "21b5eb0f1d00898f7de9e84c3d33a87c2f2b3c3e",
+  "selection": "creator-docker-parity20-v1",
+  "selection_qualification": "New preparation selection from pinned creator parity list; no prior campaign frozen ScienceBoard IDs existed.",
+  "files": {
+    "scripts/materialize_smoke_subset.py": "05696ce1178c9b200535c86e37609a9b6f7206420ec68b4520a769ca9ed1a2d8",
+    "sci/docker/controller.py": "39a31ddd5867b64a8a76e01445b2ec4bae0c594d8e92fd5a0ee19525b129a687",
+    "sci/docker/desktop_env.py": "ce962e1c4dd6ce83e2d75f59387d7333664402c60688b428ef02b9017085090c",
+    "sci/vm/vmanager.py": "4e0b2cc9a50974776c6adc2c8baaf3e8f41f7ac5e222e50c27666dff69e55e4e",
+    "sci/Tester.py": "a3624af0315fba3337dab7ebeb3864af1021648d06745447936b82f93dc4b6f3",
+    "docker/Portable.Dockerfile": "da8739a2af1e0b28a21fac5ceec4bbb24ec118c8b79d120dc091636ba92da15a",
+    "sci/Celestia/__init__.py": "e066ef570f879b2817c980a78cd913862415609a23a4c606a4311d48353c1681",
+    "sci/Celestia/celestia.py": "a8c28305d46de30ef66d8f48e7c438123aa397b97ea50b4c780fe3e6131132a5",
+    "sci/Celestia/task.py": "50fbe14ea0129b8620c4898e4356df266ae68a8112d687b3912fa40465fc72fb",
+    "sci/ChimeraX/__init__.py": "cce0f9d290f9ea7ad3d6c92a289524344fab0f9aefd077f82e57044de3d0d6b3",
+    "sci/ChimeraX/chimerax.py": "ca89bea1aab4f3dc9c6faaae5dcde7689939c31447e65976508545d8c425c230",
+    "sci/ChimeraX/task.py": "04affaade9b07434425f3623c03c99a967bea8d65c78e41630c8271a58e26c0f",
+    "sci/GrassGIS/__init__.py": "9a1eb565b60ee93d2cd8faebeec932f2aa0a8a0bed1142c176837e623a491201",
+    "sci/GrassGIS/grass.py": "b4445b323652cb9a6cd9fe5b736ebfc51a701de614d4507e63b3cdccfdcfa64f",
+    "sci/GrassGIS/task.py": "606f5876496ce4f17352d3ae5d8a83df9ebe9bf471633290cbec764c085ea973",
+    "sci/KAlgebra/__init__.py": "fc3c3bd06e62fc048c3142568bfa4c9843d5ae56dff891f43c27d60250b1082a",
+    "sci/KAlgebra/kalgebra.py": "b38551e7689bee12d226f14c3381636945af2b80204532d06121a54baacf5e89",
+    "sci/KAlgebra/task.py": "40f3a0e5e0ef649099ab7796cd91eef6df326cc34a29d128557371c33d22806f",
+    "sci/Lean/__init__.py": "ef586dc9087b528816b8ea97f6b090b09c25cddef2ecb840de1f2ea7297c62f2",
+    "sci/Lean/format.py": "ce3d44c87fd06d25e7d71d37337c897b1839e89b490fce3262aabe5ea591b5a5",
+    "sci/Lean/lean.py": "95ddcc0af2c0029df620095c62f303bbb651748da7865549333670f6408c7f40",
+    "sci/Lean/task.py": "f8c6f243f6e4968dd7a0a7d15ffa87b577e86d4fad54f0f665673b76421e6467",
+    "sci/Presets.py": "32a78a93b9827c86588650059c070cf8fff790375e3fe72f51b8d552b8d77e56",
+    "sci/Prompts.py": "db46a51d26cab814bad6818f10468e39ff1c078a8379564db54e31943c47bdb3",
+    "sci/TeXstudio/__init__.py": "ae4ccdcd9a33d1166f5d639e0ff7aa072c5b00fb0fc306994348d8e970204024",
+    "sci/TeXstudio/task.py": "6a4afada3f060bda97681c4ca6970a290f3d3f4ddcfefb699b2f3d352d0c9ab5",
+    "sci/TeXstudio/texstudio.py": "656466056fd6faef428e3b558010de13971969e80d84fa493ce7ada5c2e83642",
+    "sci/Template/__init__.py": "3817355f1d6a8702e7acf5ff2c981b4d3a3163d47c38a4ff0a508bbf81a1f0eb",
+    "sci/Template/task.py": "db84565a834d539aa82b89a0f90671384fc03b8137053bffbdf8235a580b3c0a",
+    "sci/Template/template.py": "da53d7825ba998dca6a61ef214b2e3a561247b2a895b30491243a173e88fcb95",
+    "sci/__init__.py": "adce47cfa9e9c1c927b8887b8c56572d30929746436409ecc6406720264b071f",
+    "sci/base/__init__.py": "73ffd3809843bff3cd6cbbadcae9f254f8f574b0bce8cfd6d483b51adea27616",
+    "sci/base/agent.py": "841b664b72dbe8f4e686d7a9ecf0aa4becd83799194011f100453a32f4dd32d3",
+    "sci/base/community.py": "cfb0f2eb331d226e9e6450fceb6a788c6d6cb418b818dd43e17ed7e074a2ae95",
+    "sci/base/init.py": "eaffac5f1063193980a479133ac5699e91fd6a504f82d27be3b681d563571ad6",
+    "sci/base/log.py": "51faf5c0c24f3641ce57c0b7846d1b30286fee34575111043e7ff0d42a999abf",
+    "sci/base/manager.py": "64e2917216e7b08406d0f3c29c9351b866b38093411b8bd9e46ad4991ba9cb9a",
+    "sci/base/model.py": "dd7be783da6d81c0ee33bd05cd1ef44ddb4f2c175026c0b594fc1c2a2991fd29",
+    "sci/base/override.py": "fcc529a13bf46b2cd417616aeba5743978250503322cdc1be0c7747de0ab34a2",
+    "sci/base/prompt.py": "559b8ffa8698cf53260bb2303fb29d8dc8b214143cabb30c082f1cf9a11fb613",
+    "sci/base/relative.py": "9db25663cde6a034ef56f88a5ef75667471523f0482caaddd75bd0b3c3b183ca",
+    "sci/base/task.py": "d6a1481b453c074e34739fd29def56efa35a1dc10e856418f557f067e9ff08c5",
+    "sci/base/utils.py": "e8112722f97fc88284406257769b10d1c361bb69b8973a251d18635060bb4bb6",
+    "sci/docker/__init__.py": "072327141434a5eed6001ffa42dfee84e3e887796c94fdfb0ace3d7ce1764db6",
+    "sci/vm/__init__.py": "f9f2f4b1012c45d500a11bf05274d3169e1a0fa8903253d6a99a79a7de26e063",
+    "sci/vm/utils.py": "cf1bfaab6029a286c2972fd81f8c61a5a3bba9cb2cfb28afe678ab9576a1e73d",
+    "sci/vm/vtask.py": "8fc5b82a8359e163c163239e952454e8626b4ab325f0e6bc8e27019cfdaf6acc"
+  },
+  "tasks": [
+    {
+      "task_id": "scienceboard::Celestia/A-01",
+      "path": "tasks/VM/Celestia/A-01.json",
+      "sha256": "40e55bf56db3b4fa29c977947af65fd18687c38cc18db331371465cde912d8f1"
+    },
+    {
+      "task_id": "scienceboard::Celestia/A-03",
+      "path": "tasks/VM/Celestia/A-03.json",
+      "sha256": "f017309339a0024acc48ffe24176d782ed879169faff008e9c6afbebf5d508ac"
+    },
+    {
+      "task_id": "scienceboard::Celestia/C-03",
+      "path": "tasks/VM/Celestia/C-03.json",
+      "sha256": "3951c836042ab4c9a54313c5481214690b7ae527a7b7c0d7e819935d6e9e91d0"
+    },
+    {
+      "task_id": "scienceboard::ChimeraX/A-01",
+      "path": "tasks/VM/ChimeraX/A-01.json",
+      "sha256": "9e3478c35c071187a1e33ba96a31b28929653d59be2a33473e207492d8d4197f"
+    },
+    {
+      "task_id": "scienceboard::ChimeraX/A-04",
+      "path": "tasks/VM/ChimeraX/A-04.json",
+      "sha256": "a71eeec6cf9c6be2b0d179acfb0d978bb69721b818762ad093cc3fd74bd0f352"
+    },
+    {
+      "task_id": "scienceboard::ChimeraX/C-07",
+      "path": "tasks/VM/ChimeraX/C-07.json",
+      "sha256": "32fdd4dbff08e44103dca97eab5d1216a41608c9952fb42e8de303a976e21ec3"
+    },
+    {
+      "task_id": "scienceboard::ChimeraX/D-03",
+      "path": "tasks/VM/ChimeraX/D-03.json",
+      "sha256": "f8c25ff1330571f5fcc5828925a18a6e8524d4b477cf268765aa51757bbef7d4"
+    },
+    {
+      "task_id": "scienceboard::GrassGIS/A-01",
+      "path": "tasks/VM/GrassGIS/A-01.json",
+      "sha256": "1165fe6fced596624470ae3d0bb464bb657f0a83464276ff3a491c5a1cca1f8b"
+    },
+    {
+      "task_id": "scienceboard::GrassGIS/A-09",
+      "path": "tasks/VM/GrassGIS/A-09.json",
+      "sha256": "42f4d4a083ef1694e5af871440bdb1586e62d46616d820a157c7322ad50e1ca9"
+    },
+    {
+      "task_id": "scienceboard::GrassGIS/B-02",
+      "path": "tasks/VM/GrassGIS/B-02.json",
+      "sha256": "2949862ad7f1632bb0fa63e863f900aa1fa3894fb48105303e8266d9a0d6b239"
+    },
+    {
+      "task_id": "scienceboard::GrassGIS/D-01",
+      "path": "tasks/VM/GrassGIS/D-01.json",
+      "sha256": "b9b3c466512fedb765ec13b15312a99716100f0de27173008257ba506af85fb2"
+    },
+    {
+      "task_id": "scienceboard::KAlgebra/A-01",
+      "path": "tasks/VM/KAlgebra/A-01.json",
+      "sha256": "b3768f853ca38bd807fd5bc235696b1a694d0b680429f7d146e20e8eff707e90"
+    },
+    {
+      "task_id": "scienceboard::KAlgebra/A-04",
+      "path": "tasks/VM/KAlgebra/A-04.json",
+      "sha256": "18a2937bb4899657a760ac001e5017e7a070f8e967cb7e807cb946561d834be5"
+    },
+    {
+      "task_id": "scienceboard::KAlgebra/B-01",
+      "path": "tasks/VM/KAlgebra/B-01.json",
+      "sha256": "f91f1b6a776450fc19973cd1a2de3df9c5748d7506cf61a7cb6fcbcbbb24fbaf"
+    },
+    {
+      "task_id": "scienceboard::KAlgebra/C-01",
+      "path": "tasks/VM/KAlgebra/C-01.json",
+      "sha256": "2f26f4ff77400814e2c1a77181ccc216e0286a4873b35862e04537cf437642a2"
+    },
+    {
+      "task_id": "scienceboard::Lean/A-01",
+      "path": "tasks/VM/Lean/A-01.json",
+      "sha256": "a1610e3992bef3809c7b03871bcd109e2be31cb20b23613b677dd07f4895a9df"
+    },
+    {
+      "task_id": "scienceboard::Lean/C-01",
+      "path": "tasks/VM/Lean/C-01.json",
+      "sha256": "f295758eafa6d8eac46085fa8e72bd8f280004454f583c0e19f1560ef2aaafce"
+    },
+    {
+      "task_id": "scienceboard::TeXstudio/A-04",
+      "path": "tasks/VM/TeXstudio/A-04.json",
+      "sha256": "6aa0d0bdfdb45642b244bbbfcc294a0fa4a6bc82ad9bddc7eae458c017be7351"
+    },
+    {
+      "task_id": "scienceboard::TeXstudio/B-04",
+      "path": "tasks/VM/TeXstudio/B-04.json",
+      "sha256": "7d2062312782bad174a6a01057ec970fe5333826204ec84290bbb2495719db40"
+    },
+    {
+      "task_id": "scienceboard::TeXstudio/C-03",
+      "path": "tasks/VM/TeXstudio/C-03.json",
+      "sha256": "4c89b51bf6a91447fef02b7fa11444bcf490ecdd71d2c5194017a00b9be8fd7c"
+    }
+  ]
+}
