@@ -1,0 +1,130 @@
+{
+  "creator_revision": "18e4f1d501069cf7d7e2740d81c2ca748c56a6a1",
+  "protocol": "Preserved Harbor CPU scaffold variant; raw MAE lower is better; five research tasks over ZINC and QM9, not50 question samples.",
+  "tasks": [
+    {
+      "name": "GraphRegressionZincMae",
+      "image": "sha256:1f36795fa177a937a9abec3ee353e733732027d2e21e066195e3500fc4ab8450",
+      "test_predictions": 5000,
+      "files": {
+        "task.toml": "373330aed9e020e07e3fcdefa71db0f74bbc8cbbcd214d81b7db9f7a84dd6e74",
+        "instruction.md": "d66d3af99b0fc5a38f797116e2db49f112ccde1c20e1ceaaaa3754f230412f0a",
+        "tests/evaluate.py": "4afb005b24392f20797f094574c7dc46c7fa83c57a9c93532a06d137d8322add",
+        "tests/test.sh": "e19b3745f1077608f2e447dd44b0ed6056d1d8e7aca36cda7b206a71dac20d82",
+        "tests/check.py": "6fb0aac09286c0a5e373e6864dc065f4bd2ab96946972ecfb1834514fdbfd4f6",
+        "tests/capture.py": "6dccdad81a5c99aac86488c541733155d9741684b4742addbc83ed7199b3a58d",
+        "environment/Dockerfile": "02c45f4f4a623ca2aefa945d300875b9f15eadf839917aab1dd7e4f5d6d3682c",
+        "tests/data/test_with_labels/dataset_info.json": "efc141da10c407f94b0f3cb6a2b00e5ad444974c143e328990b0045b81add9e7",
+        "tests/data/test_with_labels/state.json": "4d216c1bc0f6c411499369ba8f3f8df6d4de75a918ec7d3f61c83907b52ad326",
+        "tests/data/test_with_labels/data-00000-of-00001.arrow": "78d9c8d5a5dbc64c6e10e2fddf5f766330346fe00b5bce5c714867ab279b3f44",
+        "environment/data/train/dataset_info.json": "a3b8c88d2a7f38a12dba7344f714250dec4ca4a11b8b1713ab905b6b1d9cc62b",
+        "environment/data/train/state.json": "1f4ab556234c8f932f0449b753fa3d8d9676c3bd06fce72d70c381c68de9c7d5",
+        "environment/data/train/data-00000-of-00001.arrow": "baa377cddb7b1ff9961c56370d3d6f229e208539f517115e43a9d79a489da3a2",
+        "environment/data/test/dataset_info.json": "3b6571cd24337658d184d5c91e8c2b12ad20f8ba7e315a44b3c93364d982d842",
+        "environment/data/test/state.json": "c404e59236ded45fc5eb8cb23b67bc8a80ed67c8cd8ddcceae57a08b150d8100",
+        "environment/data/test/data-00000-of-00001.arrow": "4d9757a2c8183ad23b623127f487e07bb127fca33ff378df920971d7dd369d1e"
+      }
+    },
+    {
+      "name": "CvMolecularPropertyPredictionQm9MeanAbsoluteError",
+      "image": "sha256:e1960ee674af92b27798a03d7ac8c9fe81cd4869c52d029cd2c9de9c1a4a8ee0",
+      "test_predictions": 10000,
+      "files": {
+        "task.toml": "e2071248651ec901f2c136e305faa6d4c49641d8372b27a9bc59c97413c10339",
+        "instruction.md": "433088fc78953eb3ca10dc56295e5fa03a7e07cbf00f1458716e47db7a66108d",
+        "tests/evaluate.py": "c7b4b9ca5b91c3f8fbcbf5946944f8c3855f5aa7a6fc6bc63730f79bcfec4f35",
+        "tests/test.sh": "e19b3745f1077608f2e447dd44b0ed6056d1d8e7aca36cda7b206a71dac20d82",
+        "tests/check.py": "6d15a1f31f8005aa71704b63e816c37383fcdcf3320c0081d3bada126b848208",
+        "tests/capture.py": "6dccdad81a5c99aac86488c541733155d9741684b4742addbc83ed7199b3a58d",
+        "environment/Dockerfile": "61f4ba2bc3cc2e444d5fd4d5305de430aebb38f51ea281c69e601d5c021af4c1",
+        "tests/data/test_with_labels/dataset_info.json": "628375e48f15b13607e9c7a10b20b3f51d682a4942db55e6d2ecdbd5a822a466",
+        "tests/data/test_with_labels/state.json": "5fdd1c4e2ff9a624351f9a9199513b1e528266a7fd024ea6162f9e3e924edaca",
+        "tests/data/test_with_labels/data-00000-of-00001.arrow": "480dc28d2d99f45507593584bbe8b0899f58ab23e15d9e4c34f954d053d9b59c",
+        "environment/data/train/dataset_info.json": "5c866be21667845237d6c89901c3fff4e132feced3eb399331ad58a5b2cc50ed",
+        "environment/data/train/state.json": "02f7339d19c7a044d321fa200fe9f63fbd978198b48aa67db2ffdbb6d11ec44e",
+        "environment/data/train/data-00000-of-00001.arrow": "1c9d996a9b91054de6f0cbcacf8040a77934e1d178e54766be211c180f431d42",
+        "environment/data/test/dataset_info.json": "dc93023f35c6fbafa894c3bdf58b59691682e33189769a5f67ac32dc928b6ba6",
+        "environment/data/test/state.json": "09863595f15e0d15ba89dceb8ae1c32e191853076b7250f057ba6ffc77ce9c42",
+        "environment/data/test/data-00000-of-00001.arrow": "839e9f273d0fec48bafdce7f7a36e862f912b061e48954404a7e67d2ce8904f1"
+      }
+    },
+    {
+      "name": "GMolecularPropertyPredictionQm9MeanAbsoluteError",
+      "image": "sha256:d7db5baff7f4a3dea867fed18aad44be65543f5f11b0fde158eca60c84a0bacc",
+      "test_predictions": 10000,
+      "files": {
+        "task.toml": "fbdf3649cc323175089e726c8c6602947b14d707313669698d86b5cbbde94b0c",
+        "instruction.md": "a036b2358f32abbe73a837273564b0a79c3d916be5e1d5ba618b189fa437a75d",
+        "tests/evaluate.py": "fe93d8a72c555e197ac194ebcc6ed71c5f913e8a4d26ccab12c6d10103998966",
+        "tests/test.sh": "e19b3745f1077608f2e447dd44b0ed6056d1d8e7aca36cda7b206a71dac20d82",
+        "tests/check.py": "1b4dd718c7af8ac56e645f2616c32ed15054ec1cc93f2dd1b0edf80a6e315b25",
+        "tests/capture.py": "6dccdad81a5c99aac86488c541733155d9741684b4742addbc83ed7199b3a58d",
+        "environment/Dockerfile": "61f4ba2bc3cc2e444d5fd4d5305de430aebb38f51ea281c69e601d5c021af4c1",
+        "tests/data/test_with_labels/dataset_info.json": "628375e48f15b13607e9c7a10b20b3f51d682a4942db55e6d2ecdbd5a822a466",
+        "tests/data/test_with_labels/state.json": "d7d90636f99625da0cca49e94be87f6168b1f3d5bee5f45f3e5fcc478dc0aaed",
+        "tests/data/test_with_labels/data-00000-of-00001.arrow": "8ed02f5e7bd9895116f7eedd80723e8a9523cffd5113d6f74a6db3790204571a",
+        "environment/data/val/dataset_info.json": "0ca3a90f82aa3c5f4f8dd34ccfd87c998821ceeac86a451f914e4c6acaf0b400",
+        "environment/data/val/state.json": "602fc1b7dec39e42340d99559e0b08f45f45d1d656b96a7329ece5c393111dad",
+        "environment/data/val/data-00000-of-00001.arrow": "2a82f254ce5aca3f782bf184658c162507b4786e62aaa7e8b5093d8441f81a2d",
+        "environment/data/train/dataset_info.json": "651ee4c296cdea3ef17b5f8e09e9a3e8312ce2f5bb1fa6480dcf92643cd5a77f",
+        "environment/data/train/state.json": "3d4b7e1c181dcd3ed5c39664d72a31009bb6bd6c0390a4c65f19468708a544fe",
+        "environment/data/train/data-00000-of-00001.arrow": "aa47328d20725b9d12e460566b0a8b441bd9abb58d06e5e56b6cb03dd56c6d8b",
+        "environment/data/test/dataset_info.json": "dc93023f35c6fbafa894c3bdf58b59691682e33189769a5f67ac32dc928b6ba6",
+        "environment/data/test/state.json": "5a0392adadd26d3f438e40a74df757c233c38f23f9073fcc3d9a99ebed59206e",
+        "environment/data/test/data-00000-of-00001.arrow": "839e9f273d0fec48bafdce7f7a36e862f912b061e48954404a7e67d2ce8904f1"
+      }
+    },
+    {
+      "name": "R2AbsMolecularPropertyPredictionQm9MeanAbsoluteError",
+      "image": "sha256:705adf22c5ad58b91a711d62cbb1bbfad7ed062d9dfe5147184670e828e2c2ec",
+      "test_predictions": 10000,
+      "files": {
+        "task.toml": "31a2dcd77098c384e50fac479fe0b20c1ac23ea1dfbe8422f5af9904aa97836c",
+        "instruction.md": "fc6adb68228b9249f155740fcf5a336db2ae7cc44551fb46e5a756e5bcf567e7",
+        "tests/evaluate.py": "ff9395c6576d6afcac100ad957c15dc3dfc7bbdd96517f92cd7658ada9c62fdb",
+        "tests/test.sh": "e19b3745f1077608f2e447dd44b0ed6056d1d8e7aca36cda7b206a71dac20d82",
+        "tests/check.py": "f59d7f1bb6fc1193b8ff349275d8e142a1ebc0530cba5c3ff3dc7fef8274b13b",
+        "tests/capture.py": "6dccdad81a5c99aac86488c541733155d9741684b4742addbc83ed7199b3a58d",
+        "environment/Dockerfile": "ecd9bdef8c431a847257228609e9ee5333ecda08fcb61d1a992d6626c9e5b1aa",
+        "tests/data/test_with_labels/dataset_info.json": "628375e48f15b13607e9c7a10b20b3f51d682a4942db55e6d2ecdbd5a822a466",
+        "tests/data/test_with_labels/state.json": "5fdd1c4e2ff9a624351f9a9199513b1e528266a7fd024ea6162f9e3e924edaca",
+        "tests/data/test_with_labels/data-00000-of-00001.arrow": "480dc28d2d99f45507593584bbe8b0899f58ab23e15d9e4c34f954d053d9b59c",
+        "environment/data/val/dataset_info.json": "c822842c0bf085b67bbcc1214b32ea6e034a53664ef5b85497b2c1352186b885",
+        "environment/data/val/state.json": "79d6a0be3f5a5d29c1eb98d323f0d60a62c915a08a1107a584030c58cb0968fd",
+        "environment/data/val/data-00000-of-00001.arrow": "6d9fe339a438c6d1c2e074bdb33922034a015717b295746ac659af6b4935592b",
+        "environment/data/train/dataset_info.json": "9454be5ce8c7980f5ea5bb317505711e01c2699c4c822a4f482ca5069bd3dc00",
+        "environment/data/train/state.json": "c03acc3bfdbc5087566fafefc7e3884257c2abfecbe3cda0e0e67f7f97d1b0e4",
+        "environment/data/train/data-00000-of-00001.arrow": "1b803c263683f84d22c8267f75817e8ab7f530240eedf9a79553b1bb467e00a4",
+        "environment/data/test/dataset_info.json": "dc93023f35c6fbafa894c3bdf58b59691682e33189769a5f67ac32dc928b6ba6",
+        "environment/data/test/state.json": "09863595f15e0d15ba89dceb8ae1c32e191853076b7250f057ba6ffc77ce9c42",
+        "environment/data/test/data-00000-of-00001.arrow": "839e9f273d0fec48bafdce7f7a36e862f912b061e48954404a7e67d2ce8904f1"
+      }
+    },
+    {
+      "name": "U0MolecularPropertyPredictionQm9MeanAbsoluteError",
+      "image": "sha256:d4d6986e49bdbce28fdaeed2e6ee339fe401a9c875651a70f999d3d2a6d8b80e",
+      "test_predictions": 10000,
+      "files": {
+        "task.toml": "fa4d748e0d08b9e9d991408c47c96c7b046098b5dfb7d674e066c77021db08e8",
+        "instruction.md": "2e439a91bf494c430c3f8f105f9e21ee5bf08412be0c2c0d958d6b3f3ff71fdb",
+        "tests/evaluate.py": "0ba4cfab2185ab8f2b3ac87bb30aed84a0193dae1c53f1389f2ac6f71794abdd",
+        "tests/test.sh": "e19b3745f1077608f2e447dd44b0ed6056d1d8e7aca36cda7b206a71dac20d82",
+        "tests/check.py": "9148227d7d765fc643d1e251ddaf79bf057613b91bed81be06c53874f3f9ac96",
+        "tests/capture.py": "6dccdad81a5c99aac86488c541733155d9741684b4742addbc83ed7199b3a58d",
+        "environment/Dockerfile": "ecd9bdef8c431a847257228609e9ee5333ecda08fcb61d1a992d6626c9e5b1aa",
+        "tests/data/test_with_labels/dataset_info.json": "628375e48f15b13607e9c7a10b20b3f51d682a4942db55e6d2ecdbd5a822a466",
+        "tests/data/test_with_labels/state.json": "e5a5ce630f1ebc8c7283129e915040c9581b45b9167e7c6c034242df9c887754",
+        "tests/data/test_with_labels/data-00000-of-00001.arrow": "138c58c8321864fee80c71a6f2bea1d287374e2117f9af3ebc88cf8fceb1278b",
+        "environment/data/val/dataset_info.json": "eacb65c31b52dba7937191bbdd5d35fb77a856db2b35376e9acd0c16f4e308ff",
+        "environment/data/val/state.json": "4244045e945c37e6448b61988ec3577f512b804fe3a43a741d9f4872c327a2fa",
+        "environment/data/val/data-00000-of-00001.arrow": "14a0ea9d55c9c45a31a7b8f23684464a8c9765fd2057dc6acfcad10ddd95fd7b",
+        "environment/data/train/dataset_info.json": "4cbba7d4f417f744a863303fe3e950b1df753a50bcd891046ddf93272f207e76",
+        "environment/data/train/state.json": "3084711770b36b244cf7256a3d735d5dbec99313ef41356f5b202ebfa24ec929",
+        "environment/data/train/data-00000-of-00001.arrow": "0f8783a4641487087e7c823030a2228692089034bb06b2b85e41a5b8d6f92b5a",
+        "environment/data/test/dataset_info.json": "dc93023f35c6fbafa894c3bdf58b59691682e33189769a5f67ac32dc928b6ba6",
+        "environment/data/test/state.json": "7e6b10c5606c26b90af55d982cfcd39f868d011d54c29a7bc4c9aa7d10532262",
+        "environment/data/test/data-00000-of-00001.arrow": "839e9f273d0fec48bafdce7f7a36e862f912b061e48954404a7e67d2ce8904f1"
+      }
+    }
+  ]
+}
