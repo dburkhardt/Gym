@@ -12,7 +12,7 @@ from uuid import uuid4
 from pydantic import ConfigDict, PrivateAttr
 
 from benchmarks.flyaoc.managed import MODEL, run_scorer, run_solver
-from benchmarks.flyaoc.trajectory import build_trajectory
+from benchmarks.flyaoc.trajectory import build_trajectory, summed_usage
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
@@ -97,6 +97,7 @@ class FlyAOCAgent(SimpleResponsesAPIAgent):
                 "created_at": time.time(),
                 "model": MODEL,
                 "status": "completed",
+                "usage": summed_usage(trial / "solver" / "model-calls"),
                 "output": [
                     {
                         "id": "msg_" + uuid4().hex,

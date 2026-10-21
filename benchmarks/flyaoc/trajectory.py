@@ -60,3 +60,29 @@ def build_trajectory(directory: Path, *, task_id: str, rollout_id: str, model_re
         invocation.model_calls.extend(refs)
     trajectory.invocations.append(invocation)
     return trajectory
+
+
+def summed_usage(directory: Path):
+    """Sum only reported provider usage; preserve unknown counts as unknown."""
+    from nemo_gym.openai_utils import NeMoGymResponseUsage
+
+    usages = []
+    for path in sorted(directory.glob("*.response.json")):
+        saved = json.loads(path.read_text())
+        usage = json.loads(saved["body"]).get("usage")
+        if not usage or any(usage.get(k) is None for k in ("prompt_tokens", "completion_tokens", "total_tokens")):
+            return None
+        usages.append(
+            NeMoGymResponseUsage(
+                input_tokens=usage["prompt_tokens"],
+                output_tokens=usage["completion_tokens"],
+                total_tokens=usage["total_tokens"],
+                input_tokens_details={
+                    "cached_tokens": (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+                },
+                output_tokens_details={
+                    "reasoning_tokens": (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+                },
+            )
+        )
+    return NeMoGymResponseUsage.sum_from_list(usages) if usages else None

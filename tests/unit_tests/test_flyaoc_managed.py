@@ -122,3 +122,17 @@ def test_native_trajectory_uses_persisted_decisions_and_response_refs(tmp_path):
             rollout_id="0-0",
             model_ref=ModelServerRef(type="responses_api_models", name="policy_model"),
         )
+
+
+def test_provider_usage_is_summed_without_inventing_unknown_counts(tmp_path):
+    from benchmarks.flyaoc.trajectory import summed_usage
+
+    p = tmp_path / "000000.response.json"
+    p.write_text(
+        json.dumps({"body": json.dumps({"usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}})})
+    )
+    usage = summed_usage(tmp_path)
+    assert usage.input_tokens == 3 and usage.output_tokens == 4
+    assert usage.output_tokens_details.reasoning_tokens is None
+    p.write_text(json.dumps({"body": "{}"}))
+    assert summed_usage(tmp_path) is None
