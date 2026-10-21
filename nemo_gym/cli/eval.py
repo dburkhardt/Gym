@@ -637,10 +637,21 @@ def e2e_rollout_collection():  # pragma: no cover
 
     global_config_dict = get_global_config_dict()
 
+    if global_config_dict.get("eval_checkpoint_dir") or global_config_dict.get("eval_restore_checkpoint"):
+        if global_config_dict.get("plan_only") or global_config_dict.get("guarded_restart_receipt_fpath"):
+            raise ConfigError("Checkpoint execution cannot combine with plan-only or explicit restart")
     validate_eval_compatibility(global_config_dict)
 
     # Ensure we have the right config first thing
     e2e_rollout_collection_config = E2ERolloutCollectionConfig.model_validate(global_config_dict)
+
+    if global_config_dict.get("eval_restore_checkpoint"):
+        from nemo_gym._checkpoint.evaluation import file_digest, read_published
+
+        if not global_config_dict.get("resume_from_cache"):
+            raise ConfigError("Checkpoint restore requires --resume")
+        read_published(Path(global_config_dict["eval_restore_checkpoint"]))
+        file_digest(Path(e2e_rollout_collection_config.output_jsonl_fpath))
 
     # Prepare data
     data_processor_config_dict = deepcopy(global_config_dict)
@@ -657,6 +668,11 @@ def e2e_rollout_collection():  # pragma: no cover
     _validate_split_datasets_declared(e2e_rollout_collection_config.split, server_instance_configs)
 
     input_jsonl_fpath = data_process_output_dir / f"{e2e_rollout_collection_config.split}.jsonl"
+    if global_config_dict.get("eval_restore_checkpoint"):
+        file_digest(input_jsonl_fpath)
+        with open_dict(global_config_dict):
+            global_config_dict["reuse_existing_data_preparation"] = True
+        e2e_rollout_collection_config.reuse_existing_data_preparation = True
     should_skip_data_processing = (
         e2e_rollout_collection_config.reuse_existing_data_preparation and input_jsonl_fpath.exists()
     )
@@ -727,7 +743,8 @@ def e2e_rollout_collection():  # pragma: no cover
         ],
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    if not global_config_dict.get("eval_restore_checkpoint"):
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     if e2e_rollout_collection_config.plan_only:
         inputs_path = output_fpath.with_stem(output_fpath.stem + "_planned_inputs").with_suffix(".jsonl")
         inputs_path.write_text("".join(json.dumps(row) + "\n" for row in planned_rows))

@@ -1100,6 +1100,16 @@ COMMANDS = {
                 )
             ),
             _bool_flag("resume", "resume_from_cache", "Resume from cached rollouts instead of recollecting."),
+            _value_flag(
+                "checkpoint-dir",
+                "eval_checkpoint_dir",
+                "Opt-in evaluation checkpoint publication directory (SIGUSR1 request).",
+            ),
+            _value_flag(
+                "restore-checkpoint",
+                "eval_restore_checkpoint",
+                "Restore a published native evaluation checkpoint; requires --resume.",
+            ),
             AGENT_TYPE,
             ALLOW_UNSUPPORTED_PAIRING,
             _value_flag("agent", "agent_name", "Agent to collect rollouts with.", aliases=("-a",)),

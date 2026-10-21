@@ -1,0 +1,39 @@
+---
+title: "Evaluation checkpoint recovery"
+description: "Continue a qualified evaluation from durable native participant state."
+position: 9
+---
+
+# Evaluation checkpoint recovery
+
+`--resume` normally reuses completed output rows. `--restore-checkpoint` additionally restores an unfinished episode from native participant state. It does not restart that episode from its input when restoration fails.
+
+The current scientific acceptance covers one source-bound QCBench route: SimpleAgent, its stateless legacy HTTP relay, the pinned creator scorer, and a checkpoint-enabled OpenAI model server. A saved-response loopback control exercises the actual CLI, kills the initial services after publication, and restores into fresh processes before real creator verification. This is not acceptance of arbitrary mutable tools, shell processes, container restoration, or heterogeneous scientific routes.
+
+## Configure and request a checkpoint
+
+Keep the original source, component environments, inputs, output path and private capture store. Enable `provider_dispatch_guard`, `observability_enabled`, authenticated `checkpoint.enabled` / `checkpoint.control_auth_token`, and the model component's `checkpoint_policy`. The existing source/runtime binding must qualify the selected graph; missing or unsupported participants fail before dispatch.
+
+Run the original evaluation command with a fresh checkpoint directory:
+
+```bash
+gym eval run --config runtime.yaml --model-type openai_model --model MODEL \
+  --split benchmark --output results.jsonl --checkpoint-dir checkpoint-1
+```
+
+Send `SIGUSR1` to that CLI process to request publication. Wait for `checkpoint-1/evaluation.json`; a directory alone is not a committed checkpoint. Publication occurs only after participant preparation, commit, response draining, capture checks and durable artifact binding. A rejected request makes the command fail. Normal execution resumes after publication, so preserve any subsequently appended results and capture records.
+
+## Restore without input replay
+
+After the previous owned services have settled, use the same scientific command and original output path:
+
+```bash
+gym eval run --config runtime.yaml --model-type openai_model --model MODEL \
+  --split benchmark --output results.jsonl --resume --restore-checkpoint checkpoint-1
+```
+
+Restoration checks original artifact prefixes, source/runtime/configuration binding, exact episode identities, participant state and the live capture store. Completed rows stay intact; an unfinished episode advances through the native attempt identity. Unknown external requests, changed capture stores, missing files, unsupported role coverage and partial restore failures refuse continuation. There is no fallback to cache redispatch or automatic input replay. Retry-invalid-judge, terminal-timeout retries, explicit failed-attempt restart and plan-only mode cannot be combined with checkpoint restoration.
+
+The initial implementation requires every pending row to belong to the published episode scope. A checkpoint is not a portable archive: its original bound filesystem paths and runtime remain required. Keep the checkpoint and later outputs together; do not delete later evidence to make an older checkpoint pass validation.
+
+The maintained deterministic acceptance driver is `tests/e2e/coordinator/scientific_checkpoint_control.py`. It compares the complete preserved response, reward, scoring details, mask and failure kind, and checks that restoration makes no second fixture model request. The preserved budget-exhausted response remains a scientific model outcome, including its original health flags.

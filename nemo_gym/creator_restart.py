@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Dependency closure for the inspected stateless AST creator-scoring path.
+"""Dependency closure for inspected stateless creator-scoring paths.
 
 This is not arbitrary creator-code restart support. GenomeQA and MolJSON use
 pinned, extracted Python functions with stdlib-only scoring; all references are
-in the immutable materialized inputs. Other branches need their own inspected
+in the immutable materialized inputs. QCBench binds its complete inspected
+stdlib-only scoring module by exact hash. Other branches need their own inspected
 closure. This binding neither replays an unknown request nor restores a tool.
 """
 
@@ -20,6 +21,7 @@ from nemo_gym.scicode_restart import _hash_file, inspect_component_runtime
 
 
 _SOURCE_FILES = {
+    "qcbench": "eval.py",
     "genomeqa": "run.py",
     "moljson": "evaluation_scripts/utils/answer_checking.py",
 }
@@ -106,6 +108,11 @@ def creator_source_binding(root: Path, resource: dict) -> dict:
         actual = _hash_file(source)
         if actual != hashlib.sha256(original).hexdigest():
             raise ConfigError("Creator restart scorer bytes differ from pinned Git object")
+        if kind == "qcbench":
+            # This exact complete module is imported, not AST-extracted. Its only
+            # import-time effect is Decimal precision=50; file I/O is main-guarded.
+            if actual != "5d22c986ac0c08c0ba3f6ace7122d3d2e845eca6ce01e6b16a4a0d3cf1fe5b10":
+                raise ConfigError("QCBench scorer differs from inspected stdlib-only module")
         maintained = {}
         # Worker imports deterministic -> prepare and recovered_releases. Binding
         # the whole small maintained package also catches future helper changes.
@@ -115,7 +122,9 @@ def creator_source_binding(root: Path, resource: dict) -> dict:
         if not required.issubset({Path(path).name for path in maintained}):
             raise ConfigError("Creator restart maintained adapter source missing")
         return {
-            "protocol": "stateless-stdlib-ast-creator-v1",
+            "protocol": "stateless-stdlib-qcbench-module-v1"
+            if kind == "qcbench"
+            else "stateless-stdlib-ast-creator-v1",
             "benchmark": kind,
             "creator": {"root": str(repo), "revision": revision, "source": _SOURCE_FILES[kind], "sha256": actual},
             "maintained_source": maintained,

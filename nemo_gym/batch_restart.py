@@ -111,6 +111,8 @@ def bind_execution(
     for key in (
         "resume_from_cache",
         "guarded_restart_receipt_fpath",
+        "eval_checkpoint_dir",
+        "eval_restore_checkpoint",
         "num_samples_in_parallel",
         "dispatch_longest_first",
         "dispatch_budget_s",
@@ -150,6 +152,8 @@ def bind_execution(
         "model_call_capture_dir",
         "provider_dispatch_guard",
         "guarded_restart_receipt_fpath",
+        "eval_checkpoint_dir",
+        "eval_restore_checkpoint",
         "resume_from_cache",
         "reuse_existing_data_preparation",
         "disallowed_ports",

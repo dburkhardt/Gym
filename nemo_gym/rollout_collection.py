@@ -1827,6 +1827,8 @@ class RolloutCollectionConfig(SharedRolloutCollectionConfig):
             "rollouts are long."
         ),
     )
+    eval_checkpoint_dir: Optional[str] = None
+    eval_restore_checkpoint: Optional[str] = None
     guarded_restart_receipt_fpath: Optional[str] = Field(
         default=None,
         description="Explicit exact failed-attempt receipt for bound native batches; never permits unresolved sends or scientific reruns.",
@@ -3169,6 +3171,27 @@ class RolloutCollectionHelper(BaseModel):
         # parent, and the materialized-inputs write below is the first one. Keep this above that
         # write -- a user pointing --output at a not-yet-existing directory is the common case
         # outside a git clone.
+        if config.eval_checkpoint_dir or config.eval_restore_checkpoint:
+            checkpoint_config = (environment_server_client or self.setup_server_client()).global_config_dict
+            if not checkpoint_config.get("provider_dispatch_guard"):
+                raise ValueError("Evaluation checkpoint requires provider dispatch guard")
+        if config.eval_restore_checkpoint:
+            from nemo_gym._checkpoint.evaluation import file_digest, read_published
+
+            if not config.resume_from_cache or config.guarded_restart_receipt_fpath:
+                raise ValueError("Checkpoint restore requires resume and cannot combine with explicit restart")
+            if config.retry_invalid_judge_responses or config.retry_terminal_timeouts:
+                raise ValueError("Checkpoint restore cannot retry scientific or terminal outcomes")
+            read_published(Path(config.eval_restore_checkpoint))
+            for required in (
+                config.materialized_jsonl_fpath,
+                output_fpath,
+                failures_fpath,
+                config.batch_manifest_fpath,
+            ):
+                if required is None:
+                    raise ValueError("Checkpoint restore requires original bound run artifacts")
+                file_digest(Path(required))
         output_fpath.parent.mkdir(parents=True, exist_ok=True)
 
         from nemo_gym.batch_restart import reject_bound_overwrite
@@ -3193,7 +3216,7 @@ class RolloutCollectionHelper(BaseModel):
         persisted_success_keys: set = set()
         if config.resume_from_cache and config.materialized_jsonl_fpath.exists() and output_fpath.exists():
             should_clear_outputs = False
-            if not config.guarded_restart_receipt_fpath:
+            if not config.guarded_restart_receipt_fpath and not config.eval_restore_checkpoint:
                 _drop_truncated_tail(output_fpath)
                 if failures_fpath.exists():
                     _drop_truncated_tail(failures_fpath)
@@ -3344,7 +3367,7 @@ class RolloutCollectionHelper(BaseModel):
                 global_config,
                 config.materialized_jsonl_fpath,
                 resume=config.resume_from_cache,
-                require_prior=bool(config.guarded_restart_receipt_fpath),
+                require_prior=bool(config.guarded_restart_receipt_fpath or config.eval_restore_checkpoint),
                 collector_config=config.model_dump(mode="json"),
                 capture_dirs=capture_dirs,
             )
@@ -3369,12 +3392,43 @@ class RolloutCollectionHelper(BaseModel):
                 if EpisodeId.from_capture_key(maybe_rollout_id_from_run_body(row)).rollout_id in selected_logical
             ]
 
+        evaluation_checkpoint = None
+        if config.eval_checkpoint_dir or config.eval_restore_checkpoint:
+            from nemo_gym._checkpoint.evaluation import EvaluationCheckpoint
+
+            if (
+                batch_tracker is None
+                or not execution_binding_sha256
+                or not batch_tracker.execution_binding.get("restart_scope_qualified")
+            ):
+                raise ValueError("Evaluation checkpoint requires qualified native source/runtime binding")
+            if token_capture_dirs:
+                raise ValueError("Evaluation checkpoint token-store continuation is not qualified")
+            client = environment_server_client or self.setup_server_client()
+            plain_config = (
+                OmegaConf.to_container(global_config, resolve=True)
+                if OmegaConf.is_config(global_config)
+                else global_config
+            )
+            evaluation_checkpoint = EvaluationCheckpoint(
+                directory=config.eval_checkpoint_dir or config.eval_restore_checkpoint,
+                client=client,
+                config=plain_config,
+                binding=batch_tracker.execution_binding,
+                capture_dirs=capture_dirs,
+                artifacts=[output_fpath, failures_fpath, config.materialized_jsonl_fpath],
+            )
+            if config.eval_restore_checkpoint:
+                await evaluation_checkpoint.restore(config.eval_restore_checkpoint, input_rows)
+            await evaluation_checkpoint.discover()
+            self._evaluation_checkpoint = evaluation_checkpoint
+
         # Guarded recovery must retain prior evidence; a fresh agent session cannot
         # silently replace an interrupted attempt. Legacy unguarded reruns clear theirs.
         if capture_dirs:
-            if global_config.get("provider_dispatch_guard", False):
+            if global_config.get("provider_dispatch_guard", False) and not config.eval_restore_checkpoint:
                 assert_guarded_rollout_dispatch_safe(input_rows, capture_dirs, admitted_prior_attempts=admitted_prior)
-            else:
+            elif not global_config.get("provider_dispatch_guard", False):
                 print("Clearing existing model-call captures for rollouts being dispatched")
                 clear_model_call_captures_for_rollouts(input_rows, capture_dirs)
         if batch_tracker is not None:
@@ -3514,6 +3568,11 @@ class RolloutCollectionHelper(BaseModel):
                     )
                 sigterm_previous = _print_on_sigterm(run_timing.table)
 
+            if evaluation_checkpoint is not None and config.eval_checkpoint_dir:
+                import signal
+
+                asyncio.get_running_loop().add_signal_handler(signal.SIGUSR1, evaluation_checkpoint.requested.set)
+                evaluation_checkpoint.task = asyncio.create_task(evaluation_checkpoint.watch())
             completion_iterator = self._run_examples_with_metadata(
                 input_rows,
                 semaphore=semaphore,
@@ -3526,7 +3585,21 @@ class RolloutCollectionHelper(BaseModel):
                 **({"run_timing": run_timing} if run_timing is not None else {}),
             )
             for future in completion_iterator:
-                completed = await future
+                if evaluation_checkpoint is not None and evaluation_checkpoint.task is not None:
+                    pending_completion = asyncio.ensure_future(future)
+                    done, _ = await asyncio.wait(
+                        [pending_completion, evaluation_checkpoint.task], return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if evaluation_checkpoint.task in done:
+                        try:
+                            await evaluation_checkpoint.task
+                        except BaseException:
+                            pending_completion.cancel()
+                            await asyncio.gather(pending_completion, return_exceptions=True)
+                            raise
+                    completed = await pending_completion
+                else:
+                    completed = await future
                 row, result, rollout_latency_ms = completed.row, completed.result, completed.rollout_latency_ms
                 if _materialized_taskset(row) is not None and _is_episode_response(result):
                     # The row went out as an episode request, so the reply is a BaseEpisodeResponse.
@@ -3702,6 +3775,10 @@ class RolloutCollectionHelper(BaseModel):
                         os.fsync(results_file.fileno())
                         await retire_rollout_token_capture(rollout_id, token_source, token_capture_build)
 
+                if evaluation_checkpoint is not None:
+                    evaluation_checkpoint.after_persist(row)
+                    if evaluation_checkpoint.error is not None:
+                        raise evaluation_checkpoint.error
                 counts_left[dispatch_name] -= 1
                 if counts_left[dispatch_name] <= 0:
                     counts_left.pop(dispatch_name)
@@ -3826,6 +3903,20 @@ class RolloutCollectionHelper(BaseModel):
             collection_succeeded = True
         finally:
             try:
+                if evaluation_checkpoint is not None:
+                    if config.eval_checkpoint_dir:
+                        import signal
+
+                        asyncio.get_running_loop().remove_signal_handler(signal.SIGUSR1)
+                    if evaluation_checkpoint.task is not None:
+                        if not evaluation_checkpoint.task.done():
+                            if evaluation_checkpoint.requested.is_set():
+                                evaluation_checkpoint.error = ValueError(
+                                    "Checkpoint request did not complete before collection ended"
+                                )
+                            evaluation_checkpoint.task.cancel()
+                        await asyncio.gather(evaluation_checkpoint.task, return_exceptions=True)
+                    self._evaluation_checkpoint = None
                 if timing_heartbeat is not None:
                     timing_heartbeat.cancel()
                 if queue_sampler is not None:
@@ -3844,6 +3935,8 @@ class RolloutCollectionHelper(BaseModel):
                     if owned_token_source is not None:
                         await owned_token_source.close()
 
+        if evaluation_checkpoint is not None and evaluation_checkpoint.error is not None:
+            raise evaluation_checkpoint.error
         print(latency_tracker.summary())
 
         if config.upload_rollouts and exporters_enabled:  # pragma: no cover
@@ -4455,6 +4548,7 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
             )
             server_type = server_types.get(server_name)
             async with semaphore:
+                checkpoint = getattr(self, "_evaluation_checkpoint", None)
                 # Drain check happens *after* acquiring a slot, so it sees the
                 # real remaining time at the moment this task would start rather
                 # than at queueing time.
@@ -4471,6 +4565,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                             environment_server_type=server_type,
                         )
 
+                if checkpoint is not None:
+                    await checkpoint.before_dispatch(row)
                 started = time.monotonic()
                 started_at = time.time()
                 if run_timing is not None:
@@ -4482,6 +4578,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                     res = await server_client.post(server_name=server_name, url_path="/run", json=request_body)
                     await raise_for_status(res)
                     result = await get_response_json(res)
+                    if checkpoint is not None:
+                        checkpoint.after_reply(row)
                     if run_timing is not None and isinstance(result, Mapping):
                         run_timing.record_result(result, time.monotonic() - started)
                     # Independently-measured task wall-clock (ng_perf.total_latency_ms), not derived
@@ -4517,6 +4615,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                         environment_server_type=server_type,
                     )
                 finally:
+                    if checkpoint is not None:
+                        checkpoint.after_reply(row)
                     # Failed and timed-out tasks inform the adaptive margin too, but only by
                     # raising it: see ``DispatchLatencyTracker.record_failure``.
                     elapsed = time.monotonic() - started

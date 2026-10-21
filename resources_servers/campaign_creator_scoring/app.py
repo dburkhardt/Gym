@@ -83,6 +83,19 @@ class CreatorResourcesServer(SimpleResourcesServer):
     config: Config
     ray_enabled = False
 
+    @property
+    def checkpoint_mode(self):
+        # Only the inspected pinned QCBench scorer has this initial contract.
+        # Verification remains wait-mode: no active child is snapshotted/replayed.
+        if self.config.benchmark != "qcbench":
+            return "restart_only"
+        from nemo_gym.creator_restart import creator_source_binding
+
+        creator_source_binding(
+            Path(__file__).resolve().parents[2], {"benchmark": "qcbench", "upstream_repo": self.config.upstream_repo}
+        )
+        return "stateless"
+
     async def verify(self, body: VerifyRequest) -> VerifyResponse:
         task = {"uuid": body.uuid, "verifier_metadata": body.verifier_metadata}
         if self.config.benchmark == "scienceqa":
