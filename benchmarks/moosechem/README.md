@@ -2,7 +2,7 @@
 
 Pinned creator f8cda98a3bed30b0f0d85fba625e343d688461ab; SHA256 checks cover source and the official51-question workbook/150-paper corpus. The wrapper invokes creator Screening, HypothesisGenerationEA and Evaluate, preserving source prompts, parsing, ranking and reference match scorer. Configuration follows creator main.sh: strict background/survey, four retrieval rounds, three mutations and refinements, up to three inspiration search steps. Ground-truth inspirations are disabled for generation. Evaluation enables reference annotation because a benchmark metric is required.
 
-All model roles use Nemotron3.5SuperVL via the shared local gateway; this is an explicit model/judge substitution variant. Creator8192-token generation cap and temperatures are retained. Every raw chat request/response is saved without authentication. Reference hypothesis/keypoints enter only the native evaluator. Match scoring is only applied to hypotheses with a creator-matched inspiration, so a missing matched score is not a numeric zero. A modern model may have seen these2024 papers; this run cannot reproduce the paper's unseen-literature premise.
+All model roles use Nemotron3.5SuperVL via the native Gym model service; this is an explicit model/judge substitution variant. Creator8192-token generation cap and temperatures are retained. Every raw chat request/response is saved without authentication. Reference hypothesis/keypoints enter only the native evaluator. Match scoring is only applied to hypotheses with a creator-matched inspiration, so a missing matched score is not a numeric zero. A modern model may have seen these2024 papers; this run cannot reproduce the paper's unseen-literature premise.
 
 Three no-inference controls cover source defaults, reference recall1/0, and first retrieval prompt exclusion of hypothesis/keypoints. Full native pipeline runtime and judge calibration remain in progress. The native Gym agent configuration is `responses_api_agents/moosechem_native/configs/moosechem.yaml`. It preserves full creator evaluation outputs and uses only the explicitly named last-round inspiration recall as Gym transport reward; this is not overall hypothesis quality. Importing an already completed native execution requires an explicit flag and never repeats inference. Three additional contract tests verify trace model allowlisting, native metric preservation and refusing implicit reruns.
 
@@ -10,7 +10,17 @@ Future runs use an explicit no-transport-retry variant: the first OpenAI API err
 
 Future runs atomically claim their output directory with `run-intent.json`, persist each request intent before dispatch, and fsync terminal traces. Receipt failures abort outside native retry loops. Interruptions remain explicitly unknown outcomes requiring reconciliation; neither a trace row nor a run-intent file alone proves provider completion.
 
-## Remaining frozen tasks0/33: staged admission variant
+## Maintained native path for new attempts
+
+Use `gym eval plan --config benchmarks/moosechem/config.yaml --out plan.json`, then the normal native Gym evaluation workflow with the guarded policy model configured. Preparation requires `MOOSE_FROZEN_TASKS` and its exact `MOOSE_FROZEN_SHA256`; it atomically stages every selected row without resampling. Set `MOOSE_PYTHON`, `MOOSE_SOURCE` and a fresh `MOOSE_OUTPUT`. The frozen five IDs remain18,26,38,0,33; task26 is explicitly blocked because its historical outcome is unresolved. This example plan is not authorization to rerun completed tasks.
+
+New execution uses the shared task-scoped authenticated Unix socket model bridge and shared managed subprocess lifecycle. It requires `provider_dispatch_guard`, exact policy model identity and a native rollout capture ID. There is no normal dependency on49180,49394 or a slot-clearance file. Requests retain creator8192-token limits by default;16384 is an explicit variant. Request intents and raw responses are durably recorded before creator parsing, transport failures poison the attempt and escape creator retry loops, and cancellation settles the child process group before removing the socket. Existing output directories are never implicitly restarted. Saved execution import remains explicit.
+
+The creator Python runs as trusted local code through LocalProvider: this is process lifecycle management, not container isolation or a hard CPU/RAM quota. Pin and qualify the selected scientific interpreter separately. No live native rollout has yet qualified this migrated path; offline controls and a five-row native plan establish wiring, transport boundaries and cancellation behavior only. The full creator evaluation remains available; Gym's named inspiration-recall reward is not a validated measure of hypothesis quality.
+
+The following proxy/clearance notes describe preserved historical attempts only.
+
+## Historical remaining tasks0/33: bespoke admission variant
 
 `remaining_two.py` selects only0 and33 from frozen `[18,26,38,0,33]`. Completed38 and unresolved26 are not restarted. Full native150-corpus screening, mutation/generation and evaluation remain unchanged. All roles use exact Super and16,384 output tokens. No transport retries.
 

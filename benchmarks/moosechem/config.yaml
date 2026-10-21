@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- responses_api_agents/moosechem_native/configs/moosechem.yaml
+moosechem_agent:
+  responses_api_agents:
+    moosechem_native:
+      # Historical task26 remains unresolved; override only after reconciliation.
+      blocked_task_ids: [26]
+      output_token_budget: 8192
+      datasets:
+      - name: moosechem
+        type: benchmark
+        jsonl_fpath: benchmarks/moosechem/data/benchmark.jsonl
+        prepare_script: benchmarks/moosechem/prepare.py
+        num_repeats: 1
