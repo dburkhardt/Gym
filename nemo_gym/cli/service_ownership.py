@@ -9,6 +9,7 @@ import math
 import os
 import signal
 import socket
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -19,6 +20,110 @@ from nemo_gym.sandbox.lifecycle import _publish
 
 
 TOKEN = "NEMO_GYM_SERVICE_OWNER_TOKEN"
+MODE_ENV = "NEMO_GYM_SERVICE_OWNERSHIP_MODE"
+
+
+def _unit(value):
+    return f"nemogym-{value['token']}.scope"
+
+
+def _description(value):
+    payload = {k: value[k] for k in ("binding", "host", "token", "command_sha256")}
+    return "NeMoGym owned " + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _unit_properties(unit):
+    result = subprocess.run(
+        [
+            "systemctl",
+            "--user",
+            "show",
+            unit,
+            "--property=Id,LoadState,ActiveState,SubState,InvocationID,ControlGroup,Description",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    props = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    if props.get("LoadState") == "not-found":
+        return None
+    if result.returncode or not props:
+        raise RuntimeError("Cannot inspect dedicated systemd ownership unit")
+    return props
+
+
+def _scope_identity(value):
+    recorded = value.get("systemd")
+    if recorded is not None and (
+        not isinstance(recorded, dict)
+        or set(recorded) != {"unit", "invocation_id", "control_group"}
+        or recorded["unit"] != _unit(value)
+        or not isinstance(recorded["invocation_id"], str)
+        or len(recorded["invocation_id"]) != 32
+        or any(c not in "0123456789abcdef" for c in recorded["invocation_id"])
+        or not isinstance(recorded["control_group"], str)
+        or not recorded["control_group"].startswith(
+            f"/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/"
+        )
+        or Path(recorded["control_group"]).name != _unit(value)
+        or ".." in Path(recorded["control_group"]).parts
+    ):
+        raise RuntimeError("Malformed dedicated systemd scope receipt")
+    props = _unit_properties(_unit(value))
+    if props is None:
+        if value.get("root") and matching(value["root"]) is not None:
+            raise RuntimeError("Owned root remains alive outside missing systemd unit")
+        if recorded and _scope_populated(recorded["control_group"]):
+            raise RuntimeError("Missing systemd unit retains populated cgroup")
+        return None
+    group = props.get("ControlGroup", "")
+    invocation = props.get("InvocationID", "")
+    if (
+        props.get("Id") != _unit(value)
+        or props.get("Description") != _description(value)
+        or not group.startswith(f"/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/")
+        or Path(group).name != _unit(value)
+        or ".." in Path(group).parts
+        or len(invocation) != 32
+        or any(c not in "0123456789abcdef" for c in invocation)
+    ):
+        raise RuntimeError("Dedicated systemd scope identity mismatch")
+    actual = {"unit": _unit(value), "invocation_id": invocation, "control_group": group}
+    if recorded is not None and actual != recorded:
+        raise RuntimeError("Dedicated systemd scope invocation changed")
+    return actual
+
+
+def _scope_populated(group):
+    path = Path("/sys/fs/cgroup") / group.lstrip("/")
+    if ".." in Path(group).parts or any(p.is_symlink() for p in (path, *path.parents)):
+        raise RuntimeError("Invalid owned cgroup path")
+    try:
+        fields = dict(line.split() for line in (path / "cgroup.events").read_text().splitlines())
+    except FileNotFoundError:
+        return False
+    if fields.get("populated") not in {"0", "1"}:
+        raise RuntimeError("Cannot establish owned cgroup population")
+    return fields["populated"] == "1"
+
+
+def _stop_scope(value):
+    actual = _scope_identity(value)
+    if actual is None:
+        return
+    # Revalidate the durable invocation immediately before stopping this unique
+    # unit. Never stop the caller's SSH scope or enumerate other users' processes.
+    bound = {**value, "systemd": actual}
+    _scope_identity(bound)
+    result = subprocess.run(["systemctl", "--user", "stop", actual["unit"]], capture_output=True, timeout=15)
+    if result.returncode or _scope_populated(actual["control_group"]):
+        raise RuntimeError("Dedicated systemd scope did not settle")
+    if value.get("root") and matching(value["root"]) is not None:
+        raise RuntimeError("Owned service root outlived its dedicated scope")
+    props = _unit_properties(actual["unit"])
+    if props is not None and props.get("ActiveState") not in {"inactive", "failed"}:
+        raise RuntimeError("Dedicated systemd scope remains active")
 
 
 def component_binding(components):
@@ -102,7 +207,12 @@ def owned_members(token, created_after):
 class ServiceOwnership:
     """Hold the existing run output's ownership lease and reconcile old services."""
 
-    def __init__(self, directory, binding):
+    def __init__(self, directory, binding, *, mode=None):
+        self.mode = mode or os.environ.get(MODE_ENV, "process")
+        if self.mode not in {"process", "systemd"}:
+            raise RuntimeError("Unsupported native service ownership mode")
+        if self.mode == "systemd" and sys.platform != "linux":
+            raise RuntimeError("Systemd ownership requires Linux user scopes")
         self.directory = checked_directory(directory)
         self.binding = binding
         self.published = []
@@ -129,6 +239,7 @@ class ServiceOwnership:
                 value.get("version") != 1
                 or value.get("binding") != self.binding
                 or value.get("host") != host_identity()
+                or value.get("mode", "process") != self.mode
             ):
                 raise RuntimeError(
                     f"Service ownership source/config/host binding mismatch: recorded={value.get('binding')} expected={self.binding}"
@@ -139,6 +250,12 @@ class ServiceOwnership:
             coordinator = matching(value.get("coordinator"))
             if coordinator is not None and value.get("cleanup_confirmed") is not True:
                 raise RuntimeError("Original service coordinator is still alive")
+            if self.mode == "systemd":
+                actual = _scope_identity(value)
+                if coordinator is not None and actual and _scope_populated(actual["control_group"]):
+                    raise RuntimeError("Completed ownership receipt still has live services")
+                records.append((path, value, None))
+                continue
             root = matching(value["root"]) if value.get("root") else None
             members = owned_members(token, value["coordinator"]["created"])
             if root is not None:
@@ -147,6 +264,11 @@ class ServiceOwnership:
                 raise RuntimeError("Completed ownership receipt still has live services")
             records.append((path, value, members))
         for path, value, members in records:
+            if self.mode == "systemd":
+                _stop_scope(value)
+                value["cleanup_confirmed"] = True
+                _publish(path, value)
+                continue
             for process in members:
                 try:
                     process.send_signal(signal.SIGTERM)
@@ -178,15 +300,37 @@ class ServiceOwnership:
             "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
             "cleanup_confirmed": False,
         }
+        if self.mode == "systemd":
+            value.update(mode="systemd", systemd=None)
         _publish(path, value)
         self.published.append(path)
         env[TOKEN] = token
-        return [sys.executable, str(Path(__file__).absolute()), str(path), command]
+        bootstrap = [sys.executable, str(Path(__file__).absolute()), str(path), command]
+        if self.mode == "systemd":
+            return [
+                "systemd-run",
+                "--user",
+                "--scope",
+                "--quiet",
+                "--no-ask-password",
+                f"--unit={_unit(value)}",
+                f"--description={_description(value)}",
+                "--property=KillMode=control-group",
+                "--property=TimeoutStopSec=5s",
+                "--",
+                *bootstrap,
+            ]
+        return bootstrap
 
     def close(self):
         try:
             for path in self.published:
                 value = json.loads(path.read_text())
+                if self.mode == "systemd":
+                    _stop_scope(value)
+                    value["cleanup_confirmed"] = True
+                    _publish(path, value)
+                    continue
                 if (value.get("root") and matching(value["root"]) is not None) or owned_members(
                     value["token"], value["coordinator"]["created"]
                 ):
@@ -208,6 +352,13 @@ def launch(path, command):
         raise RuntimeError("Coordinator exited before service launch")
     if os.getpgrp() != os.getpid():
         raise RuntimeError("Service wrapper must own its POSIX process group")
+    if value.get("mode") == "systemd":
+        actual = _scope_identity(value)
+        if actual is None:
+            raise RuntimeError("Dedicated systemd scope missing before service exec")
+        if Path("/proc/self/cgroup").read_text().strip() != "0::" + actual["control_group"]:
+            raise RuntimeError("Service bootstrap is outside its dedicated cgroup")
+        value["systemd"] = actual
     value["root"] = identity(psutil.Process())
     _publish(path, value)
     os.execve("/bin/bash", ["/bin/bash", "-c", command], os.environ)
