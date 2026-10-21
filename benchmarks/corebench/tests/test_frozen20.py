@@ -66,6 +66,11 @@ def test_sources_and_qualification_gate_publication(tmp_path):
     assert json.loads(p.read_text())["task_id"] == "corebench::capsule-test"
     task = p.parent / "tasks/capsule-test"
     assert not list((task / "environment").rglob("answers.json"))
+    assert (task / "tests/item_diagnostics.py").is_file()
+    assert not list((task / "environment").rglob("item_diagnostics.py"))
+    assert (task / "tests/evaluations.py").read_bytes() == (
+        refs / row["id"] / "evaluator-only/evaluations.py"
+    ).read_bytes()
     assert "/opt/corebench-harness/bin/python3" in (task / "tests/test.sh").read_text()
     assert json.loads((p.parent / "preparation.json").read_text())["retained"] == 1
 

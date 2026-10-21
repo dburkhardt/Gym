@@ -153,7 +153,7 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
                 dst.chmod(src.stat().st_mode & 0o777)
             for name in ["answers.json", "evaluations.py"]:
                 stage_file(refs / "evaluator-only" / name, task / "tests" / name)
-            for name in ["check.py", "capture_artifacts.py", "test.sh"]:
+            for name in ["check.py", "item_diagnostics.py", "capture_artifacts.py", "test.sh"]:
                 stage_file(template / name, task / "tests" / name)
             config = (
                 'version = "1.0"\nartifacts = ["/workspace"]\n[agent]\ntimeout_sec = %d\n[verifier]\ntimeout_sec = 120\n[environment]\ndocker_image = "%s"\ncpus = %d\nmemory_mb = %d\nstorage_mb = %d\nallow_internet = false\n'

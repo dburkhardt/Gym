@@ -81,3 +81,17 @@ older already-incompatible engines are not newly admitted. A future digest
 schema should separately bind the selected generated recipe/probes and a
 versioned qualification engine, avoiding recurring mappings for unrelated
 allowlist additions. This change does not implement that broader redesign.
+
+Fresh frozen20 preparation adds evaluator-only `item_diagnostics.json` to the
+collected verifier logs. The observer qualifies the exact creator scorer bytes,
+loaded function and AST structure, then observes the single existing evaluation:
+raw/normalized predictions, reference observations, actual numeric intervals and
+original comparison/counter outcomes. It does not reimplement scoring, adjust
+rounding/tolerances, regrade, change rewards or mask samples. Missing/unreached
+comparisons and caught exceptions remain distinct; non-finite intervals are
+explicit. A preexisting trace is untouched, and an unsupported source or failed
+observer produces unavailable diagnostics without changing original scoring.
+The reference-bearing artifact stays outside the solver workspace. Historical
+prepared tasks/results and the legacy single-capsule preparer are unchanged.
+A zero-width interval can expose rounding sensitivity, but this metadata does
+not by itself establish scientific invalidity or authorize a score correction.
