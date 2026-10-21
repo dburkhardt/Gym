@@ -17,3 +17,53 @@ The adapter preserves 50 native interactions, temperature 1, 16,384 output token
 The real isolated database control passed on the existing build worker: a separate container impersonating PostgreSQL's OS UID could not authenticate as postgres; task-role writes remained denied after disabling session read-only defaults; role escalation failed; native RDKit queries and all 427,683 reactions (including three supplements) remained available. Both owned containers were removed. Full native runtime image/source and end-to-end Harbor acceptance remain separate gates.
 
 Creator `iteration_limit` is a model outcome, not infrastructure invalidity. The adapter checks the persisted runtime metadata, records `model_budget_exhausted` with attempted=1 and completion_failure=1, and leaves the unavailable creator score null. A surrender also has no creator scorer measurement. Provider/tool/runtime failures remain distinct unclassified failures with their original error type. Report attempted-task completion rates separately from scores available on submitted artifacts; never omit exhaustion from the attempted denominator.
+
+### Restricted decision-boundary continuation
+
+`continuation.py` adds an opt-in controller primitive for the pinned ReAct loop.
+It stores the **actual provider history** using the creator's
+`AgentSession.set_agent_state`/SQLite commits. Canonical session history is not
+interchangeable: on the preserved `make_3_lvl3` tool-completed boundary, the
+creator's normal reconstruction produces 31 messages instead of the actual next
+request's 30, including different tool-observation roles. Missing exact history
+is therefore refused.
+
+Admission checks the native state, completed guard ordinals, authoritative Gym
+capture store (including later unknown attempts), source and installed dependency
+bytes, and the original absolute deadline. The inherited creator loop receives
+only its remaining original 50-call allowance. Pending actions, uncertain calls,
+changed state/history/runtime, expired deadlines and a different rollout/attempt
+endpoint are refused. A controller must hold exclusive ownership while paused;
+these helpers are not an automatic restart policy or a shared CLI checkpoint
+implementation. Full database/image/resource placement still needs separate
+qualification. Existing terminal historical executions must not be resumed.
+
+The offline selected-tool control uses the unchanged frozen task prompt and tool
+catalog, real pinned RDKit functional-group functions, actual creator
+ReAct/AgentSession/SQLite, and Gym's guarded capture middleware with an in-process
+deterministic provider. It kills the process after one completed tool and a
+published pre-dispatch boundary, then restores in a fresh interpreter. The two
+requests (including generation settings and logical-call headers) and two tool
+results must match uninterrupted execution. Its narrow tool-execution adapter
+rejects every tool outside the inspected pure-RDKit closure. This does **not**
+qualify PostgreSQL/RXNMapper, the canonical scorer, arbitrary shell state, or the
+shared CLI recovery path. No scientific score is produced.
+
+From the repository root, with the source and private dependency locations used
+by the campaign:
+
+```bash
+export PYSTOW_HOME=/tmp/corral-pystow
+export LITELLM_LOCAL_MODEL_COST_MAP=True
+export PYTHONPATH=.:../../outputs/broad-eval-campaign/foundation/scientific-recovery-proposal/corral-deps:../../outputs/broad-eval-campaign/harbor/agent-expansion/sources/29/lamalab-org-corral-f5a6963/src:../naturebench-runtime/lib/python3.13/site-packages
+../bioagent-runtime/bin/python -m benchmarks.corral.qualify_tool_continuation \
+  --source ../../outputs/broad-eval-campaign/harbor/agent-expansion/sources/29/lamalab-org-corral-f5a6963 \
+  --database ../../outputs/broad-eval-campaign/corral/transport-v3-preparation/storage-placement/actual-make3/worker-artifacts/native/make_3_lvl3-disjoint-v3/task-make_3_lvl3/k-1/commits.sqlite3 \
+  --output /absolute/path/to/a-new-control-directory
+```
+
+`qualify_continuation.py` is a separate historical-history diagnostic. It uses a
+virtual historical clock and seeds a new branch in a copy from saved evidence;
+it explicitly does not establish fresh capture admission or resume the original
+terminal execution. The fresh selected-tool control above uses a current,
+unchanged absolute deadline and newly recorded local fixture captures.

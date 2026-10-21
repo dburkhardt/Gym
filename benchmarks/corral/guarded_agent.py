@@ -5,9 +5,11 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 _OWNER = threading.Lock()
@@ -38,13 +40,24 @@ def provider_messages(messages: list[dict]) -> list[dict]:
 
 
 @contextmanager
-def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, dispatch_digest: str | None = None):
+def guarded_agent(
+    endpoint: str,
+    lineage: str,
+    calls: Path,
+    *,
+    client=None,
+    dispatch_digest: str | None = None,
+    continuation_session=None,
+    capture_dir: Path | None = None,
+    episode=None,
+    deadline: float | None = None,
+    before_dispatch=None,
+):
     from corral.agents import base_agent
     from corral.cli import create_agent
 
     if "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
         raise ValueError("Corral requires a native rollout-qualified model service")
-    calls.mkdir(parents=True, exist_ok=False)
     if dispatch_digest is not None:
         if len(dispatch_digest) != 64 or any(c not in "0123456789abcdef" for c in dispatch_digest):
             raise ValueError("Invalid persisted Corral protocol digest")
@@ -62,9 +75,30 @@ def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, disp
                 "adapter_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             }
         )
+    restored = None
+    if continuation_session is not None:
+        from benchmarks.corral.continuation import validate_boundary
+
+        if capture_dir is None or episode is None or deadline is None:
+            raise ValueError("Corral continuation requires original capture and deadline binding")
+        parsed = urlsplit(endpoint)
+        route = re.fullmatch(r"/ng-rollout/([^/]+)/v1", parsed.path)
+        if route is None or route.group(1) != episode.capture_key or parsed.query or parsed.fragment:
+            raise ValueError("Corral continuation endpoint differs from original capture identity")
+        restored = validate_boundary(
+            continuation_session,
+            calls=calls,
+            lineage=lineage,
+            protocol=digest,
+            capture_dir=capture_dir,
+            episode=episode,
+            deadline=deadline,
+        )
+    else:
+        calls.mkdir(parents=True, exist_ok=False)
     original = base_agent.llm_call
     lock = asyncio.Lock()
-    ordinal = 0
+    ordinal = 0 if restored is None else restored["next_ordinal"]
     failed = False
 
     async def call(**kwargs):
@@ -78,6 +112,12 @@ def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, disp
                 raise ValueError("Creator generation settings changed")
             if "messages" in kwargs:
                 kwargs["messages"] = provider_messages(kwargs["messages"])
+            if before_dispatch is not None:
+                # Internal controller hook, before intent or external dispatch. The
+                # creator's own local history reaches this point without reconstruction.
+                await before_dispatch(kwargs["messages"], ordinal)
+            if ordinal >= 50:
+                raise RuntimeError("Corral original provider budget exhausted")
             stem = calls / f"{ordinal:06d}"
             headers = dict(kwargs.pop("extra_headers", {}) or {})
             headers.update(
@@ -103,7 +143,7 @@ def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, disp
         raise RuntimeError("Another Corral native transport owns this process")
     base_agent.llm_call = call
     try:
-        yield create_agent(
+        agent = create_agent(
             "react",
             model="openai/" + MODEL,
             api_endpoint=endpoint,
@@ -116,6 +156,11 @@ def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, disp
                 "client": client,
             },
         )
+        if restored is not None:
+            from benchmarks.corral.continuation import restored_agent
+
+            agent = restored_agent(agent, restored)
+        yield agent
     finally:
         base_agent.llm_call = original
         _OWNER.release()
