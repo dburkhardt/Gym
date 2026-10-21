@@ -87,6 +87,9 @@ class TrainDataProcessorConfig(BaseNeMoGymCLIConfig):
     ```
     """
 
+    defer_dataset_repeats: bool = Field(
+        default=False, description="Collate source tasks once; defer dataset repeats to eval collection."
+    )
     output_dirpath: str = Field(description="Directory path where processed datasets and metrics will be saved.")
     mode: Union[Literal["train_preparation"], Literal["example_validation"]] = Field(
         description="Processing mode: 'train_preparation' prepares train/validation datasets for training, 'example_validation' validates example data for PR submission."
@@ -1060,6 +1063,7 @@ This could be due to a change in how metrics are calculated, leading to outdated
         type: DatasetType,
         server_instance_configs: List[ServerInstanceConfig],
         task_data_validation: str = "warn",
+        defer_dataset_repeats: bool = False,
     ) -> List[Path]:
         paths_to_collate = []
         used_prepare_paths: set[Path] = set()
@@ -1104,8 +1108,14 @@ This could be due to a change in how metrics are calculated, leading to outdated
                 if task_data_validation != "off":
                     validator = self._task_data_validator_for(c, d, server_instance_configs)
                 with open(prepare_path, "w") as target:
-                    for row_index, line in enumerate(self._iter_dataset_lines(d)):
+                    for row_index, line in enumerate(
+                        self._iter_dataset_lines(
+                            d.model_copy(update={"num_repeats": 1}) if defer_dataset_repeats else d
+                        )
+                    ):
                         row = json.loads(line)
+                        if "_ng_dataset_num_repeats" in row:
+                            raise ValueError("Source row conflicts with reserved _ng_dataset_num_repeats")
 
                         if prompt_cfg:
                             validate_prompt_compatibility([row], prompt_cfg)
@@ -1114,12 +1124,14 @@ This could be due to a change in how metrics are calculated, leading to outdated
                         if row.pop(AGENT_REF_KEY, None) is not None:
                             legacy_agent_ref_rows += 1
                         row[TASK_SOURCE_KEY_NAME] = c.name
-                        if row_index % d.num_repeats == 0:
+                        if defer_dataset_repeats or row_index % d.num_repeats == 0:
                             source_task_index += 1
                         # Validate flat rows before conversion, which would hide misplaced fields.
                         # Count each source row once, using its original JSONL line index.
-                        if validator is not None and row_index % d.num_repeats == 0:
-                            validator.validate_row(row_index // d.num_repeats, row)
+                        if validator is not None and (defer_dataset_repeats or row_index % d.num_repeats == 0):
+                            validator.validate_row(
+                                row_index if defer_dataset_repeats else row_index // d.num_repeats, row
+                            )
                         if d.taskset is not None:
                             # Keep collector identity outside task_data so shards and retries
                             # retain their capture keys after materialization.
@@ -1135,6 +1147,8 @@ This could be due to a change in how metrics are calculated, leading to outdated
                             }
                             row = materialize_task(row, taskset=d.taskset, task_index=source_task_index)
                             row.update(identity)
+                        if defer_dataset_repeats:
+                            row["_ng_dataset_num_repeats"] = d.num_repeats
                         target.write(f"{json.dumps(row)}\n")
 
                 if validator is not None and (not validator.report.clean or validator.report.unknown_keys):
@@ -1202,6 +1216,7 @@ This could be due to a change in how metrics are calculated, leading to outdated
                 type=type,
                 server_instance_configs=server_instance_configs,
                 task_data_validation=config.effective_task_data_validation,
+                defer_dataset_repeats=config.defer_dataset_repeats,
             )
             collated_fpath = parent / f"{type}.jsonl"
             with open(collated_fpath, "wb") as outfile:

@@ -1087,7 +1087,10 @@ COMMANDS = {
             _value_flag("agent", "agent_name", "Agent to collect rollouts with.", aliases=("-a",)),
             _value_flag("input", "input_jsonl_fpath", "Input tasks JSONL file.", aliases=("-i",)),
             _value_flag("output", "output_jsonl_fpath", "Output rollouts JSONL file.", aliases=("-o",)),
-            _value_flag("limit", "limit", "Maximum number of tasks to run."),
+            _bool_flag(
+                "plan-only", "plan_only", "Materialize exact task/draw distribution without starting services."
+            ),
+            _value_flag("limit", "limit", "Maximum number of source tasks to run before repetition."),
             _value_flag("num-repeats", "num_repeats", "Number of rollouts per task."),
             _bool_flag(
                 "interleave-repeats",

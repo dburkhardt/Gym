@@ -1200,6 +1200,9 @@ class E2ERolloutCollectionConfig(SharedRolloutCollectionConfig):
 
     split: Union[Literal["train"], Literal["validation"], Literal["benchmark"]]
     reuse_existing_data_preparation: bool = False
+    plan_only: bool = Field(
+        default=False, description="Write exact dispatch inputs and counts without starting services."
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -2827,6 +2830,12 @@ class RolloutCollectionHelper(BaseModel):
         rows: List[Dict] = []
         overridden_agents: set[Tuple[str, str]] = set()
         for row_idx, row_str, row in tqdm(raw_rows, desc="Preprocessing and repeating rows"):
+            has_dataset_repeats = "_ng_dataset_num_repeats" in row
+            dataset_repeats = row.pop("_ng_dataset_num_repeats", 1)
+            if has_dataset_repeats:
+                row_str = json.dumps(row, sort_keys=True)
+            if type(dataset_repeats) is not int or dataset_repeats < 1:
+                raise ValueError("_ng_dataset_num_repeats must be a positive integer")
             task_source = row.get(TASK_SOURCE_KEY_NAME)
             taskset = _materialized_taskset(row)
             environment_server = _environment_server_for_config_row(row, config)
@@ -2913,7 +2922,9 @@ class RolloutCollectionHelper(BaseModel):
                 # Dict-form misses batch into one consolidated raise after the loop.
                 repeat_keys = [k for k in dict.fromkeys((target, basis)) if k is not None]
                 agents_seen.update(repeat_keys)
-                if fixed_num_repeats is not None:
+                if "num_repeats" not in config.model_fields_set:
+                    row_num_repeats = dataset_repeats
+                elif fixed_num_repeats is not None:
                     row_num_repeats = fixed_num_repeats
                 elif (matched := next((k for k in repeat_keys if k in per_agent_repeats), None)) is not None:
                     row_num_repeats = per_agent_repeats[matched]

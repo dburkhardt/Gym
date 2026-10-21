@@ -565,6 +565,7 @@ def e2e_rollout_collection():  # pragma: no cover
     with open_dict(data_processor_config_dict):
         data_processor_config_dict["should_download"] = True
         data_processor_config_dict["mode"] = "train_preparation"
+        data_processor_config_dict["defer_dataset_repeats"] = True
 
         output_fpath = Path(e2e_rollout_collection_config.output_jsonl_fpath)
         data_process_output_dir = output_fpath.with_suffix("") / "preprocessed_datasets"
@@ -601,6 +602,54 @@ def e2e_rollout_collection():  # pragma: no cover
     rollout_collection_config = RolloutCollectionConfig.model_validate(
         OmegaConf.to_container(rollout_collection_config_dict)
     )
+
+    # Materialize the exact distribution before launching any service or model call.
+    # Old pre-expanded caches cannot safely implement task limits or repeat overrides.
+    with input_jsonl_fpath.open() as prepared_stream:
+        prepared_rows = [json.loads(line) for line in prepared_stream if line.strip()]
+    if any("_ng_dataset_num_repeats" not in row for row in prepared_rows):
+        raise ConfigError("Prepared eval cache predates deferred repeats; use a fresh output/preparation directory.")
+    planned_rows = RolloutCollectionHelper()._preprocess_rows_from_config(rollout_collection_config)
+    from collections import Counter
+
+    distribution = Counter(row["_ng_task_index"] for row in planned_rows)
+    task_rows = {}
+    for row in planned_rows:
+        task_rows.setdefault(row["_ng_task_index"], row)
+    import hashlib
+
+    def task_identity(row):
+        # Native index is authoritative; preserve public identity when available,
+        # otherwise bind the full input (excluding rollout-specific identity).
+        content = {
+            key: value
+            for key, value in row.items()
+            if key not in ("_ng_rollout_index", "_ng_rollout_id", "_ng_attempt_index")
+        }
+        return {
+            "task_id": row.get("task_id") or row.get("id") or row.get("uuid"),
+            "task_source": row.get("task_source"),
+            "input_sha256": hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest(),
+        }
+
+    manifest_path = output_fpath.with_stem(output_fpath.stem + "_dispatch_plan").with_suffix(".json")
+    manifest = {
+        "version": 1,
+        "source_tasks": len(prepared_rows),
+        "selected_tasks": len(distribution),
+        "rollouts": len(planned_rows),
+        "task_distribution": [
+            {"task_index": index, "rollouts": repeats, **task_identity(task_rows[index])}
+            for index, repeats in distribution.items()
+        ],
+    }
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    if e2e_rollout_collection_config.plan_only:
+        inputs_path = output_fpath.with_stem(output_fpath.stem + "_planned_inputs").with_suffix(".jsonl")
+        inputs_path.write_text("".join(json.dumps(row) + "\n" for row in planned_rows))
+        print(f"Dispatch plan only: {manifest_path}; no services started.")
+        return
 
     rh = RunHelper()
     if global_config_dict.get("provider_dispatch_guard", False):

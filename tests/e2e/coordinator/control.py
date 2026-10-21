@@ -14,7 +14,12 @@ import yaml
 from aiohttp import web
 
 
-async def main(out, *, logged=False, completed=False):
+async def main(out, *, logged=False, completed=False, distribution_control=False):
+    if distribution_control and not completed:
+        raise ValueError("Distribution control requires completed-run mode")
+    task_count = 4 if distribution_control else 3
+    repeat_count = 2 if distribution_control else 1
+    expected_calls = task_count * repeat_count if completed else 2
     out = out.absolute()
     out.mkdir(exist_ok=False)
     source = Path.cwd()
@@ -100,7 +105,7 @@ async def main(out, *, logged=False, completed=False):
                 },
                 "verifier_metadata": {"expected_answer": 1, "option_count": 2},
             }
-            for i in range(3)
+            for i in range(task_count)
         ]
         (out / "sample.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         config = {
@@ -114,7 +119,7 @@ async def main(out, *, logged=False, completed=False):
                                 "type": "benchmark",
                                 "jsonl_fpath": str(out / "sample.jsonl"),
                                 "prepare_script": "benchmarks/proteinlmbench/prepare.py",
-                                "num_repeats": 1,
+                                "num_repeats": repeat_count,
                             }
                         ]
                     }
@@ -158,9 +163,9 @@ async def main(out, *, logged=False, completed=False):
             "--split",
             "benchmark",
             "--limit",
-            "3",
+            str(task_count),
             "--num-repeats",
-            "1",
+            str(repeat_count),
             "--concurrency",
             "1",
             "--health-check-workers",
@@ -191,7 +196,8 @@ async def main(out, *, logged=False, completed=False):
         (out / "before-results.jsonl").write_bytes(prior)
         shutil.copytree(out / "capture", out / "before-capture")
         descendants = [] if completed else psutil.Process(child.pid).children(recursive=True)
-        report["killed_coordinator_pid"] = child.pid
+        report["initial_coordinator_pid"] = child.pid
+        report["coordinator_was_killed"] = not completed
         report["owned_descendants"] = [p.pid for p in descendants]
         if not completed:
             child.kill()
@@ -208,7 +214,7 @@ async def main(out, *, logged=False, completed=False):
             if psutil.pid_exists(resume.pid):
                 for owned in psutil.Process(resume.pid).children(recursive=True):
                     resume_children[(owned.pid, owned.create_time())] = owned
-            if resume.returncode is not None or len(calls) > (3 if completed else 2):
+            if resume.returncode is not None or len(calls) > expected_calls:
                 break
             await asyncio.sleep(0.1)
         report["initial_owned_children_alive"] = [
@@ -217,6 +223,29 @@ async def main(out, *, logged=False, completed=False):
         report["resume_owned_children_alive"] = [
             p.pid for p in resume_children.values() if p.is_running() and p.status() != psutil.STATUS_ZOMBIE
         ]
+        ownership_checks = []
+        for receipt_path in (out / "results" / "native_services").glob("*.json"):
+            ownership = json.loads(receipt_path.read_text())
+            root = ownership.get("root")
+            alive = False
+            if root:
+                try:
+                    owned = psutil.Process(root["pid"])
+                    alive = owned.create_time() == root["created"] and owned.status() != psutil.STATUS_ZOMBIE
+                except psutil.NoSuchProcess:
+                    pass
+            ownership_checks.append(
+                {
+                    "receipt": receipt_path.name,
+                    "root": root,
+                    "cleanup_confirmed": ownership.get("cleanup_confirmed"),
+                    "alive": alive,
+                }
+            )
+        report["durable_service_cleanup"] = ownership_checks
+        assert ownership_checks and all(
+            check["cleanup_confirmed"] and not check["alive"] for check in ownership_checks
+        )
         report["capture_evidence_preserved"] = all(
             (out / "capture" / p.name).read_bytes() == p.read_bytes()
             for p in (out / "before-capture").iterdir()
@@ -241,9 +270,23 @@ async def main(out, *, logged=False, completed=False):
         report["completed_result_preserved"] = (out / "results.jsonl").read_bytes() == prior
         report["resumed_unknown_resend"] = not completed and len(calls) > 2
         report["completed_run_control"] = completed
+        if distribution_control:
+            from collections import Counter
+
+            inputs = [
+                json.loads(line) for line in (out / "results_materialized_inputs.jsonl").read_text().splitlines()
+            ]
+            expected = {f"fixture-{i}": repeat_count for i in range(task_count)}
+            observed = dict(Counter(row["task_id"] for row in inputs))
+            plan = json.loads((out / "results_dispatch_plan.json").read_text())
+            assert observed == expected
+            assert {row["task_id"]: row["rollouts"] for row in plan["task_distribution"]} == expected
+            report["distribution"] = observed
+            report["plan_execution_equal"] = True
+
         report["status"] = (
             "passed"
-            if len(calls) == (3 if completed else 2)
+            if len(calls) == expected_calls
             and (resume.returncode == 0 if completed else resume.returncode not in (None, 0))
             and report["completed_result_preserved"]
             and report["capture_evidence_preserved"]

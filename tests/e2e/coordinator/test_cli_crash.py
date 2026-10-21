@@ -17,3 +17,8 @@ async def test_top_level_cli_crash_refuses_ambiguous_resume(tmp_path, logged):
 @pytest.mark.skipif(os.environ.get("NEMO_GYM_COORDINATOR_E2E") != "1", reason="local native CLI processes")
 async def test_completed_run_resume_retains_calls(tmp_path):
     await main(tmp_path / "control", logged=True, completed=True)
+
+
+@pytest.mark.skipif(os.environ.get("NEMO_GYM_COORDINATOR_E2E") != "1", reason="local native CLI processes")
+async def test_dataset_repeat_distribution_and_completed_resume(tmp_path):
+    await main(tmp_path / "control", completed=True, distribution_control=True)
