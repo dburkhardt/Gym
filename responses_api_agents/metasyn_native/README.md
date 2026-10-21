@@ -25,3 +25,17 @@ The shared LocalProvider owns the creator process group, enforces the unchanged 
 Scientific threads default to one and are recorded in the evaluation identity; offline encoder loading prevents implicit downloads. The actual pinned creator, encoder, managed child, SDK and Unix socket bridge passed a local deterministic control using the full 447,052-character review 203 prompt and five calls. This is integration evidence, not model-performance evidence: the endpoint supplied synthetic responses and token counts. Earlier historical live results predate this shared path and do not qualify it.
 
 Native Gym model capture, real-provider execution, clean-worker resources, interruption controls and unattended heterogeneous acceptance remain pending. Keep live enablement closed until those gates pass. The local runtime evidence is in the campaign's `foundation/metasyn-native/RUNTIME-CONTROL.md` and `full-runtime-probe.json`.
+
+## Repeat the local runtime controls
+
+Run this maintained command from the checkout with the configured source and dataset paths. Use a new output directory for every attempt. `success` completes the creator evaluator; `judge-disconnect` aborts the first judge request and checks that no further physical requests occur and no reward is accepted. Both use a deterministic loopback endpoint, with no external model calls.
+
+```sh
+python -m responses_api_agents.metasyn_native.qualify_runtime \
+  --mode judge-disconnect \
+  --data "$METASYN_DATA" --references "$METASYN_REFERENCES" \
+  --creator-source "$METASYN_CREATOR_SOURCE" --python "$METASYN_PYTHON" \
+  --output /absolute/path/new-qualification
+```
+
+The maintained disconnect command was exercised with the actual creator/encoder. Its failed native evaluation is deliberately preserved as evidence; a failed judge result is never a valid scalar reward. This control does not instantiate the native Gym model server or qualify provider-ledger reconciliation.
