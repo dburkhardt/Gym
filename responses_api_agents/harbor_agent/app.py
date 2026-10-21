@@ -68,6 +68,9 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     # value runs far more of them than Ray's default of 1 CPU/task, which caps
     # concurrency at the driver's CPU count.
     harbor_ray_task_num_cpus: Optional[float] = None
+    # Logical reservation for the whole trial on its Ray worker, including local
+    # Docker children and sidecars. This is admission, not a container memory limit.
+    harbor_ray_task_memory_bytes: Optional[int] = Field(default=None, gt=0, strict=True)
 
     # --- Harbor agent settings ---
     # Name of a built-in Harbor agent (e.g. "terminus-2", "claude-code", "aider").
@@ -308,8 +311,13 @@ class HarborAgent(SimpleResponsesAPIAgent):
                     job_config_dict=job_config_dict,
                 )
                 runner = runner_ray_remote
+                resource_options = {}
                 if self.config.harbor_ray_task_num_cpus is not None:
-                    runner = runner_ray_remote.options(num_cpus=self.config.harbor_ray_task_num_cpus)
+                    resource_options["num_cpus"] = self.config.harbor_ray_task_num_cpus
+                if self.config.harbor_ray_task_memory_bytes is not None:
+                    resource_options["memory"] = self.config.harbor_ray_task_memory_bytes
+                if resource_options:
+                    runner = runner_ray_remote.options(**resource_options)
                 future = runner.remote(_run_harbor_job_sync, params)
                 # Await the ObjectRef directly; to_thread(ray.get, ...) would pin
                 # one executor thread per in-flight trial, so completed trials

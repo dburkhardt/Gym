@@ -319,7 +319,7 @@ def _harbor_run_mocks(
 
         mock_to_thread.side_effect = _run_inline
 
-        yield
+        yield mock_ray
 
 
 # ===========================================================================
@@ -500,14 +500,17 @@ class TestApp:
         assert response.metadata["usage_provenance"]["source"] == "trajectory.final_metrics"
         assert response.response.usage.total_tokens > 0
 
-    @pytest.mark.parametrize("manifest, required, masked", [
-        ('[{"source":"/workspace","status":"failed"}]', True, True),
-        ('[{"source":"/workspace","status":"failed"}]', False, False),
-        ('[{"source":"/workspace","status":"empty"}]', True, False),
-        ('[{"source":"/workspace","status":"ok"}]', True, False),
-        ('{broken', True, True),
-        (None, True, True),
-    ])
+    @pytest.mark.parametrize(
+        "manifest, required, masked",
+        [
+            ('[{"source":"/workspace","status":"failed"}]', True, True),
+            ('[{"source":"/workspace","status":"failed"}]', False, False),
+            ('[{"source":"/workspace","status":"empty"}]', True, False),
+            ('[{"source":"/workspace","status":"ok"}]', True, False),
+            ("{broken", True, True),
+            (None, True, True),
+        ],
+    )
     async def test_required_artifact_capture_preserves_raw_reward(self, manifest, required, masked):
         server = _make_server(harbor_required_artifact_sources=["/workspace"] if required else [])
         with _harbor_run_mocks(artifact_manifest=manifest):
@@ -1040,3 +1043,32 @@ class TestLLMClientTeardown:
         # Idempotent: a second close is a no-op (no underlying client to touch).
         await llm.aclose()
         client.aclose.assert_awaited_once()
+
+
+@pytest.mark.parametrize("reservation", [0, -1, 1.5, True, "1024"])
+def test_memory_admission_rejects_invalid_bytes(reservation):
+    with pytest.raises(ValueError):
+        _make_server(harbor_ray_task_memory_bytes=reservation)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cpu", [None, 0.5])
+async def test_memory_admission_uses_existing_ray_scheduler(cpu):
+    server = _make_server(harbor_ray_task_memory_bytes=8 * 1024**3, harbor_ray_task_num_cpus=cpu)
+    with _harbor_run_mocks() as runner:
+        result = await server.run(_make_run_request())
+        options = {"memory": 8 * 1024**3}
+        if cpu is not None:
+            options["num_cpus"] = cpu
+        runner.options.assert_called_once_with(**options)
+        runner.options.return_value.remote.assert_called_once()
+        runner.remote.assert_not_called()
+        assert not result.mask_sample
+
+
+@pytest.mark.asyncio
+async def test_memory_admission_default_retains_existing_submission():
+    with _harbor_run_mocks() as runner:
+        await _make_server().run(_make_run_request())
+        runner.options.assert_not_called()
+        runner.remote.assert_called_once()
