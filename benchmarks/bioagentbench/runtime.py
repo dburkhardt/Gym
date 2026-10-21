@@ -9,6 +9,7 @@ adapter retains outbound scientific networking; it never uses host networking.
 from __future__ import annotations
 
 import asyncio
+import re
 import shlex
 import tempfile
 from pathlib import Path
@@ -29,7 +30,7 @@ def runtime_class(
     from verifiers.v1.runtimes.base import ProgramResult, Runtime
     from verifiers.v1.runtimes.docker import DockerRuntimeInfo
 
-    if not (image.startswith("sha256:") or "@sha256:" in image):
+    if not re.fullmatch(r"(?:[^\s]+@)?sha256:[0-9a-f]{64}", image):
         raise ValueError("An immutable qualified BioAgent image is required")
     for root in (workspace, source_dir):
         if root.is_symlink() or not root.is_absolute():

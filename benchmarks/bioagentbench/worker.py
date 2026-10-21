@@ -115,6 +115,20 @@ def stage_owned_inputs(packet: dict, config: dict, directory: Path) -> dict:
     if hashlib.sha256(manifest_bytes).hexdigest() != packet["asset_manifest_sha256"]:
         raise ValueError("Asset manifest changed before staging")
     files = json.loads(manifest_bytes)["tasks"][packet["task_id"]]["files"]
+    from pathlib import PurePosixPath
+
+    for name in files:
+        relative = PurePosixPath(name)
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or len(relative.parts) < 2
+            or relative.parts[0] not in ("data", "reference", "results")
+        ):
+            raise ValueError("Unsafe asset manifest path")
+        original = source / name
+        if original.is_symlink() or any(p.is_symlink() for p in original.parents) or not original.is_file():
+            raise ValueError("Asset source is not a regular file under the selected tree")
     required = sum((source / name).stat().st_size for name in files)
     if shutil.disk_usage(directory).free - required < 8 * 1024**3:
         raise RuntimeError("Full native input copy would cross the 8 GiB disk reserve")
@@ -141,6 +155,9 @@ def main() -> None:
     )
     args = parser.parse_args()
     packet = json.loads(args.packet.read_text())
+    from benchmarks.bioagentbench.source_stage import snapshot_creator
+
+    packet["creator_root"] = str(snapshot_creator(Path(packet["creator_root"]), args.packet.parent / "creator-source"))
     config = packet["native_config"]
     identity = validate_identity(packet, config)
     packet["digest"] = hashlib.sha256(

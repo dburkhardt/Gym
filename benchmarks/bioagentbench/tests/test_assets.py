@@ -57,3 +57,20 @@ def test_disk_gate_keeps_full_scope(tmp_path, monkeypatch):
             tmp_path,
         )
     assert not (tmp_path / "owned-inputs").exists()
+
+
+def test_manifest_cannot_escape_owned_tree(tmp_path):
+    import hashlib
+    import json
+
+    from benchmarks.bioagentbench.worker import stage_owned_inputs
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"tasks": {"task": {"files": {"../escape": "x"}}}}))
+    packet = {
+        "task_id": "task",
+        "asset_manifest": str(manifest),
+        "asset_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+    }
+    with pytest.raises(ValueError, match="Unsafe asset"):
+        stage_owned_inputs(packet, {"taskset": {"data_root": str(tmp_path)}}, tmp_path)

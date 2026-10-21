@@ -159,6 +159,10 @@ def test_actual_source_and_asset_identity_before_dispatch(tmp_path):
     assert child.returncode == 0, child.stderr
     child_identity = json.loads((tmp_path / "actual-imports.json").read_text())
     assert child_identity["prefix"] == sys.prefix
+    assert Path(child_identity["imports"]["bioagent_taskset.taskset"]["path"]).is_relative_to(
+        tmp_path / "creator-source"
+    )
+    assert not (tmp_path / "creator-source/.pytest_cache").exists()
     assert (
         child_identity["imports"]["bioagent_worker"]["sha256"]
         == hashlib.sha256(Path(worker.__file__).read_bytes()).hexdigest()
