@@ -5137,6 +5137,19 @@ class TestRolloutCollection:
         aggregate_metrics_fpath = tmp_path / "output_aggregate_metrics.json"
         actual_aggregate_metrics = json.loads(aggregate_metrics_fpath.read_text())
         assert actual_aggregate_metrics[0]["repeat_level_metrics"] == []
+        disposition = actual_aggregate_metrics[0]["disposition_summary"]
+        assert disposition["counts"] == {
+            "completed_result_records": 4,
+            "failure_records": 0,
+            "raw_scored_records": 4,
+            "quality_selected_records": 4,
+            "masked_result_records": 0,
+            "explicitly_not_dispatched_records": 0,
+        }
+        assert disposition["observed_rollout_attempt_lower_bound"] == 4
+        assert disposition["scientifically_accepted_total"] is None
+        assert disposition["provider_evidence"]["physical_attempt_lower_bound"] == 0
+        assert len(disposition["records"]) == 4
         expected_aggregate_metrics = [
             {
                 "agent_ref": {"name": "my agent name"},
@@ -5151,6 +5164,7 @@ class TestRolloutCollection:
                 "key_metrics": {"mean/reward": 1.0},
                 "group_level_metrics": actual_aggregate_metrics[0]["group_level_metrics"],
                 "perf_summary": None,
+                "disposition_summary": disposition,
                 "repeat_level_metrics": [],
             }
         ]
