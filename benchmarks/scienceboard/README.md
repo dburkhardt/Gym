@@ -187,3 +187,19 @@ create descriptor and without any observed container is unresolved, not proof of
 allocation. Normal process cancellation and the qualification producer share this
 cleanup path. Whole-coordinator death still requires another operator/process to
 invoke the retained ownership reconciliation; this is not an autonomous TTL service.
+
+### Dependency and image-overlay source integrity
+
+The selection manifest also binds the creator's `requirements.txt` (including
+`desktop-env==0.1.22`), Docker context exclusions, sanitizing/export/flattening and
+audit/package scripts, guest HTTP server and every explicit runtime-overlay COPY
+input. Both preparation and the actual desktop factory verify these bytes before
+publication/allocation. Changing them invalidates existing selection/runtime
+receipts; use a newly reviewed receipt, never edit an old acceptance in place.
+
+These hashes establish source integrity, not that an existing image was built
+from those files. The private sanitized-flat image, audit, actual installed
+controller dependencies and task-specific GUI qualification remain required.
+The small local dependency overlay does not contain `desktop_env`; importing
+`worker` or `Tester` alone is insufficient because the Docker controller import
+must also succeed. No alternate desktop image or fake controller closes this gate.

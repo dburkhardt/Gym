@@ -49,7 +49,24 @@
     "sci/docker/__init__.py": "072327141434a5eed6001ffa42dfee84e3e887796c94fdfb0ace3d7ce1764db6",
     "sci/vm/__init__.py": "f9f2f4b1012c45d500a11bf05274d3169e1a0fa8903253d6a99a79a7de26e063",
     "sci/vm/utils.py": "cf1bfaab6029a286c2972fd81f8c61a5a3bba9cb2cfb28afe678ab9576a1e73d",
-    "sci/vm/vtask.py": "8fc5b82a8359e163c163239e952454e8626b4ab325f0e6bc8e27019cfdaf6acc"
+    "sci/vm/vtask.py": "8fc5b82a8359e163c163239e952454e8626b4ab325f0e6bc8e27019cfdaf6acc",
+    ".dockerignore": "2a89bf53d43f2dbb9c2c21364cf5c8b02339830c32a900ca63754ee0ab3e6d5f",
+    "docker/Dockerfile": "de6fcf0136c2942f60917e7261080613d901b16f74e7122c9260193cdfaa3db6",
+    "docker/code-wrapper.sh": "b5b2cc1593d133a086d6071ce850dbd71598f63180bd6ab848d7f8046d8400b1",
+    "docker/entrypoint.sh": "af14aeefb63dbba46fc899d7e8a591e9176735ac7fc7624a9ae67faa78df069b",
+    "docker/export/export_reference.py": "8256f79ed8fcde5f5cff085459e514ea305885a422a4ad57dd556d5093a96e43",
+    "docker/firefox-policies.json": "6b45a922b18936b0a6b2a3d6c16e926ba11d293e330cf04f18869c278225ade4",
+    "docker/firefox-wrapper.sh": "ad585e14120e7ec211fe3e3272fe1e5c30769129f398a5580b76544faae013f5",
+    "docker/firefox.desktop": "ab9120e794a126cdb917915167c2add6acade8a80f8ef2b612feb2d2f906475e",
+    "docker/flatten_image.sh": "abe58b19eebdfce7c2edfe69a6849ef53d11e0adae2c5b16d89f7a347e97e313",
+    "docker/import_rootfs.sh": "d0d764cea605d88fa56312b6a5aa9cf0db4ed43dc5f842dc2c8b6c1647e2d5e7",
+    "docker/reset.sh": "f065926d019a281031d0f15617980d22275d1b9068aa668b168526c2af049011",
+    "docker/session.sh": "12877197faa39bcaedbf4ebb8f7eefd16c98f04cafd3b71610b467e3c004ec85",
+    "requirements.txt": "67eb45dc5992bce3a8c052b17b72ce58068cacca3bc2cb6e5b7d9fa943f6d527",
+    "scripts/audit_distribution.py": "40d420cb4f749092080138ea8926bcdbdb7a65cc20f21152b1b5a3b9aa923d80",
+    "scripts/package_distribution.sh": "1b29be0377d083565dac4815be2ad36abd2cf8e041d3d33e5e45b92088039a02",
+    "vm_config/pyxcursor.py": "8abe4b97b1b1bbf2372bf3d84c083f82c89fc45e9111f2a9a858e3f521a24a66",
+    "vm_config/server.py": "685b8a9c8a08119690f34518374f8fcd05b9217f23941d39be0dbc97d909d58f"
   },
   "tasks": [
     {
