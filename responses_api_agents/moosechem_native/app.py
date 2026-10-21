@@ -13,7 +13,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 
 from benchmarks.moosechem.native import MODEL, append_durable
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
@@ -43,6 +43,7 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
     verifier_metadata: dict
 
 

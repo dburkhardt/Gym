@@ -26,3 +26,22 @@ def test_different_model_trace_rejected(tmp_path):
 def test_existing_attempt_never_silently_repeated(tmp_path):
     stub=fixture(tmp_path);stub.config.import_existing=False
     with pytest.raises(ValueError,match='reconciled'):Agent.execute(stub,18)
+
+
+@pytest.mark.parametrize("metadata,expected", [
+    ({"_ng_task_index": 18, "_ng_rollout_index": 0}, "18-0"),
+    ({"_ng_rollout_id": "campaign-task18"}, "campaign-task18"),
+])
+def test_native_collection_identity_survives_request_validation(metadata, expected):
+    from responses_api_agents.moosechem_native.app import RunRequest
+    from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
+    body = RunRequest.model_validate({
+        "responses_create_params": {"input": []},
+        "verifier_metadata": {"id": 18}, **metadata,
+    })
+    assert maybe_rollout_id_from_run_body(body) == expected
+    for key, value in metadata.items():
+        if key == "_ng_rollout_id":
+            assert body.capture_rollout_id == value  # Upstream deliberately excludes this routing-only field.
+        else:
+            assert body.model_dump()[key] == value
