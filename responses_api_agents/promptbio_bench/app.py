@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import Field, PrivateAttr, model_validator
+from pydantic import ConfigDict, Field, PrivateAttr, model_validator
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -51,6 +51,8 @@ class PromptBioConfig(BaseResponsesAPIAgentConfig):
 
 
 class PromptBioRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict[str, str]
 
 

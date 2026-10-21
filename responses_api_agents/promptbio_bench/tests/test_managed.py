@@ -319,3 +319,20 @@ async def test_creator_source_rejects_ignored_file(tmp_path, monkeypatch):
     (tmp_path / "private.env").write_text("CONTROL_ONLY=placeholder\n")
     with pytest.raises(ValueError, match="ignored"):
         await runtime.validate_creator_source(tmp_path)
+
+
+def test_native_request_preserves_rollout_indices():
+    from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
+    from responses_api_agents.promptbio_bench.app import PromptBioRequest
+
+    raw = {
+        "responses_create_params": {"input": []},
+        "verifier_metadata": {"task_id": "b-4-3"},
+        "_ng_task_index": 4,
+        "_ng_rollout_index": 2,
+    }
+    request = PromptBioRequest.model_validate(raw)
+    assert request.model_dump()["_ng_task_index"] == 4
+    assert request.model_dump()["_ng_rollout_index"] == 2
+    assert maybe_rollout_id_from_run_body(request) == maybe_rollout_id_from_run_body(raw)
+    assert maybe_rollout_id_from_run_body(request) is not None
