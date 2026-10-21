@@ -115,3 +115,7 @@ and the remaining benchmark are intentionally not yet implemented by this pilot 
 ## Expanding the resource-bounded subset
 
 Preparation accepts `--sample-size 20` or `--sample-size 50`, preserving the default five-task selection and the 40/40/20 category quotas. Ordering still uses raw input bytes and task ID, not results. Use a separate data root and output/cache for expansion. Select remaining tasks by set difference against saved task IDs: the original five are a subset, not necessarily a prefix. `tasks-remaining.jsonl` excludes only the first smoke task and must not be used as a five-to-twenty continuation. Verify the materialized IDs before inference. These larger subsets remain GEO-only and resource-selected, not representative random samples.
+
+## Existing frozen campaign sample
+
+Set `GENOTEX_FROZEN_TASKS_JSONL` to the existing campaign `tasks20.jsonl` before native preparation or `gym eval plan --benchmark genotex --out plan.json`. Preparation checks its pinned SHA-256 and publishes all twenty original records through shared atomic staging without reselection or network calls. This only prepares task identities: raw GEO inputs, creator dependencies, reference isolation and execution still require runtime qualification. Omit this variable to use the original upstream acquisition path.

@@ -115,8 +115,28 @@ def select_pairs(metadata: dict, entries: list[dict], sample_size: int = 5) -> t
     return chosen, excluded
 
 
+FROZEN_TASKS_SHA256 = "bd085b7b29948a20cdcefe57061f7e02ab2df11c98c6e65da7a41430f54aa850"
+
+
+def prepare_frozen(source: Path, destination: Path = OUTPUT) -> Path:
+    """Publish the existing campaign sample; this does not stage scientific assets."""
+    from nemo_gym.dataset_staging import stage_file
+
+    content = source.read_bytes()
+    if hashlib.sha256(content).hexdigest() != FROZEN_TASKS_SHA256:
+        raise ValueError("Frozen GenoTEX sample changed")
+    rows = [json.loads(line) for line in content.splitlines()]
+    if len(rows) != 20 or len({row["task_id"] for row in rows}) != 20:
+        raise ValueError("Expected twenty unique frozen GenoTEX tasks")
+    if any(row["task_id"] != row["verifier_metadata"]["task_id"] for row in rows):
+        raise ValueError("Frozen task identity mismatch")
+    return stage_file(source, destination, expected_sha256=FROZEN_TASKS_SHA256)
+
+
 def prepare(root: Path | None = None, sample_size: int = 5) -> Path:
     """Download selected raw inputs and private references, then write Gym records."""
+    if os.environ.get("GENOTEX_FROZEN_TASKS_JSONL"):
+        return prepare_frozen(Path(os.environ["GENOTEX_FROZEN_TASKS_JSONL"]))
     root = (root or Path(os.environ.get("GENOTEX_DATA_ROOT", "~/.cache/genotex"))).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     upstream = root / "upstream"
