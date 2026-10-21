@@ -135,3 +135,85 @@ def required_artifact_failure(manifest: object, sources: list[str]) -> tuple[str
         if len(entries) != 1 or entries[0].get("status") not in {"ok", "empty"}:
             return VERIFIER_ERROR, f"Required artifact capture incomplete: {source}"
     return None, None
+
+
+def intent_bound_provider_rejection(trial_result, *, trial_dir, capture_dir, rollout_id, endpoint):
+    """Refine an internal HTTP500 only for the existing native call-intent format.
+
+    Unsupported, malformed or ambiguous artifacts leave classification unchanged.
+    This is reporting evidence, never retry authorization or capture reconciliation.
+    The 60-record and byte caps bound this format reader, not scientific task limits;
+    larger artifacts retain their original classification unchanged.
+    """
+    import json
+    from pathlib import Path
+
+    from nemo_gym.base_responses_api_model import CaptureStore
+
+    error = trial_result.get("exception_info")
+    if not isinstance(error, Mapping) or error.get("exception_type") != "ClientResponseError":
+        return None
+    message = error.get("exception_message")
+    if not isinstance(message, str) or not message.startswith("500,") or not message.endswith(f"url='{endpoint}'"):
+        return None
+    if not isinstance(rollout_id, str) or not rollout_id or not capture_dir:
+        return None
+    try:
+        native = Path(trial_dir) / "agent" / "native"
+        if native.is_symlink() or native.parent.is_symlink() or not native.is_dir():
+            return None
+        intents = list(native.glob("call-*.intent.json"))
+        if not 1 <= len(intents) <= 60:
+            return None
+        unanswered = [p for p in intents if not p.with_name(p.name.replace(".intent.json", ".response.json")).exists()]
+        if len(unanswered) != 1 or unanswered[0].is_symlink() or unanswered[0].stat().st_size > 32 * 1024 * 1024:
+            return None
+        intent = json.loads(unanswered[0].read_text())
+        headers = intent.get("headers", {})
+        call = headers.get("x-nemo-gym-logical-call-id")
+        config = headers.get("x-nemo-gym-call-config-sha256")
+        if not isinstance(call, str) or not call or not isinstance(config, str) or not config:
+            return None
+        root = Path(capture_dir)
+        if not root.is_dir():
+            return None
+        store = CaptureStore(root)
+        if store.has_pending(rollout_id) or store.is_incomplete(rollout_id):
+            return None
+        path = store.path_for(rollout_id)
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 64 * 1024 * 1024:
+            return None
+        records = store.read(rollout_id)
+        if not records or len(records) > 60:
+            return None
+        matches = [r for r in records if r.get("provider_binding", {}).get("logical_call") == call]
+        if len(matches) != 1 or matches[0] is not records[-1]:
+            return None
+        record = matches[0]
+        binding = record.get("provider_binding", {})
+        if binding.get("logical_rollout") != rollout_id or binding.get("agent_config") != config:
+            return None
+        if not isinstance(intent.get("payload"), dict) or record.get("request") != intent["payload"]:
+            return None
+        if record.get("status_code") != 429 or record.get("error_category") != "rate_limit":
+            return None
+        attempts = record.get("provider_attempts")
+        if not isinstance(attempts, list) or not attempts:
+            return None
+        ids = [a.get("attempt_id") for a in attempts if isinstance(a, Mapping)]
+        if len(ids) != len(attempts) or any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):
+            return None
+        if any(a.get("status_code") != 429 or a.get("outcome") != "rejected" for a in attempts):
+            return None
+        # Any other unsettled/failed call makes attribution ambiguous, even with no pending marker.
+        for prior in records[:-1]:
+            if prior.get("status_code") != 200 or prior.get("error_category") is not None:
+                return None
+            if any(a.get("outcome") not in {"captured", "rejected"} for a in prior.get("provider_attempts", [])):
+                return None
+        return (
+            PROVIDER_QUOTA_EXHAUSTED,
+            "Exact unanswered native call intent matches terminal captured HTTP429 rejection",
+        )
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        return None

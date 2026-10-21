@@ -52,7 +52,11 @@ from nemo_gym.server_utils import (
     global_aiohttp_client_exit_async,
     set_global_aiohttp_client,
 )
-from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure, required_artifact_failure
+from responses_api_agents.harbor_agent.failure_diagnostics import (
+    intent_bound_provider_rejection,
+    measurement_failure,
+    required_artifact_failure,
+)
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
@@ -476,6 +480,17 @@ class HarborAgent(SimpleResponsesAPIAgent):
                     HarborAgentUtils.with_native_validity(trial_result),
                     llm_failure=agent_error_flags.get("llm_call_failure"),
                 )
+                if failure_kind == "harbor:unclassified" and global_config_dict.get("provider_dispatch_guard") is True:
+                    rejection = await asyncio.to_thread(
+                        intent_bound_provider_rejection,
+                        trial_result,
+                        trial_dir=trial_dir,
+                        capture_dir=global_config_dict.get("model_call_capture_dir"),
+                        rollout_id=capture_id,
+                        endpoint=base_url.rstrip("/") + "/chat/completions",
+                    )
+                    if rejection is not None:
+                        failure_kind, failure_reason = rejection
                 if self.config.harbor_required_artifact_sources:
                     manifest_path = trial_dir / "artifacts" / "manifest.json"
                     try:

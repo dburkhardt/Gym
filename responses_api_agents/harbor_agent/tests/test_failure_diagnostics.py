@@ -124,3 +124,85 @@ def test_missing_model_submission_is_not_infrastructure_failure():
         assert kind == "model_missing_submission"
         assert reason
         assert receipt["verifier_result"] is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        None,
+        "call",
+        "config",
+        "payload",
+        "pending",
+        "unknown",
+        "later_success",
+        "earlier_rejection",
+        "other_intent",
+        "other_error",
+        "rollout",
+        "malformed",
+        "symlink",
+    ],
+)
+def test_exact_native_intent_rejection_attribution(tmp_path, mutation):
+    from responses_api_agents.harbor_agent.failure_diagnostics import intent_bound_provider_rejection
+
+    native = tmp_path / "trial/agent/native"
+    native.mkdir(parents=True)
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    endpoint = "http://127.0.0.1:123/ng-rollout/0-0/v1/chat/completions"
+    result = {
+        "exception_info": {
+            "exception_type": "ClientResponseError",
+            "exception_message": f"500, message='Internal Server Error', url='{endpoint}'",
+        },
+        "verifier_result": {"rewards": {"reward": 0}},
+    }
+    before = copy.deepcopy(result)
+    intent = {
+        "headers": {"x-nemo-gym-logical-call-id": "call1", "x-nemo-gym-call-config-sha256": "a" * 64},
+        "payload": {"messages": [{"role": "user", "content": "unchanged"}]},
+    }
+    record = {
+        "provider_binding": {"logical_call": "call1", "logical_rollout": "0-0", "agent_config": "a" * 64},
+        "request": copy.deepcopy(intent["payload"]),
+        "status_code": 429,
+        "error_category": "rate_limit",
+        "provider_attempts": [{"attempt_id": "attempt1", "status_code": 429, "outcome": "rejected"}],
+    }
+    records = [record]
+    if mutation == "call":
+        record["provider_binding"]["logical_call"] = "unrelated"
+    if mutation == "config":
+        record["provider_binding"]["agent_config"] = "different"
+    if mutation == "payload":
+        record["request"] = {"messages": []}
+    if mutation == "pending":
+        (capture / "0-0.test.capture.pending").write_text("{}")
+    if mutation == "unknown":
+        record["provider_attempts"][0]["outcome"] = "unknown"
+    if mutation == "later_success":
+        records.append({"provider_binding": {"logical_call": "later"}, "status_code": 200})
+    if mutation == "earlier_rejection":
+        records.insert(0, {"provider_binding": {"logical_call": "earlier"}, "status_code": 429})
+    if mutation == "other_intent":
+        (native / "call-2.intent.json").write_text(json.dumps(intent))
+    if mutation == "other_error":
+        result["exception_info"]["exception_type"] = "VerifierTimeoutError"
+    if mutation == "rollout":
+        record["provider_binding"]["logical_rollout"] = "other-rollout"
+    (native / "call-0.intent.json").write_text(json.dumps(intent))
+    if mutation == "malformed":
+        (native / "call-0.intent.json").write_text("{broken")
+    if mutation == "symlink":
+        target = tmp_path / "external-intent.json"
+        target.write_text(json.dumps(intent))
+        (native / "call-0.intent.json").unlink()
+        (native / "call-0.intent.json").symlink_to(target)
+    (capture / "0-0.capture.jsonl").write_text("\n".join(json.dumps(r) for r in records))
+    answer = intent_bound_provider_rejection(
+        result, trial_dir=tmp_path / "trial", capture_dir=capture, rollout_id="0-0", endpoint=endpoint
+    )
+    assert (answer[0] if answer else None) == ("provider_quota_exhausted" if mutation is None else None)
+    assert result["verifier_result"] == before["verifier_result"]

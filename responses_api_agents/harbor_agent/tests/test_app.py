@@ -487,6 +487,32 @@ class TestApp:
         assert error["model_execution_status"] == "unknown"
         assert error["job_dir"]
 
+    async def test_intent_rejection_refines_only_label_preserving_raw_reward(self):
+        server = _make_server()
+        trial = {
+            **DEFAULT_TRIAL_RESULT,
+            "exception_info": {"exception_type": "ClientResponseError"},
+            "verifier_result": {"rewards": {"reward": 0.7}},
+        }
+        with (
+            _harbor_run_mocks(trial_result=trial, trajectory=DEFAULT_TRAJECTORY),
+            patch.dict(
+                _GLOBAL_CONFIG, {"provider_dispatch_guard": True, "model_call_capture_dir": "/fixture/captures"}
+            ),
+            patch("nemo_gym.rollout_correlation.current_rollout_id", return_value="2-0"),
+            patch(
+                "responses_api_agents.harbor_agent.app.intent_bound_provider_rejection",
+                return_value=("provider_quota_exhausted", "bound rejected call"),
+            ) as refine,
+        ):
+            response = await server.run(_make_run_request())
+        assert response.reward == 0.7 and response.mask_sample is True
+        assert response.metadata["verifier_result"] == trial["verifier_result"]
+        assert response.failure_kind == "provider_quota_exhausted"
+        assert refine.call_args.kwargs["rollout_id"] == "2-0"
+        assert refine.call_args.kwargs["capture_dir"] == "/fixture/captures"
+        assert refine.call_args.kwargs["endpoint"].endswith("/ng-rollout/2-0/v1/chat/completions")
+
     async def test_run_valid_zero_reward_is_not_masked(self):
         server = _make_server()
         trial_result = {**DEFAULT_TRIAL_RESULT, "verifier_result": {"rewards": {"reward": 0.0}}}
