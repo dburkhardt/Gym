@@ -37,3 +37,5 @@ gym eval run --benchmark proteinlmbench --model-type openai_model \
 ```
 
 Inspect trajectories and grading before removing `--limit 10`. Save model configuration, source revision, selected IDs, resource limits, output, and aggregate accuracy outside public Git. No claim of a verified baseline is made by this experimental manifest.
+
+The verifier records explicit provider `incomplete/max_output_tokens` as `model_budget` while retaining the original score and mask. Other incomplete reasons remain distinct; token usage alone never implies exhaustion. Existing failure diagnostics take precedence, including during saved-output reverify. Native task/rollout fields are preserved. This does not repair missing article context or change the creator's option scoring; the prompt's option7 abstention still scores through the unchanged creator parser.

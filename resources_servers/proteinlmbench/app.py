@@ -5,6 +5,8 @@
 from pathlib import Path
 from typing import ClassVar
 
+from pydantic import ConfigDict
+
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
     BaseVerifyRequest,
@@ -12,6 +14,7 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
+from nemo_gym.completion_outcome import with_completion_outcome
 from nemo_gym.verifier_fixture import VerifierFixture
 from resources_servers.proteinlmbench.grading import grade
 from resources_servers.proteinlmbench.task_data import TaskData
@@ -22,6 +25,7 @@ class ProteinLMBenchConfig(BaseResourcesServerConfig):
 
 
 class ProteinLMBenchRequest(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
     verifier_metadata: TaskData
 
 
@@ -35,7 +39,9 @@ class ProteinLMBenchResponse(BaseVerifyResponse, ProteinLMBenchRequest):
 class ProteinLMBenchVerifier:
     async def verify(self, body: ProteinLMBenchRequest) -> ProteinLMBenchResponse:
         result = grade(body.response.output_text or "", **body.verifier_metadata.model_dump())
-        return ProteinLMBenchResponse(**body.model_dump(), **result)
+        return ProteinLMBenchResponse(
+            **with_completion_outcome({**body.model_dump(), **result}, response=body.response)
+        )
 
 
 class ProteinLMBenchResourcesServer(ProteinLMBenchVerifier, SimpleResourcesServer):
