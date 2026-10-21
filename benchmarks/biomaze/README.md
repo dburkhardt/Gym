@@ -1,14 +1,25 @@
-# biomaze pilot
+# BioMaze
 
-Experimental: requires real smoke and independent review. Set `CAMPAIGN_SAMPLE_JSONL` to the audited sample20.jsonl in outputs/broad-eval-campaign/qa-sources/biomaze. References are confined to verifier_metadata. Use Nemotron 3.5 Super VL for policy_model; the TrueFalse path is deterministic. Openended uses the pinned creator conclusion rubric with the same exact Nemotron model as judge (temperature 0, 4096 tokens); configure judge_model_server and judge_prompt_file. These are separate protocols.
+BioMaze has two distinct protocols: TrueFalse uses deterministic answer scoring; Openended uses the creator's conclusion-judging rubric. Keep their samples, attempts and metrics separate. Both use the maintained Gym preparation and evaluation interfaces. References stay in `verifier_metadata` and are not sent to the solver.
 
-```sh
-CAMPAIGN_SAMPLE_JSONL=/absolute/path/sample20.jsonl python benchmarks/biomaze/prepare.py
-gym eval run --benchmark biomaze --model-type openai_model --split benchmark --limit 5 --num-repeats 1 --temperature 0.3 --max-output-tokens 16384 --output /absolute/private/results/biomaze-smoke.jsonl
-```
+## Prepare a frozen sample
 
-The generation cap is a pilot setting, not a claimed creator setting. After reviewing smoke, run all20 and preserve failures. Inspect the campaign qa-integration-report.md for source pins, known scorer defects and incomplete protocol coverage.
+Supply an audited, preselected JSONL file through `CAMPAIGN_SAMPLE_JSONL` and its SHA-256 through `CAMPAIGN_SAMPLE_SHA256`. Run `python benchmarks/biomaze/prepare.py` from the repository root. The shared staging helper preserves prompts and references, exposes existing stable task IDs, rejects duplicate identities and writes a provenance receipt. It does not sample new questions. The default destination is `resources_servers/biomaze/data/benchmark.jsonl`; use an isolated checkout when preparing a different sample during an active run.
 
-## Open-ended judge configuration
+The campaign's original open-ended selections contain 50 tasks, with the 20-task selection as an exact prefix. The five native acceptance tasks match the first five prompts and references exactly. The next expansion is the remaining 15 of that open-ended selection, not tasks from the separate historical TrueFalse run. Keep previous attempts intact.
 
-Use `--config benchmarks/biomaze/configs/openended.yaml` with a frozen open-ended sample in `CAMPAIGN_SAMPLE_JSONL`, its checksum in `CAMPAIGN_SAMPLE_SHA256`, and the pinned creator prompt path in `BIOMAZE_JUDGE_PROMPT`. This config gives the judge its own model-server instance (`biomaze_judge`) while retaining the campaign-authorized Nemotron model. Solver configuration remains separate. Judge generation settings remain the adapter's temperature 0 and 4096 output tokens. The prompt file must be preserved and hashed with the experiment artifacts. This configuration alone does not establish live judge acceptance.
+## Configure and plan
+
+TrueFalse uses `benchmarks/biomaze/config.yaml`. Openended uses `benchmarks/biomaze/configs/openended.yaml` and requires `BIOMAZE_JUDGE_PROMPT` to point to the preserved creator template. Record the template checksum with the experiment. For an already prepared isolated sample, override the `biomaze.resources_servers.biomaze.datasets` entry's `jsonl_fpath` in a run configuration and set `use_cached_prepared_benchmarks: true`.
+
+Run `gym eval plan --config /absolute/path/run.yaml --out /absolute/path/plan.json` before execution. This offline path was exercised on the original remaining 15 open-ended tasks. The planner sorts task identities canonically; the staged dataset retains original sample order. Planning does not establish execution admission or scientific acceptance.
+
+## Solver and judge protocol
+
+The separate judge server is `biomaze_judge`; the solver is `policy_model`. For this campaign, both use `nvidia/nvidia/nemotron-3.5-super-vl`. The native five-task acceptance used solver temperature 0.1 and maximum 16,384 output tokens, and judge temperature 0 with maximum 4,096 output tokens. These are campaign settings, not a claim that they reproduce the creator's model configuration. The Nemotron conclusion-judge variant replaces the creator's model-specific input-length gate with provider context enforcement. Preserve this qualification in comparisons; do not silently mix the separately recorded 8,192-token heterogeneous attempt with the 16,384-token individual attempt.
+
+## Evidence and limitations
+
+The native five-task probe produced five solver outputs and five judge results. Fresh saved-output regrading made five judge calls and no solver calls; one judgment changed, moving the score from 2/5 to 3/5. This small, judge-sensitive probe is integration evidence, not a reliable training-priority or leaderboard estimate. Join results by task identity rather than completion order.
+
+Captured replay after simulated result-append loss made no new physical model calls. That experiment was not an arbitrary coordinator-kill test. Separate shared lifecycle and restart controls have their own evidence and must not be attributed to this BioMaze run. Expansion to 20 and 50 through the maintained path remains pending.
