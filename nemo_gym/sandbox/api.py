@@ -847,8 +847,7 @@ class _AsyncLoopRunner:
 class Sandbox:
     """Synchronous wrapper around ``AsyncSandbox``.
 
-    ``pty``, ``serialize`` and ``connect`` are async-only; use ``AsyncSandbox``
-    for those."""
+    ``pty`` is async-only; use ``AsyncSandbox`` for interactive sessions."""
 
     def __init__(
         self,
@@ -897,6 +896,27 @@ class Sandbox:
                 preserve_background_services=preserve_background_services,
             ),
         )
+
+    def serialize(self, *, scope: str | None = None) -> dict[str, Any]:
+        """Delegate the same provider-owned descriptor contract as AsyncSandbox."""
+        return self._runner.run("serialize", lambda: self._async_sandbox.serialize(scope=scope))
+
+    @classmethod
+    def connect(
+        cls, descriptor: Mapping[str, Any] | Any, *, provider: SandboxProvider, owns_provider: bool = True
+    ) -> "Sandbox":
+        """Reconnect with unchanged provider identity validation on an owned sync loop."""
+        instance = cls.__new__(cls)
+        instance._runner = _AsyncLoopRunner()
+        try:
+            instance._async_sandbox = instance._runner.run(
+                "connect", lambda: AsyncSandbox.connect(descriptor, provider=provider, owns_provider=owns_provider)
+            )
+        except BaseException:
+            instance._runner.close()
+            raise
+        instance._closed = False
+        return instance
 
     def upload(self, local_path: Path | str, remote_path: str) -> None:
         self._runner.run("upload", lambda: self._async_sandbox.upload(local_path, remote_path))

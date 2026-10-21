@@ -652,5 +652,46 @@ class DockerProvider:
         if code != 0 and not _is_missing_container(err):
             raise RuntimeError(f"docker rm -f failed (code={code}) for {inst.name!r}: {err.strip()}")
 
+    async def reconcile_owned(self, ownership_labels: Mapping[str, str]) -> dict[str, Any]:
+        """Remove exact run-owned containers, including stopped or pre-receipt creates.
+
+        Caller must first settle the creating process. No name/prefix matching is used;
+        an unguessable run id and workload label are mandatory, and every candidate's
+        immutable identity and labels are checked again immediately before removal.
+        """
+        labels = dict(ownership_labels)
+        run = labels.get("nemo-gym.run", "")
+        if (
+            len(run) != 32
+            or any(c not in "0123456789abcdef" for c in run)
+            or not labels.get("nemo-gym.workload")
+            or any(
+                k not in {f"nemo-gym.{key}" for key in OWNERSHIP_KEYS} or not isinstance(v, str) or not v
+                for k, v in labels.items()
+            )
+        ):
+            raise ValueError("Exact unique run and workload ownership labels required")
+        argv = [self._binary, "ps", "-aq", "--no-trunc", "--filter", f"label={SANDBOX_LABEL}=1"]
+        for key, value in sorted(labels.items()):
+            argv.extend(["--filter", f"label={key}={value}"])
+        code, out, _ = await self._run(argv, timeout_s=self._exec_config.default_timeout_s)
+        if code:
+            raise RuntimeError("Cannot enumerate exact owned Docker run")
+        removed = []
+        for name in out.splitlines():
+            identity = await self._owned_container_id(name.strip(), labels)
+            if identity is None:
+                continue
+            handle = SandboxHandle(
+                sandbox_id=identity,
+                provider_name=self.name,
+                raw=_DockerContainer(name=identity, image="", ownership_labels=labels),
+            )
+            await self.close(handle)
+            if await self._owned_container_id(identity, labels) is not None:
+                raise RuntimeError("Owned Docker removal is not confirmed")
+            removed.append(identity)
+        return {"ownership_labels": labels, "removed_ids": removed, "all_removed": True}
+
     async def aclose(self) -> None:
         return None

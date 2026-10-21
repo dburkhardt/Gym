@@ -167,3 +167,35 @@ def test_connect_requires_connect_capability() -> None:
             await AsyncSandbox.connect({"sandbox_id": "x"}, provider=_OpsOnlyProvider())
 
     asyncio.run(_run())
+
+
+def test_sync_async_descriptor_roundtrip_and_owned_stop(tmp_path):
+    from nemo_gym.sandbox import Sandbox
+
+    sync = Sandbox(FakeConnectableProvider(), SandboxSpec(workdir="/work")).start()
+    descriptor = sync.serialize()
+    file = tmp_path / "payload"
+    file.write_text("preserved")
+    sync.upload(file, "/payload")
+
+    async def inspect():
+        connected = await AsyncSandbox.connect(descriptor, provider=FakeConnectableProvider())
+        assert (await connected.exec("cat /payload")).stdout == "preserved"
+        return await connected.serialize()
+
+    second = Sandbox.connect(asyncio.run(inspect()), provider=FakeConnectableProvider())
+    assert second.exec("pwd").stdout == "/work"
+    second.stop()
+    assert sync.status() == SandboxStatus.STOPPED
+    sync.stop()
+
+
+def test_sync_connect_preserves_provider_rejection():
+    from nemo_gym.sandbox import Sandbox
+
+    class Rejecting(FakeConnectableProvider):
+        async def connect(self, descriptor):
+            raise PermissionError("ownership mismatch")
+
+    with pytest.raises(PermissionError, match="ownership mismatch"):
+        Sandbox.connect({"sandbox_id": "unowned"}, provider=Rejecting())
