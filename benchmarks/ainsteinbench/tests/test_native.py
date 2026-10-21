@@ -34,6 +34,7 @@ def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
         config = TaskConfig.model_validate(tomllib.loads((task / "task.toml").read_text()))
         assert config.environment.network_mode.value == "no-network"
         assert config.verifier.environment_mode == "separate"
+        assert config.artifacts == ["/submission"]
         assert not (task / "environment").exists()
         if row["verifier_metadata"]["blocked_reason"]:
             assert (
@@ -413,3 +414,10 @@ def test_complete_looking_counts_do_not_hide_invalid_exit(code):
     assert result["valid"] is False
     assert result["kind"] == "unrecognized_test_execution_status"
     assert result["observed_test_count"] == 4
+
+
+def test_native_config_requires_submission_capture():
+    from omegaconf import OmegaConf
+
+    cfg = OmegaConf.load(Path(__file__).parents[1] / "config.yaml")
+    assert list(cfg.harbor_agent.responses_api_agents.harbor_agent.harbor_required_artifact_sources) == ["/submission"]
