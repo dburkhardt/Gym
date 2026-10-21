@@ -1,0 +1,117 @@
+{
+  "preparation_sha256": "d1ddfcb47b58e828a3208e94434f8ccc6bb57f1db2ee638041f237ba52960ab0",
+  "samples": [
+    {
+      "source_file": "gym-pilot5.jsonl",
+      "sha256": "7da23fa6f73f8c0331bf0e0dfb9bdad825a071518653de6fc14495d857de7d6e",
+      "rows": [
+        {
+          "review_id": 203,
+          "prompt_sha256": "b439ef7fbcb27c476fca8ae1e93d6abdbfb0465dce587b08e286e1b1d437e078",
+          "prompt_chars": 447052
+        },
+        {
+          "review_id": 255,
+          "prompt_sha256": "67f569719b2bb0cde4d91fdc7772e2fbf498be27cfd4702978fb66fd60a28e90",
+          "prompt_chars": 400620
+        },
+        {
+          "review_id": 288,
+          "prompt_sha256": "4522301ad914e70714dd17afae09ec98bb2ff936bb87599aa9e9b20ba05676b5",
+          "prompt_chars": 435383
+        },
+        {
+          "review_id": 233,
+          "prompt_sha256": "ab3c7ed71bae8e3f33b38b25df59bf3a602a3be8c5c08d3b81c27838476468db",
+          "prompt_chars": 413389
+        },
+        {
+          "review_id": 91,
+          "prompt_sha256": "2d2c016d3f31da83ddcc4960ef0c3428e63fdfd13841311beb5d82456fdc0956",
+          "prompt_chars": 415808
+        }
+      ]
+    },
+    {
+      "source_file": "gym-remaining15.jsonl",
+      "sha256": "3a16cf1e89761738fbaa4c5951d80f2810e73fa5b2a405a51aa046603846995c",
+      "rows": [
+        {
+          "review_id": 391,
+          "prompt_sha256": "973ed8a076bf0e494a1371e4565d4e2eeddb3eae565a837784cf8a27e1032175",
+          "prompt_chars": 447309
+        },
+        {
+          "review_id": 324,
+          "prompt_sha256": "3145fe81ca6b3504f891b9b999b273c0eebdee449bf0dcd4ae4b4a1814a78e69",
+          "prompt_chars": 517165
+        },
+        {
+          "review_id": 167,
+          "prompt_sha256": "fa6f1ff73d05302a5e3ec695f212663cc307b13336721e5c5097ce46182cf703",
+          "prompt_chars": 468185
+        },
+        {
+          "review_id": 163,
+          "prompt_sha256": "4ff97c8926554fa8f65349ce8eeff91cdf602daed189b988645ad9a27837ea95",
+          "prompt_chars": 427396
+        },
+        {
+          "review_id": 115,
+          "prompt_sha256": "c2e36009b377af5cc114dde60bfd3ffe80e4b1c0a8767f447974f2136005d320",
+          "prompt_chars": 440116
+        },
+        {
+          "review_id": 215,
+          "prompt_sha256": "c4ca39acf001ae64decefdfb5c0df9e0a754c6a4a9d06cda3dbce15c3dca7a31",
+          "prompt_chars": 423195
+        },
+        {
+          "review_id": 219,
+          "prompt_sha256": "add179f5fa670949cf36c32851986629a06eafb7db985c6e3683217cacabe3a7",
+          "prompt_chars": 424585
+        },
+        {
+          "review_id": 227,
+          "prompt_sha256": "45ed9c32273cc05727dda5744550daa4a5717930286e6165dcdd9a932fd126b5",
+          "prompt_chars": 441002
+        },
+        {
+          "review_id": 155,
+          "prompt_sha256": "bc75d46391149fa752c0ec24e0f237b8f97e74504f58eed00e86b35dc6a52cb8",
+          "prompt_chars": 415599
+        },
+        {
+          "review_id": 65,
+          "prompt_sha256": "d9f0004a0fe1084ec397496832a54ec529bf73e30bcf32d16b6efde36557be0b",
+          "prompt_chars": 443182
+        },
+        {
+          "review_id": 127,
+          "prompt_sha256": "8003010194a4dabf12e8cd878fee373232adf352fa942164acdfb8ea602ffeed",
+          "prompt_chars": 409169
+        },
+        {
+          "review_id": 208,
+          "prompt_sha256": "f1f147516c9818a6f15c89baeb071f4470eb54561320678204c519f21fffefbd",
+          "prompt_chars": 437802
+        },
+        {
+          "review_id": 372,
+          "prompt_sha256": "e1e7cb6997ac400f964b676fa14f4b8b23ad69e7d4f631af352b7254c0c67a95",
+          "prompt_chars": 425963
+        },
+        {
+          "review_id": 23,
+          "prompt_sha256": "146255e75e939374c15a21579047bfcdc115cbe53f3a0a12ee6fb7eb2b8daca2",
+          "prompt_chars": 458828
+        },
+        {
+          "review_id": 157,
+          "prompt_sha256": "df87a920ac96bb457a5419da6a307a295b3ae78f1055c2867d897d8473329217",
+          "prompt_chars": 463068
+        }
+      ]
+    }
+  ]
+}
