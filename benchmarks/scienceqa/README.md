@@ -36,13 +36,13 @@ experiment, not the fallback RNG state after all preceding full-test items.
 Fallback scores are retained but invalid as answer correctness; strict accuracy is
 reported separately. No old caption/chat results, masks or prompts are rewritten.
 
-This path is not runnable through current native Gym model APIs: they expose
-Responses and chat completions, not raw text completions. Chat wrapping would
-change the prompt semantics. Preparation therefore reports the missing
-`raw_text_completion` capability instead of publishing a misleading runnable
-benchmark config. A future guarded raw-completion route and actual provider
-capability evidence are required. Matching the recipe with another model would
-not reproduce the creator's text-davinci-002 performance.
+The initial offline preparation identified a missing raw-completion route. That
+historical gap is now addressed by the opt-in native `/v1/completions` interface
+and `simple_completion` harness below. Local CLI run/resume controls passed, and
+the original five tasks completed on Nemotron3.5SuperVL with five HTTP200 calls,
+strict5/5 and creator raw5/5, without fallback or masks. This small acceptance
+sample is separate from the preserved legacy caption/chat results. Matching the
+recipe with another model does not reproduce text-davinci-002 performance.
 
 ## Separate native creator-recipe configuration
 
@@ -63,5 +63,6 @@ on the completed result file and prepared `.packet.json` to calculate that raw
 metric in the exact frozen order without model calls. It records scorer/output
 hashes and a scorer lineage; it refuses missing or duplicate task IDs. Subset RNG
 is explicitly not full-test RNG parity. Original caption/chat data and runs remain
-unchanged. The raw route and this configuration require separate actual provider
-qualification; no new scientific result is implied by local fixtures.
+unchanged. Raw completion was verified on the authorized Nemotron endpoint with
+this recipe; other providers require their own qualification. Local fixture
+results are not scientific model results.
