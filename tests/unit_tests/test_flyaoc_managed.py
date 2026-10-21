@@ -60,3 +60,19 @@ def test_native_agent_import_and_scientific_budgets():
     assert "runtime_image" in Config.model_fields
     source = (Path(managed.__file__).parent / "native_phase.py").read_text()
     assert "paper_budget=10" in source and "max_turns=50" in source and "resume=False" in source
+
+
+def test_native_run_retains_collection_identity():
+    from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
+    from responses_api_agents.flyaoc_native.app import RunRequest
+
+    body = RunRequest.model_validate(
+        {
+            "responses_create_params": {"input": [{"role": "user", "content": "{}"}]},
+            "verifier_metadata": {"gene_id": "control"},
+            "_ng_task_index": 3,
+            "_ng_rollout_index": 2,
+            "_ng_attempt_index": 1,
+        }
+    )
+    assert maybe_rollout_id_from_run_body(body) == "3-2-a1"

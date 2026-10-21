@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from pydantic import PrivateAttr
+from pydantic import ConfigDict, PrivateAttr
 
 from benchmarks.flyaoc.managed import MODEL, run_scorer, run_solver
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
@@ -30,6 +30,8 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict
 
 
