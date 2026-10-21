@@ -101,3 +101,70 @@ async def observe_auxiliaries(row, selections, destination, *, cpus=1, memory_mb
     )
     _publish(Path(destination) / "auxiliary-observation.json", receipt)
     return receipt
+
+
+def required_tool_contract(row, selections):
+    """Opt-in strict tool closure; ordinary diagnostic observations remain unchanged."""
+    command, binding = probe_contract(row, selections)
+    command += "\nset -eu\n"
+    for item in selections:
+        executable = shlex.quote(item["executable"])
+        command += (
+            "resolved=$(command -v " + executable + ")\n"
+            'test -f "$resolved" && test -x "$resolved"\n'
+            'libraries=$(ldd "$resolved")\n'
+            'printf "%s\n" "$libraries" | grep -q "not found" && exit 1\n'
+            'printf "%s\n" "$libraries" | awk ' + shlex.quote("{for(i=1;i<=NF;i++) if($i ~ /^\\//) print $i}") + " "
+            '| sort -u | while IFS= read -r library; do sha256sum "$library"; done\n'
+        )
+    binding = dict(
+        binding, schema="corebench-required-tools-v1", command_sha256=hashlib.sha256(command.encode()).hexdigest()
+    )
+    binding.pop("contract_sha256")
+    binding["contract_sha256"] = hashlib.sha256(json.dumps(binding, sort_keys=True).encode()).hexdigest()
+    return command, binding
+
+
+def validate_required_tools(stdout, selections):
+    """Reject missing, failed, or unresolved dynamic tools; retain exact version/path text."""
+    sections = stdout.split("auxiliary=")[1:]
+    if len(sections) != len(selections):
+        raise ValueError("Required tool observation count differs")
+    for section, selection in zip(sections, selections, strict=True):
+        if section.splitlines()[0] != selection["executable"]:
+            raise ValueError("Required tool identity differs")
+        if "availability=" in section or "not found" in section:
+            raise ValueError("Required tool or library unavailable")
+        if re.findall(r"^version_exit=(.*)$", section, re.M) != ["0"]:
+            raise ValueError("Required tool version query failed")
+        if re.findall(r"^ldd_exit=(.*)$", section, re.M) != ["0"]:
+            raise ValueError("Required dynamic library query failed")
+        if not re.search(r"^resolved=/[^\n]+$", section, re.M) or not re.search(r"^[0-9a-f]{64}  /", section, re.M):
+            raise ValueError("Required executable identity missing")
+    # Only loader ASLR addresses are nondeterministic; paths, hashes and versions remain exact.
+    return re.sub(r"\(0x[0-9a-fA-F]+\)", "(ASLR)", stdout)
+
+
+async def qualify_required_tools(row, selections, final_image, destination, *, cpus=1, memory_mb=1024):
+    """Additional before/after evidence, never a replacement for qualify_images."""
+    from benchmarks.corebench.image_controls import probe_image
+    from nemo_gym.sandbox.lifecycle import _publish
+
+    destination = Path(destination)
+    command, binding = required_tool_contract(row, selections)
+    before = await probe_image(row["published_image"], command, destination / "before", cpus=cpus, memory_mb=memory_mb)
+    after = await probe_image(final_image, command, destination / "after", cpus=cpus, memory_mb=memory_mb)
+    left = validate_required_tools(before["stdout"], selections)
+    right = validate_required_tools(after["stdout"], selections)
+    if left != right:
+        raise ValueError("Required tool path/version/library state changed")
+    receipt = dict(
+        binding,
+        before_image=before["image"],
+        after_image=after["image"],
+        normalized_stdout_sha256=hashlib.sha256(left.encode()).hexdigest(),
+        required_tools_equal=True,
+        scope="Selected tools only; separate image/source qualification required",
+    )
+    _publish(destination / "required-tools.json", receipt)
+    return receipt

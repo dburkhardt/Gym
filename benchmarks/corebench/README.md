@@ -63,3 +63,21 @@ The source-file hashes identify the reviewed frozen instructions used to select
 tools; this diagnostic does not inspect those files inside the creator image.
 Actual image contents remain subject to the separate maintained source-image
 qualification boundary. Image identity alone is not source-file verification.
+
+CORE313's `ubuntu-bionic-isolated-v1` harness variant admits only its exact
+published digest and the existing signed Ubuntu-source installer. CRAN sources
+and all installed scientific package versions remain preserved. The opt-in
+`qualify_required_tools` auxiliary control requires successful dynamic-tool
+queries and exact before/after executable paths, hashes, version output and
+linked-library hashes; only loader ASLR addresses are normalized. It supplements,
+never replaces, ordinary image/source/reference qualification. Missing tools or
+changed libraries refuse the additional control. Diagnostic-only observations
+retain their previous behavior.
+
+The CORE313 allowlist-only engine transition explicitly admits the preceding
+exact engine hash for the two observed preceding-engine receipts (1683542 and 6746514), recomputing every original
+recipe/source/reference/probe binding. Historical receipts are not rewritten;
+older already-incompatible engines are not newly admitted. A future digest
+schema should separately bind the selected generated recipe/probes and a
+versioned qualification engine, avoiding recurring mappings for unrelated
+allowlist additions. This change does not implement that broader redesign.

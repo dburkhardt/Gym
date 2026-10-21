@@ -99,3 +99,22 @@ def test_1683542_exact_variant_and_observed_sources():
     )
     assert select_sources(observed) == ubuntu + "\n"
     assert "harness_install_variant" not in original
+
+
+def test_3137115_exact_signed_variant():
+    import json
+    from pathlib import Path
+
+    rows = json.loads((Path(__file__).parents[1] / "frozen20.json").read_text())["rows"]
+    row = next(r for r in rows if r["id"] == "capsule-3137115")
+    variant = dict(row, harness_install_variant="ubuntu-bionic-isolated-v1")
+    assert "COPY harness_install.py" in dockerfile(variant)
+    assert "harness_install_variant" not in row
+    with pytest.raises(ValueError):
+        dockerfile(dict(variant, published_image=row["published_image"] + "x"))
+    with pytest.raises(ValueError):
+        dockerfile(dict(variant, id="capsule-other"))
+    ubuntu = "deb http://archive.ubuntu.com/ubuntu/ bionic main restricted"
+    assert (
+        select_sources(ubuntu + "\ndeb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran40/") == ubuntu + "\n"
+    )
