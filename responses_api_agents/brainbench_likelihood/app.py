@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Two guarded whole-chat likelihood calls; not raw continuation likelihood."""
 
+import asyncio
 import hashlib
 import json
 import time
@@ -9,9 +10,11 @@ from uuid import uuid4
 
 from aiohttp import ClientTimeout
 from fastapi import Request, Response
+from pydantic import PrivateAttr
 
 from benchmarks.brainbench.protocol import MODEL, mean_nll
 from nemo_gym.base_responses_api_agent import Body
+from nemo_gym.base_responses_api_model import CaptureStore
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming, NeMoGymResponseUsage
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.rollout_observability import AgentInvocation, ModelCallRef, TrajectoryRecord, TrajectoryTurn
@@ -31,9 +34,16 @@ class Config(NonExecutingSimpleAgentConfig):
 
 class BrainBenchAgent(NonExecutingSimpleAgent):
     config: Config
+    _serial: asyncio.Lock = PrivateAttr(default_factory=asyncio.Lock)
 
     async def responses(
         self, request: Request, response: Response, body: NeMoGymResponseCreateParamsNonStreaming = Body()
+    ) -> NeMoGymResponse:
+        async with self._serial:
+            return await self._responses(request, response, body)
+
+    async def _responses(
+        self, request: Request, response: Response, body: NeMoGymResponseCreateParamsNonStreaming
     ) -> NeMoGymResponse:
         rollout_id = request.path_params.get("rollout_id")
         if not rollout_id or not self.server_client.global_config_dict.get("provider_dispatch_guard"):
@@ -50,6 +60,17 @@ class BrainBenchAgent(NonExecutingSimpleAgent):
             raise ValueError("Expected exactly two choice strings")
         # Exclusive attempt directory prevents an interrupted /responses restart from
         # inventing a fresh lineage. Completed native output resume happens upstream.
+        # Reuse native dispatch evidence rather than treating a missing scorer
+        # result as an unknown provider request. This campaign runs sequentially.
+        previous_rollouts = []
+        if self.config.output_root.exists():
+            for previous in self.config.output_root.iterdir():
+                if previous.is_dir():
+                    identity = json.loads((previous / "attempt.json").read_text())
+                    previous_rollouts.append(identity["rollout_id"])
+        CaptureStore(
+            Path(self.server_client.global_config_dict["model_call_capture_dir"]), provider_dispatch_guard=True
+        ).assert_dispatch_reconciled(previous_rollouts)
         directory = self.config.output_root / hashlib.sha256(rollout_id.encode()).hexdigest()
         directory.mkdir(parents=True, exist_ok=False)
         lineage = uuid4().hex

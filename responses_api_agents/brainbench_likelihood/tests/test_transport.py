@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from benchmarks.brainbench.protocol import MODEL
+from nemo_gym._checkpoint.control import ControlError
 from nemo_gym.base_responses_api_model import CaptureStore, read_model_call_records
 from nemo_gym.openai_utils import NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.provider_dispatch import current_provider_dispatch
@@ -18,7 +19,7 @@ from responses_api_models.openai_model.app import SimpleModelServer, SimpleModel
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", [None, "partial_usage", "missing_logprobs"])
+@pytest.mark.parametrize("failure", [None, "partial_usage", "missing_logprobs", "transport_unknown"])
 async def test_actual_model_handler_capture_and_two_call_identity(tmp_path, failure):
     global_config = {
         "provider_dispatch_guard": True,
@@ -42,8 +43,10 @@ async def test_actual_model_handler_capture_and_two_call_identity(tmp_path, fail
     async def provider(**payload):
         dispatch = current_provider_dispatch.get()
         dispatch.before_send()
-        dispatch.response_headers(200)
         requests.append(payload)
+        if failure == "transport_unknown":
+            raise TimeoutError("fixture after physical dispatch")
+        dispatch.response_headers(200)
         usage = (
             {"prompt_tokens": 2}
             if failure == "partial_usage"
@@ -99,10 +102,22 @@ async def test_actual_model_handler_capture_and_two_call_identity(tmp_path, fail
         input=[{"role": "user", "content": json.dumps({"choices": ["original A", "original B"]})}]
     )
     if failure:
-        with pytest.raises((ValidationError, KeyError)):
+        with pytest.raises((ValidationError, KeyError, TimeoutError)):
             await agent.responses(request, Response(), body)
-        with pytest.raises(FileExistsError):
+        with pytest.raises((ControlError, FileExistsError)):
             await agent.responses(request, Response(), body)
+        if failure == "transport_unknown":
+            later = Request(
+                {
+                    "type": "http",
+                    "path": "/ng-rollout/later/v1/responses",
+                    "headers": [],
+                    "query_string": b"",
+                    "path_params": {"rollout_id": "later"},
+                }
+            )
+            with pytest.raises(ControlError, match="unresolved provider dispatch"):
+                await agent.responses(later, Response(), body)
         assert len(requests) == 1
         assert not list((tmp_path / "attempts").glob("*/result.json"))
         return
@@ -162,3 +177,12 @@ async def test_actual_model_handler_capture_and_two_call_identity(tmp_path, fail
         await agent.responses(request, Response(), body)
     assert len(requests) == 2
     assert len(list((tmp_path / "attempts").glob("*/attempt.json"))) == 1
+
+    broken = tmp_path / "attempts" / "malformed"
+    broken.mkdir()
+    with pytest.raises(FileNotFoundError):
+        await agent.responses(request, Response(), body)
+    (broken / "attempt.json").write_text("not-json")
+    with pytest.raises(json.JSONDecodeError):
+        await agent.responses(request, Response(), body)
+    assert len(requests) == 2
