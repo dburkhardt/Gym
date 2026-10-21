@@ -435,6 +435,9 @@ class PlanBenchmarkConfig(PrepareBenchmarkConfig):
     plan_output_fpath: Path | None = Field(default=None, description="Where to write the plan file")
     plan_task_ids: List[str] | None = Field(default=None, description="Only plan these task ids")
     print_plan_schema: bool = Field(default=False, description="Print the plan file's JSON Schema and exit")
+    validate_plan_compatibility: bool = Field(
+        default=False, description="Check explicit configured model/harness capability contracts before preparation"
+    )
 
 
 def _gym_relative_path(path: str) -> str:
@@ -478,6 +481,9 @@ def plan_benchmark() -> None:
             f"Benchmark {benchmark.name!r} declares a prompt template ({benchmark.dataset.prompt_config}); "
             "plans do not support prompt templates yet."
         )
+
+    if plan_config.validate_plan_compatibility:
+        validate_eval_compatibility(global_config_dict)
 
     _prepare_datasets([benchmark], plan_config)
     rows = [json.loads(line) for line in benchmark.dataset.jsonl_fpath.read_text().splitlines() if line.strip()]

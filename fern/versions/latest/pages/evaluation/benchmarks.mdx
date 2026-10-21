@@ -178,3 +178,9 @@ Validation runs in native end-to-end and `--no-serve` rollout collection before
 services/collection start. This dataset contract does not by itself qualify direct
 HTTP calls or resource-only regrading configurations without benchmark datasets.
 Existing configurations without requirements keep their previous behavior.
+
+### Offline configuration compatibility checks
+
+Use `gym eval plan --config /path/to/experiment.yaml --out plan.json --validate-compatibility` to check declared solver, judge/helper and harness capability contracts before preparation or plan publication. Supply model bindings and capability declarations explicitly in the configuration; this remains an offline operation and starts no model or agent servers. Without the flag, planning retains its existing task-only behavior.
+
+A successful check means the supplied configuration satisfies its explicit contracts, not that those capabilities were empirically verified. Missing requirements are not discovered automatically. Changing the model, judge binding, harness, protocol or declarations requires another check. The plan schema remains a task-ID/input-digest artifact: it does not embed a portable certificate of the validated runtime bindings. Preserve the exact experiment configuration and its hash alongside the plan when comparing cells. Do not treat an earlier plan as approval for a later changed configuration or for inference on another model.

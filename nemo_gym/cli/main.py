@@ -1066,6 +1066,11 @@ COMMANDS = {
                 "task-ids", "plan_task_ids", "Only plan these task ids (comma-separated).", metavar="ID[,ID...]"
             ),
             _bool_flag("schema", "print_plan_schema", "Print the plan file's JSON Schema and exit."),
+            _bool_flag(
+                "validate-compatibility",
+                "validate_plan_compatibility",
+                "Validate explicit model/harness capability contracts before preparing tasks.",
+            ),
         ),
     ),
     "eval run": Command(
