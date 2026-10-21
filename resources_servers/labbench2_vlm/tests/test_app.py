@@ -705,3 +705,16 @@ async def test_guarded_judge_identity(server):
         server.server_client.post.call_args.kwargs["headers"]["x-nemo-gym-call-config-sha256"]
         != second["headers"]["x-nemo-gym-call-config-sha256"]
     )
+
+
+async def test_saved_result_reverify_preserves_input_and_replaces_grade(server):
+    _mock_judge(server, "[[A=B]]")
+    request = _verify_request(question="q", ideal="3.5", vlm_answer="3.50")
+    original = await server.verify(request)
+    saved = original.model_dump()
+    _mock_judge(server, "[[A!=B]]")
+    updated = await server.verify(LabbenchVLMVerifyRequest.model_validate(saved))
+    assert updated.reward == 0
+    assert original.model_dump() == saved
+    assert updated.response == original.response
+    assert len(updated.judge_evaluations) == 1

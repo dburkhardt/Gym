@@ -179,7 +179,7 @@ class LabbenchVLMResourcesServer(SimpleResourcesServer):
         )
         reward = 1.0 if is_equal else 0.0
         return LabbenchVLMVerifyResponse(
-            **body.model_dump(),
+            **body.model_dump(exclude={"reward", "judge_evaluations"}),
             reward=reward,
             judge_evaluations=[evaluation],
         )
