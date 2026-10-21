@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from harbor.models.task.config import TaskConfig
 
+from benchmarks.pbench.managed_regrade import validate_workspace
 from benchmarks.pbench.native_prepare import IMAGE, native_prepare
-from benchmarks.pbench.verifier import validate_workspace
 
 
 SOURCE = Path(__file__).resolve().parents[5] / "outputs/broad-eval-campaign/harbor/agent-expansion/pbench-harbor"
@@ -50,7 +50,7 @@ async def test_failed_managed_scorer_is_not_a_zero_and_cleanup_settles(tmp_path,
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
-    from benchmarks.pbench import verifier
+    from benchmarks.pbench import managed_regrade as verifier
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
