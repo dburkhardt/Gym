@@ -6,14 +6,11 @@ import yaml
 
 from responses_api_agents.harbor_agent.runtime_patches.sidecar_resources import apply, COMMIT, ORIGINAL_SHA256
 
-SOURCE = Path(
-    "../../outputs/broad-eval-campaign/foundation/harbor-upgrade/venv/lib/python3.13/site-packages/harbor/environments/docker/docker-compose-egress-control.yaml"
-)
+# Exact upstream Harbor fixture, pinned commit recorded by the patch helper.
+SOURCE = Path(__file__).parent / "fixtures/sidecar-compose-96ff9c6.yaml"
 
 
 def original_file(tmp_path):
-    if not SOURCE.exists():
-        pytest.skip("Pinned Harbor source fixture unavailable")
     raw = SOURCE.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == ORIGINAL_SHA256
     target = tmp_path / "harbor/environments/docker/docker-compose-egress-control.yaml"
