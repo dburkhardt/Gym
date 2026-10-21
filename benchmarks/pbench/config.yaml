@@ -7,6 +7,7 @@ harbor_agent:
       domain: agent
       description: P-Bench preserved Terminus R variant with separate creator verifier.
       concurrency: 1
+      shutdown_grace_seconds: 70
       harbor_datasets:
         pbench:
           local_dataset_path: benchmarks/pbench/data/tasks

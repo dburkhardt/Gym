@@ -426,6 +426,7 @@ class TestRunHelperLaunchEnvironment:
                 "dry_run": True,
                 "verbose": False,
                 "uv_venv_dir": str(PARENT_DIR),
+                "head_server": {"host": "127.0.0.1", "port": 7999},
                 "test_server": {
                     "resources_servers": {
                         "dummy": {
@@ -510,6 +511,7 @@ class TestRunHelperH2PingSidecar:
                 "dry_run": dry_run,
                 "verbose": False,
                 "uv_venv_dir": str(PARENT_DIR),
+                "head_server": {"host": "127.0.0.1", "port": 7999},
                 "policy_base_url": "https://abc.invocation.api.nvcf.nvidia.com/v1",
                 "test_server": {
                     "resources_servers": {
@@ -588,6 +590,7 @@ class TestRunHelperRayStartup:
                 "dry_run": True,
                 "verbose": False,
                 "uv_venv_dir": str(PARENT_DIR),
+                "head_server": {"host": "127.0.0.1", "port": 7999},
                 "test_server": {
                     "resources_servers": {
                         "dummy": {"entrypoint": "app.py", "domain": "other", "host": "127.0.0.1", "port": 8000}
@@ -676,6 +679,7 @@ class TestRunHelperServerReadiness:
         profiler = MagicMock()
         profiler_type = MagicMock(return_value=profiler)
         monkeypatch.setattr(nemo_gym.cli.env, "MemoryProfiler", profiler_type)
+        monkeypatch.setattr(nemo_gym.cli.env, "process_tree_memory_supported", lambda: True)
         monkeypatch.setattr(
             nemo_gym.cli.env,
             "get_telemetry",
@@ -1684,3 +1688,63 @@ def test_version_reports_a_missing_dependency_instead_of_failing(
     dependencies = json.loads(capsys.readouterr().out)["dependencies"]
     assert dependencies["ray"] == "not installed"
     assert dependencies["openai"] == installed_version("openai")
+
+
+def test_harbor_shutdown_grace_resolution_matches_agent_defaults():
+    from nemo_gym.cli.env import _service_shutdown_grace
+    from nemo_gym.config_types import HarborShutdownConfig
+
+    assert _service_shutdown_grace("responses_api_agents", "harbor_agent", {}) == 70
+    assert _service_shutdown_grace("responses_api_agents", "simple_agent", {}) == 1
+    assert (
+        _service_shutdown_grace(
+            "responses_api_agents",
+            "harbor_agent",
+            {
+                "shutdown_grace_seconds": 95,
+                "harbor_ray_cancel_settle_timeout_s": 90,
+            },
+        )
+        == 95
+    )
+    with raises(ValueError, match="must exceed"):
+        _service_shutdown_grace("responses_api_agents", "harbor_agent", {"shutdown_grace_seconds": 30})
+    assert HarborShutdownConfig().shutdown_grace_seconds == 70
+
+
+def test_shutdown_honors_per_service_finalizer_grace():
+    process = MagicMock()
+    process._gym_shutdown_grace_seconds = 70
+    process.wait.return_value = 0
+    runner = TestRunHelperShutdownReap()._make_runner_with_processes({"harbor": process})
+    runner.shutdown()
+    process.wait.assert_called_once_with(timeout=70)
+    process.kill.assert_not_called()
+
+
+def test_logged_shell_exit_keeps_descendant_finalizer_deadline(monkeypatch):
+    import nemo_gym.cli.env as env
+
+    process, identity, descendant = MagicMock(), MagicMock(), MagicMock()
+    process.pid = 12345
+    process._gym_owned_server_group = True
+    process._gym_owned_root_identity = identity
+    process._gym_shutdown_grace_seconds = 70
+    process.poll.return_value = None
+    process.wait.return_value = 0
+    identity.is_running.return_value = True
+    identity.children.return_value = [descendant]
+    monkeypatch.setattr(env.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(env.os, "killpg", lambda *args: None)
+    monkeypatch.setattr(env, "monotonic", lambda: 100.0)
+    waits = []
+
+    def settled(processes, timeout):
+        waits.append((processes, timeout))
+        return processes, []
+
+    monkeypatch.setattr(env.psutil, "wait_procs", settled)
+    runner = TestRunHelperShutdownReap()._make_runner_with_processes({"harbor": process})
+    runner.shutdown()
+    assert waits[0] == ([descendant], 70.0)
+    descendant.kill.assert_not_called()

@@ -517,6 +517,18 @@ def _startup_outcome(error: BaseException) -> str:
     return "failed"
 
 
+def _service_shutdown_grace(server_type: str, component: str, config: dict) -> float:
+    # Resolve the same typed Harbor defaults without importing its Ray runtime.
+    from nemo_gym.config_types import BaseServerConfig, HarborShutdownConfig
+
+    policy = (
+        HarborShutdownConfig
+        if (server_type, component) == ("responses_api_agents", "harbor_agent")
+        else BaseServerConfig
+    )
+    return policy.model_validate({"host": "", "port": 0, **dict(config)}).shutdown_grace_seconds
+
+
 class RunHelper:  # pragma: no cover
     _head_server: uvicorn.Server
     _head_server_thread: Thread
@@ -634,6 +646,7 @@ class RunHelper:  # pragma: no cover
                 # starting a private cluster in each of its processes.
                 extra_env[RAY_ENABLE_AUTO_CONNECT_ENV_VAR_NAME] = "0"
             extra_env |= self._startup.server_env(top_level_path, first_key)
+            shutdown_grace_seconds = _service_shutdown_grace(first_key, second_key, server_config_dict)
             process = run_command(
                 command,
                 dir_path,
@@ -643,6 +656,7 @@ class RunHelper:  # pragma: no cover
                 service_ownership=getattr(self, "_service_ownership", None),
                 project_root=PARENT_DIR if (PARENT_DIR / "pyproject.toml").is_file() else None,
             )
+            process._gym_shutdown_grace_seconds = shutdown_grace_seconds
             self._processes[top_level_path] = process
             # In dry run mode, wait for each setup command to finish before starting the next.
             # This installs uv virtual environments serially, which significantly reduces uv
@@ -858,14 +872,15 @@ Process `{process_name}` stderr:
         shutdown_telemetry()
 
         print("Sending interrupt signals to servers...")
-        owned_descendants = []
+        owned_descendant_groups = []
         for process in self._processes.values():
             if getattr(process, "_gym_owned_server_group", False) is True:
                 try:
                     identity = getattr(process, "_gym_owned_root_identity", None)
                     if process.poll() is not None or identity is None or not identity.is_running():
                         continue
-                    owned_descendants.extend(identity.children(recursive=True))
+                    grace = vars(process).get("_gym_shutdown_grace_seconds", _GRACEFUL_SHUTDOWN_TIMEOUT_SEC)
+                    owned_descendant_groups.append((identity.children(recursive=True), monotonic() + grace))
                     if os.getpgid(process.pid) == process.pid:
                         os.killpg(process.pid, SIGINT)
                     else:
@@ -884,7 +899,7 @@ Process `{process_name}` stderr:
         unreaped_process_names: List[str] = []
         for process_name, process in self._processes.items():
             try:
-                process.wait(timeout=_GRACEFUL_SHUTDOWN_TIMEOUT_SEC)
+                process.wait(timeout=vars(process).get("_gym_shutdown_grace_seconds", _GRACEFUL_SHUTDOWN_TIMEOUT_SEC))
             except TimeoutExpired:
                 process.kill()
                 killed_process_names.append(process_name)
@@ -897,7 +912,14 @@ Process `{process_name}` stderr:
         # Logged launchers contain a tee and a server beneath the shell. Reaping
         # only that shell does not settle the owned servers. psutil objects retain
         # creation identity, so escalation cannot kill an unrelated reused PID.
-        _, alive = psutil.wait_procs(owned_descendants, timeout=_FORCE_KILL_REAP_TIMEOUT_SEC)
+        alive = []
+        for descendants, deadline in owned_descendant_groups:
+            # A tee/logging shell can exit before its native server. Preserve the
+            # same finalizer deadline for those identity-bound descendants.
+            _, remaining = psutil.wait_procs(
+                descendants, timeout=max(_FORCE_KILL_REAP_TIMEOUT_SEC, deadline - monotonic())
+            )
+            alive.extend(remaining)
         for descendant in alive:
             try:
                 descendant.kill()
@@ -909,7 +931,7 @@ Process `{process_name}` stderr:
 
         if killed_process_names:
             print(
-                f"""Some processes ({", ".join(killed_process_names)}) didn't shutdown within the {_GRACEFUL_SHUTDOWN_TIMEOUT_SEC}s timeout, killing instead. You may see messages like:
+                f"""Some processes ({", ".join(killed_process_names)}) didn't shutdown within their configured grace timeout (default {_GRACEFUL_SHUTDOWN_TIMEOUT_SEC}s timeout), killing instead. You may see messages like:
 ```bash
 rpc_client.h:203: Failed to connect to GCS within 60 seconds. GCS may have been killed. It's either GCS is terminated by `ray stop` or is killed unexpectedly. If it is killed unexpectedly, see the log file gcs_server.out. https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure. The program will terminate.
 ```

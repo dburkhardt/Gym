@@ -591,3 +591,12 @@ shared cooldown. This prevents the legacy three-attempt outer retry from resetti
 a model server's one-attempt budget after a definitive rejection. Unguarded
 Terminus retains its legacy retry behavior. Unknown dispatches still require
 explicit reconciliation; this change does not authorize replay or continuation.
+
+Harbor cancellation waits up to `harbor_ray_cancel_settle_timeout_s` (default 60s)
+for the exact job's fresh worker-finalizer receipt, even if Ray marks its result
+cancelled earlier. Missing receipts and finalizer errors remain explicit and do
+not confirm Docker cleanup. The native controller resolves Harbor's
+`shutdown_grace_seconds` to 70s by default; it must exceed the settlement timeout.
+Other services retain the 1s default. The same deadline covers a logged launcher's
+surviving descendants. These are operational cleanup bounds, not extensions to
+solver or verifier timeouts; actual container absence still needs verification.

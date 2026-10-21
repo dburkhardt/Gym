@@ -36,7 +36,7 @@ from nemo_gym.base_responses_api_agent import (
     BaseResponsesAPIAgentConfig,
     SimpleResponsesAPIAgent,
 )
-from nemo_gym.config_types import ModelServerRef
+from nemo_gym.config_types import HarborShutdownConfig, ModelServerRef
 from nemo_gym.failure_kinds import AGENT_RUN_ERROR
 from nemo_gym.global_config import (
     get_first_server_config_dict,
@@ -71,7 +71,7 @@ class HarborDatasetSourceConfig(BaseModel):
     workdir: Optional[str] = None
 
 
-class HarborAgentConfig(BaseResponsesAPIAgentConfig):
+class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
     concurrency: int
 
     # CPUs Ray reserves per Harbor job. Jobs are I/O-bound, so a fractional
@@ -81,7 +81,6 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     # Logical reservation for the whole trial on its Ray worker, including local
     # Docker children and sidecars. This is admission, not a container memory limit.
     harbor_ray_task_memory_bytes: Optional[int] = Field(default=None, gt=0, strict=True)
-    harbor_ray_cancel_settle_timeout_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
 
     # --- Harbor agent settings ---
     # Name of a built-in Harbor agent (e.g. "terminus-2", "claude-code", "aider").
@@ -330,6 +329,7 @@ async def _await_owned_ray_job(future, *, settle_timeout_s: float, receipt_path:
     try:
         return await asyncio.shield(waiter)
     except asyncio.CancelledError:
+        requested_at = datetime.now(timezone.utc)
         _write_cancellation_receipt(receipt_path, {"phase": "cancellation_requested", "cleanup_confirmed": False})
         # Never force-kill a worker: native finalizers need time to preserve
         # artifacts and stop only the environment belonging to this job.
@@ -338,24 +338,57 @@ async def _await_owned_ray_job(future, *, settle_timeout_s: float, receipt_path:
         except Exception:
             logger.exception("Could not request owned Harbor Ray job cancellation; cleanup remains unconfirmed")
         deadline = asyncio.get_running_loop().time() + settle_timeout_s
-        while not waiter.done():
+        worker_receipt = None
+        worker_path = receipt_path.parent / "gym-cancellation-worker.json" if receipt_path else None
+        while True:
+            if worker_path is not None and worker_path.is_file():
+                try:
+                    candidate = json.loads(worker_path.read_text())
+                    if (
+                        isinstance(candidate, dict)
+                        and "cleanup_error" in candidate
+                        and (candidate["cleanup_error"] is None or isinstance(candidate["cleanup_error"], str))
+                        and candidate.get("job_directory") == str(worker_path.parent)
+                        and candidate.get("phase") == "native_coroutine_settled"
+                        and datetime.fromisoformat(candidate["timestamp"]) >= requested_at
+                    ):
+                        worker_receipt = candidate
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+            if waiter.done() and (worker_path is None or worker_receipt is not None):
+                break
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 logger.error("Owned Harbor Ray job cancellation did not settle; cleanup remains unconfirmed")
                 break
             try:
-                await asyncio.wait_for(asyncio.shield(waiter), timeout=remaining)
+                if waiter.done():
+                    await asyncio.sleep(min(0.05, remaining))
+                else:
+                    await asyncio.wait_for(asyncio.shield(waiter), timeout=remaining)
             except asyncio.CancelledError:
                 continue
             except TimeoutError:
                 logger.error("Owned Harbor Ray job cancellation did not settle; cleanup remains unconfirmed")
                 break
             except Exception:
-                break
+                # Ray can mark the ObjectRef cancelled before native artifact
+                # collection and environment teardown finish in the worker.
+                continue
         _write_cancellation_receipt(
             receipt_path,
             {
-                "phase": "ray_wait_settled" if waiter.done() else "settlement_unknown",
+                "phase": (
+                    "native_finalizer_error"
+                    if worker_receipt and worker_receipt.get("cleanup_error")
+                    else "native_finalizer_settled"
+                    if worker_receipt
+                    else "ray_wait_settled"
+                    if waiter.done() and worker_path is None
+                    else "settlement_unknown"
+                ),
+                "worker_receipt": worker_receipt,
+                "settlement_timed_out": worker_path is not None and worker_receipt is None,
                 "cleanup_confirmed": False,
                 "note": "Ray wait completion alone does not prove Docker or native finalizer cleanup",
             },

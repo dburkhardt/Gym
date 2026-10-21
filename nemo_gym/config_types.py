@@ -656,7 +656,21 @@ class Domain(str, Enum):
     OTHER = "other"
 
 
+class HarborShutdownConfig(BaseModel):
+    """Shared controller/Harbor cleanup budget; independent of task timeouts."""
+
+    shutdown_grace_seconds: float = Field(default=70.0, gt=0, allow_inf_nan=False)
+    harbor_ray_cancel_settle_timeout_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def coherent_shutdown_budget(self):
+        if self.shutdown_grace_seconds <= self.harbor_ray_cancel_settle_timeout_s:
+            raise ValueError("Harbor shutdown grace must exceed its Ray finalizer settlement timeout")
+        return self
+
+
 class BaseServerConfig(BaseModel):
+    shutdown_grace_seconds: float = Field(default=1.0, gt=0, allow_inf_nan=False)
     host: str
     port: int
     num_workers: Optional[int] = None
