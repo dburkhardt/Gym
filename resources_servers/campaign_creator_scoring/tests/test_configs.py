@@ -52,6 +52,15 @@ def test_full_configuration_and_resource_startup(benchmark, monkeypatch):
     config = Config.model_validate({**resource.get_inner_run_server_config_dict(), "name": benchmark + "_resources"})
     client = ServerClient(head_server_config={"host": "127.0.0.1", "port": 23001}, global_config_dict=global_config)
     server = CreatorResourcesServer(config=config, server_client=client)
+    if benchmark in {"moljson", "genomeqa", "qcbench"}:
+        # These checkpoint-capable resources must validate their creator source
+        # during startup. A placeholder path cannot establish that qualification.
+        # The pinned QCBench test below exercises actual qualified startup.
+        from nemo_gym.config_types import ConfigError
+
+        with pytest.raises(ConfigError, match="Creator restart"):
+            server.setup_webserver()
+        return
     with TestClient(server.setup_webserver()) as web:
         response = web.get("/reverify_mode")
         assert response.status_code == 200
