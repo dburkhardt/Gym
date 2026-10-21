@@ -81,3 +81,49 @@ entrypoint also disables the shared Docker provider's sleep-based TTL; successfu
 `close` is checked in local controls, but abrupt-controller termination requires a
 separate owned-resource supervisor/cleanup proof before live admission. The
 17GB reference VM route is not equivalent to an admitted sanitized Docker image.
+
+## Guarded creator model transport and result mapping
+
+`guarded_model.py` binds only the pinned `sci.base.model.requests` reference in
+an isolated synchronous worker. The unchanged creator `Model._request_openai`
+constructs its complete payload; the facade routes it through shared
+`GuardedSyncChatTransport` to an authenticated task UDS bridge. Screenshot bytes,
+text/order and sampling keys are retained. The creator's480-second model timeout
+bounds connection plus full-body receipt. Failed/ambiguous calls poison subsequent
+requests; a captured null action is retained but cannot trigger the creator's
+internal retry loop. No upstream credential is exposed to the creator model.
+
+This is a transport adapter, not yet the complete native agent server: its caller
+must supply the task lineage, source/configuration digest and owned bridge, bind
+all roles, and supervise creator/desktop cleanup. Protocol differences are explicit:
+transport errors do not use the upstream three-try retry wrapper; native null
+content stops after the preserved attempt. No sampling or screenshot changes are
+introduced.
+
+`result_mapping.py` preserves exact `result.out`0/1 bytes/hash. Missing output is
+null and masked, never zero. A known transport/creator exception keeps any raw
+native result but masks its execution disposition. Absent an independent scientific
+review, ordinary native results remain unreviewed rather than accepted quality.
+This mapper requires the eventual runner to report exceptions instead of relying
+only on Tester's aggregate counts (Tester catches exceptions as skipped tasks).
+
+Offline controls now exercise the **actual pinned** creator Model serializer and
+parser with a real PIL image, and actual VManager enter/reset/exit using substituted
+Docker/HTTP. The local Gym interpreter imports these via a small isolated dependency
+overlay; it is Python3.13, whereas creator setup recommends3.11. Full scientific
+application/runtime qualification remains necessary before claiming compatibility.
+
+The named protocol is `creator-openai-guarded-single-attempt-no-overflow-trimming-v1`.
+Exact first-request payload equality does **not** certify unchanged full creator
+retry semantics: native Agent defaults to three tries after Model.access returns
+None, and its overflow handler recursively trims context. This adapter raises on
+non200 before Agent's overflow handler and latches no-resend on malformed returned
+actions. Both retry suppression and overflow-trimming suppression are explicit
+variants; future execution identity must include this variant name.
+
+The no-resend latch is separate from `outcome`. A captured null/length response is
+`model_output_budget`; null/nonlength is `model_invalid_action`. Both remain in
+attempted model-failure denominators and are not masked as infrastructure. An
+absent creator score remains null, never an invented zero. Ambiguous timeout is
+`transport_unresolved`, unscored and masked. Malformed result artifacts retain
+their bytes/hash and map to explicit verifier-artifact failure.

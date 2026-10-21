@@ -122,3 +122,20 @@ def test_source_path_and_byte_changes_fail_closed(tmp_path):
     (tmp_path / "file").write_bytes(b"changed")
     with pytest.raises(ValueError, match="changed"):
         checked_source(tmp_path, "file", digest)
+
+
+def test_actual_pinned_vmanager_lifecycle():
+    native = pytest.importorskip("sci.vm.vmanager")
+    manager = native.VManager(version="0.1", provider_name="docker", docker_image="sha256:" + "a" * 64)
+    manager._env_factory = make
+    native.ENVS[manager.key] = make
+    with manager:
+        assert manager.entered
+        first = manager.env.sandbox
+        manager.env._revert_to_snapshot()
+        manager.env._start_emulator()
+        assert first.stopped
+        second = manager.env.sandbox
+    assert second.stopped and not manager.entered
+    dockerfile = (SOURCE / "docker/Portable.Dockerfile").read_text()
+    assert 'ENTRYPOINT ["/usr/local/bin/scienceboard-entrypoint"]' in dockerfile
