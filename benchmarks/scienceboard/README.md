@@ -13,7 +13,7 @@ itself the qualified Docker image. Do not distribute intermediate/rootfs layers.
 
 For an already authorized, locally available image, save `docker image inspect`
 output. Execute the pinned creator `scripts/audit_distribution.py --image <sha256 ID>`
-in a separately approved resource window, and record its exit code and exact JSON
+in a resource-admitted execution window, and record its exit code and exact JSON
 stdout. The admission command itself never runs this audit. The receipt format is:
 
 ```json
@@ -24,8 +24,10 @@ stdout. The admission command itself never runs this audit. The receipt format i
 ```
 
 `resources.json` must declare `cpus`, `memory_gib`, `free_disk_gib`, `shm_gib`.
-The conservative documented placement floor is 8 CPUs, 24 GiB memory, 80 GiB free
-disk and 2 GiB shared memory. These declarations are not live capacity observations.
+This gate adopts the lower end of the creator
+[recommended capacity](https://github.com/OS-Copilot/ScienceBoard/blob/21b5eb0f1d00898f7de9e84c3d33a87c2f2b3c3e/docs/cloud-quickstart.md)
+as a conservative admission policy: 8 CPUs, 24 GiB memory, 80 GiB free disk
+and 2 GiB shared memory. It is not an experimentally established minimum. These declarations are not live capacity observations.
 
 ```bash
 python -m benchmarks.scienceboard.admission --inspect inspect.json --audit audit.json --resources resources.json
