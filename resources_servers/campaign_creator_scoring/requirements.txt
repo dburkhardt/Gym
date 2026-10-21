@@ -2,7 +2,7 @@
 numpy
 requests
 rdkit
-# MolecularIQ only: install separately from pinned checkout a1b89635371c3cd942e44ebeec63ec3665e7743d
+moleculariq-core @ git+https://github.com/ml-jku/moleculariq-core.git@a1b89635371c3cd942e44ebeec63ec3665e7743d
 datasets
 
 nltk
