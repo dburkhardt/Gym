@@ -92,17 +92,24 @@ async def child(packet, output):
         raise ValueError("Qualification must select exactly one GIAB task")
     client = RuntimeClient(Path(packet["runtime_socket"]), packet["ipc_token"], deadline=packet["deadline"])
 
-    class Remote:
-        async def run(self, argv, env):
-            return SimpleNamespace(**await client.call("run", argv=argv, env=env))
-
-    await setup_only(tasks[0], Remote())
+    await setup_over_channel(tasks[0], client)
     (output / "creator-setup.json").write_text(
         json.dumps({"identity": observed, "task": tasks[0].data.model_dump(mode="json")}, indent=2)
     )
 
 
-async def command(argv, *, env=None, timeout=60):
+async def setup_over_channel(task, client):
+    """Use the same ordered start/run handshake as the production creator."""
+
+    class Remote:
+        async def run(self, argv, env):
+            return SimpleNamespace(**await client.call("run", argv=argv, env=env))
+
+    await client.call("start")
+    await setup_only(task, Remote())
+
+
+async def command(argv, *, env=None, timeout=60, receipt=None):
     process = await asyncio.create_subprocess_exec(
         *argv, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -113,6 +120,12 @@ async def command(argv, *, env=None, timeout=60):
             process.kill()
         await process.communicate()
         raise
+    if receipt is not None:
+        receipt.write_text(
+            json.dumps(
+                {"return_code": process.returncode, "stdout": stdout.decode(), "stderr": stderr.decode()}, indent=2
+            )
+        )
     if process.returncode:
         raise RuntimeError(f"Qualification command failed ({process.returncode}): {stderr.decode()[:2000]}")
     return stdout.decode()
@@ -190,24 +203,6 @@ async def qualify(packet, output):
         )
         try:
             await server.start()
-            await runtime.start()
-            inspected = json.loads(await command(["docker", "inspect", runtime.info.id]))[0]
-            mounts = check_mounts(inspected, workspace=workspace, source=source)
-            # Store only relevant inspection fields, never environment/credential values.
-            (output / "mounts.json").write_text(
-                json.dumps(
-                    {
-                        "Id": inspected["Id"],
-                        "Image": inspected["Image"],
-                        "Mounts": mounts,
-                        "HostConfig": {
-                            k: inspected["HostConfig"].get(k)
-                            for k in ("NetworkMode", "Memory", "NanoCpus", "CpuPeriod", "CpuQuota")
-                        },
-                    },
-                    indent=2,
-                )
-            )
             child_packet = {
                 **packet,
                 "native_config": config,
@@ -232,6 +227,24 @@ async def qualify(packet, output):
                 ],
                 env=child_environment(packet, home=output, source=Path(__file__).resolve().parents[2]),
                 timeout=max(0.001, min(180, deadline - time.time())),
+                receipt=output / "creator-execution.json",
+            )
+            inspected = json.loads(await command(["docker", "inspect", runtime.info.id]))[0]
+            mounts = check_mounts(inspected, workspace=workspace, source=source)
+            # Store only relevant inspection fields, never environment/credential values.
+            (output / "mounts.json").write_text(
+                json.dumps(
+                    {
+                        "Id": inspected["Id"],
+                        "Image": inspected["Image"],
+                        "Mounts": mounts,
+                        "HostConfig": {
+                            k: inspected["HostConfig"].get(k)
+                            for k in ("NetworkMode", "Memory", "NanoCpus", "CpuPeriod", "CpuQuota")
+                        },
+                    },
+                    indent=2,
+                )
             )
             files = json.loads(Path(packet["asset_manifest"]).read_text())["tasks"]["giab"]["files"]
             public = [str(source / name) for name in files if name.split("/")[0] in ("data", "reference")]

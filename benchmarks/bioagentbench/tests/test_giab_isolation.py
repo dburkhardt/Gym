@@ -124,3 +124,60 @@ def test_trusted_child_checks_original_and_owned_truth(tmp_path):
     (owned / "giab/results/truth.vcf").symlink_to(original / "giab/results/truth.vcf")
     with pytest.raises(ValueError, match="regular"):
         trusted_truth(packet)
+
+
+@pytest.fixture
+def short_socket():
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="giab-test-", dir="/tmp") as directory:
+        yield Path(directory) / "runtime.sock"
+
+
+@pytest.mark.asyncio
+async def test_real_runtime_channel_requires_start_handshake(tmp_path, short_socket):
+    import time
+
+    from benchmarks.bioagentbench.qualify_giab_isolation import setup_over_channel
+    from benchmarks.bioagentbench.runtime_channel import RuntimeClient, RuntimeServer
+
+    events = []
+
+    class Backend:
+        info = SimpleNamespace(id="fixture")
+
+        async def start(self):
+            events.append("start")
+
+        async def run(self, argv, env):
+            events.append(argv)
+            return SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+        async def teardown(self):
+            events.append("teardown")
+
+    backend = Backend()
+    server = RuntimeServer(
+        backend,
+        socket=short_socket,
+        token="fixture-token",
+        deadline=time.time() + 20,
+        receipts=tmp_path / "receipts",
+    )
+    await server.start()
+    client = RuntimeClient(short_socket, "fixture-token", deadline=time.time() + 20)
+
+    async def setup(trace, runtime):
+        await runtime.run(["mkdir", "-p", "outputs", "results"], {})
+
+    task = SimpleNamespace(data=SimpleNamespace(task_id="giab", staging="local", include_reference=True), setup=setup)
+    try:
+        await setup_over_channel(task, client)
+        assert server.started and not server.failed
+        assert client.ordinal == 2
+        assert events == ["start", ["mkdir", "-p", "outputs", "results"]]
+    finally:
+        await server.close()
+    assert events[-1] == "teardown"
+    receipts = sorted((tmp_path / "receipts").glob("*.complete.json"))
+    assert [json.loads(p.read_text())["method"] for p in receipts] == ["start", "run"]
