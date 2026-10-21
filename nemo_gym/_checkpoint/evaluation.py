@@ -237,8 +237,27 @@ class EvaluationCheckpoint:
         from nemo_gym.creator_restart import creator_graph_for_row, exact_creator_graphs
 
         graph = creator_graph_for_row(exact_creator_graphs(self.config), row)
+        if key in self.active:
+            raise ValueError("Duplicate active checkpoint episode")
         self.active[key] = EpisodeId.from_capture_key(key)
         self.active_agents[key] = graph["agent"]["name"]
+        return self.active[key]
+
+    def after_not_dispatched(self, row, reservation):
+        """Release only the local reservation made before any request was sent."""
+        from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
+
+        key = maybe_rollout_id_from_run_body(row)
+        if (
+            reservation is None
+            or key not in self.active
+            or self.active[key] is not reservation
+            or key in self.returned
+            or key in self.persisted
+        ):
+            raise ValueError("Cannot release a changed or already returned checkpoint reservation")
+        self.active.pop(key, None)
+        self.active_agents.pop(key, None)
 
     def after_reply(self, row):
         from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body

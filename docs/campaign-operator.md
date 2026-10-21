@@ -44,6 +44,8 @@ For managed serving, configure the input dataset in the run configuration and se
 
 Before removing `--plan-only`, verify runtime/image availability, actual memory and disk, owned ports, endpoint readiness, full task-plus-cleanup budget, and all prior dispatch identities. Use the existing owned supervisor with an explicit absolute bound; collector admission/drain windows must leave each admitted task its original scientific budget. On qualified Linux hosts, optional `NEMO_GYM_SERVICE_OWNERSHIP_MODE=systemd` scopes apply to new service receipts only.
 
+For an outer supervisor bound that includes service startup, opt in with `python -m nemo_gym.agent_utils.process_supervisor --timeout SECONDS --collector-cleanup-reserve CLEANUP_SECONDS --receipt receipt.json -- gym eval run ...`. The collector must also receive an explicit positive `drain_margin_s` covering the full original task budget. The supervisor exports a same-kernel, boot-bound monotonic deadline; the collector uses the earlier of that deadline minus cleanup reserve and its relative dispatch deadline. It rechecks after queue and checkpoint waits, leaving late rows unstarted. This does not shorten an admitted task’s timeout or extend the supervisor bound. Reserve service shutdown separately from task drain and include the supervisor’s own cleanup in the outer controller envelope. Do not copy this environment contract to another host or reuse it after reboot. Without the opt-in flag, existing relative-budget behavior is unchanged.
+
 ```sh
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl
 ```

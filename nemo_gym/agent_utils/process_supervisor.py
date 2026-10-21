@@ -26,6 +26,66 @@ from pathlib import Path
 from typing import TypedDict
 
 
+COLLECTOR_DEADLINE_ENV = "NEMO_GYM_COLLECTOR_DEADLINE_V1"
+
+
+def _kernel_boot_id() -> str:
+    return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+
+
+def collector_deadline_from_environment() -> float | None:
+    """Read an opt-in same-kernel deadline; never infer a portable wall clock."""
+    raw = os.environ.get(COLLECTOR_DEADLINE_ENV)
+    if raw is None:
+        return None
+    try:
+        value = json.loads(raw)
+        if not isinstance(value, dict) or set(value) != {"version", "boot_id", "deadline", "cleanup_reserve"}:
+            raise ValueError("missing or unknown fields")
+        if value["version"] != 1 or isinstance(value["version"], bool):
+            raise ValueError("unsupported version")
+        boot_id = _kernel_boot_id()
+        if not boot_id or value["boot_id"] != boot_id:
+            raise ValueError("deadline belongs to a different kernel boot")
+        for field in ("deadline", "cleanup_reserve"):
+            number = value[field]
+            if (
+                isinstance(number, bool)
+                or not isinstance(number, (float, int))
+                or not math.isfinite(number)
+                or number < 0
+            ):
+                raise ValueError(f"invalid {field}")
+        return value["deadline"] - value["cleanup_reserve"]
+    except (ValueError, TypeError, OSError) as exc:
+        raise ValueError(f"Invalid supervisor collector deadline: {exc}") from exc
+
+
+def collector_environment(deadline: float, cleanup_reserve: float) -> dict[str, str]:
+    """Bind child admission to this supervisor, never extending an inherited bound."""
+    if not math.isfinite(deadline) or not math.isfinite(cleanup_reserve) or cleanup_reserve < 0:
+        raise ValueError("Invalid supervisor collector deadline or cleanup reserve")
+    inherited = collector_deadline_from_environment()
+    if inherited is not None:
+        deadline = min(deadline, inherited + cleanup_reserve)
+    boot_id = _kernel_boot_id()
+    if not boot_id:
+        raise ValueError("Kernel boot identity unavailable")
+    return dict(
+        os.environ,
+        **{
+            COLLECTOR_DEADLINE_ENV: json.dumps(
+                {
+                    "version": 1,
+                    "boot_id": boot_id,
+                    "deadline": deadline,
+                    "cleanup_reserve": cleanup_reserve,
+                }
+            )
+        },
+    )
+
+
 DEFAULT_CLEANUP_TIMEOUT = 10.0
 CLEANUP_PHASE_COUNT = 3
 
@@ -117,6 +177,7 @@ def _supervise(
     timeout: float,
     cleanup_timeout: float = DEFAULT_CLEANUP_TIMEOUT,
     stop_path: Path | None = None,
+    collector_cleanup_reserve: float | None = None,
 ) -> CleanupReceipt:
     """Stop the harness and forced-stop tools; preserve earlier detached services."""
     process = None
@@ -148,9 +209,17 @@ def _supervise(
         # container's PID 1. Otherwise zombies keep killpg(..., 0) succeeding.
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
             raise OSError(ctypes.get_errno(), "Cannot supervise harness process group")
-        launch_attempted = True
-        process = subprocess.Popen(command, start_new_session=True)
+        launch_options = {}
         deadline = time.monotonic() + timeout
+        if collector_cleanup_reserve is not None:
+            if collector_cleanup_reserve >= timeout:
+                raise ValueError("Collector cleanup reserve must be smaller than supervisor timeout")
+            launch_options["env"] = collector_environment(deadline, collector_cleanup_reserve)
+            receipt["collector_deadline"] = json.loads(launch_options["env"][COLLECTOR_DEADLINE_ENV])
+        launch_attempted = True
+        process = subprocess.Popen(command, start_new_session=True, **launch_options)
+        if collector_cleanup_reserve is None:
+            deadline = time.monotonic() + timeout
         while process.poll() is None and not stopping and time.monotonic() < deadline:
             time.sleep(0.05)
         if process.poll() is None:
@@ -206,6 +275,11 @@ def main() -> int:
     parser.add_argument("--cleanup-timeout", type=_positive_seconds, default=DEFAULT_CLEANUP_TIMEOUT)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--stop-file", type=Path)
+    parser.add_argument(
+        "--collector-cleanup-reserve",
+        type=_positive_seconds,
+        help="Opt in to same-host collector admission deadline, reserving these seconds before supervisor stop",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -216,6 +290,7 @@ def main() -> int:
         timeout=args.timeout,
         cleanup_timeout=args.cleanup_timeout,
         stop_path=args.stop_file,
+        collector_cleanup_reserve=args.collector_cleanup_reserve,
     )
     temporary = args.receipt.with_suffix(".tmp")
     temporary.write_text(json.dumps(receipt))

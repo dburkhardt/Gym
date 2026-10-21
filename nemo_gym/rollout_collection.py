@@ -4570,6 +4570,13 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
         # `is not None`, not truthiness: 0.0 is a real budget that is already
         # spent, and must drain rather than disable the check.
         deadline = (time.monotonic() + dispatch_budget_s) if dispatch_budget_s is not None else None
+        from nemo_gym.agent_utils.process_supervisor import collector_deadline_from_environment
+
+        supervisor_deadline = collector_deadline_from_environment()
+        if supervisor_deadline is not None:
+            if drain_margin_s is None or not math.isfinite(drain_margin_s) or drain_margin_s <= 0:
+                raise ValueError("Supervisor deadline requires an explicit positive finite drain_margin_s")
+            deadline = min(deadline, supervisor_deadline) if deadline is not None else supervisor_deadline
 
         async def _post_subroutine(row: Dict) -> _CompletedRollout:
             server_name = (
@@ -4597,7 +4604,22 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                         )
 
                 if checkpoint is not None:
-                    await checkpoint.before_dispatch(row)
+                    reservation = await checkpoint.before_dispatch(row)
+                    # Check again after checkpoint admission may have paused. Release
+                    # only this unsent reservation; historical dispatch remains intact.
+                    if deadline is not None:
+                        remaining = deadline - time.monotonic()
+                        margin = tracker.drain_margin(drain_margin_s)
+                        if remaining <= 0 or (margin is not None and remaining < margin):
+                            checkpoint.after_not_dispatched(row, reservation)
+                            tracker.record_drained()
+                            return _CompletedRollout(
+                                row=row,
+                                result=_dispatch_drained_result(remaining, margin),
+                                rollout_latency_ms=None,
+                                environment_server=server_name,
+                                environment_server_type=server_type,
+                            )
                 started = time.monotonic()
                 started_at = time.time()
                 if run_timing is not None:
