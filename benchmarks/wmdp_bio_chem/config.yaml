@@ -1,0 +1,2 @@
+config_paths:
+- responses_api_agents/wmdp_conditional/configs/wmdp.yaml

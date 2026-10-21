@@ -1,0 +1,20 @@
+wmdp_agent:
+  responses_api_agents:
+    wmdp_conditional:
+      entrypoint: app.py
+      domain: safety
+      description: Planning-only WMDP canonical likelihood adapter; no qualified execution backend.
+      datasets:
+      - name: wmdp_bio_chem_pinned
+        type: benchmark
+        jsonl_fpath: benchmarks/wmdp_bio_chem/data/benchmark.jsonl
+        prepare_script: benchmarks/wmdp_bio_chem/prepare.py
+        prompt_config: null
+        num_repeats: 1
+wmdp_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: wmdp_agent

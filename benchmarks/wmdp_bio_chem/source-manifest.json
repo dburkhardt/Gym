@@ -1,0 +1,51 @@
+{
+  "dataset_revision": "7125571f22f032c56415e7980f48d877dd830ff8",
+  "creator_revision": "c0b6c12bb0de3decf9c13bb13f9f1aa15754a132",
+  "lm_eval_version": "0.4.2",
+  "sources": {
+    "lm_eval/tasks/wmdp/_default_template_yaml": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/tasks/wmdp/_default_template_yaml",
+      "sha256": "42fb36ee1fcb899c77eb19bb1f9ce0c051c2776158d456ba0a34c96264a269e4"
+    },
+    "lm_eval/tasks/wmdp/wmdp_bio.yaml": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/tasks/wmdp/wmdp_bio.yaml",
+      "sha256": "9bed7e51c7d2467720f4e78a2d58d11dc7f6bd46705bc97c71701588f0a52b05"
+    },
+    "lm_eval/tasks/wmdp/wmdp_chem.yaml": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/tasks/wmdp/wmdp_chem.yaml",
+      "sha256": "dfd7908b31a63f3ec13ba9bcf53ffd116898a243c1e0593521140404d57ef7e6"
+    },
+    "lm_eval/api/task.py": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/api/task.py",
+      "sha256": "a4de9aac0d8b7dae0322f2a6878e0879d341b28fcebc7f20222d86e07286ed35"
+    },
+    "lm_eval/api/instance.py": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/api/instance.py",
+      "sha256": "9de61baa83b771a91b509613d43a7d2189b4594d745d64e50040ba0daff86590"
+    },
+    "lm_eval/utils.py": {
+      "url": "https://raw.githubusercontent.com/EleutherAI/lm-evaluation-harness/v0.4.2/lm_eval/utils.py",
+      "sha256": "99c50d27aed0c83b4380ae7365833df92b65f2820dceeec9f70097589073feb3"
+    },
+    "lm-eval-0.4.2-model.py": {
+      "sha256": "aee64d886200823033e7911955cb01e8774a10527d02c05ff7a1f1f295b21932"
+    },
+    "lm-eval-0.4.2-huggingface.py": {
+      "sha256": "5cc472378ba006537df58e8ae4551ae01402c3f3fe37dd61c07fe761686ca7cd"
+    }
+  },
+  "datasets": {
+    "wmdp-bio": {
+      "revision": "7125571f22f032c56415e7980f48d877dd830ff8",
+      "url": "https://huggingface.co/datasets/cais/wmdp/resolve/7125571f22f032c56415e7980f48d877dd830ff8/wmdp-bio/test-00000-of-00001.parquet",
+      "sha256": "738cee28e11e4dcf9a0efc6b2c22b425bddda4b2b69477a11f38539c86cf00b7",
+      "bytes": 258073
+    },
+    "wmdp-chem": {
+      "revision": "7125571f22f032c56415e7980f48d877dd830ff8",
+      "url": "https://huggingface.co/datasets/cais/wmdp/resolve/7125571f22f032c56415e7980f48d877dd830ff8/wmdp-chem/test-00000-of-00001.parquet",
+      "sha256": "b9e5f2be6c7526931ae8aeb2eea246baa4144d2ba8d0de1de09905aaa84912ce",
+      "bytes": 50801
+    }
+  }
+}

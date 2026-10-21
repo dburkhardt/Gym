@@ -1,0 +1,25 @@
+name: wmdp_bio_chem
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: external-agent-loop
+domain: safety
+description: Pinned zero-shot WMDP Bio/Chem raw conditional-likelihood planning adapter; execution unavailable until exact backend qualification.
+modality: text
+licensing: MIT
+determinism: unknown
+agent_server: wmdp_agent
+resources_server: null
+model_server: null
+canonical_split: test
+prompt_source: prepared
+lifecycle: active
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+datasets:
+- name: wmdp_bio_chem_pinned
+  type: benchmark
+  jsonl_fpath: benchmarks/wmdp_bio_chem/data/benchmark.jsonl
+  prepare_script: benchmarks/wmdp_bio_chem/prepare.py
+  num_repeats: 1
