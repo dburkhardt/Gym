@@ -1,0 +1,40 @@
+{
+  "version": "chemx-magnetic-two-article-image-v1",
+  "source_revision": "3d91dec63603955aba18d29a011c1886ed687148",
+  "source_sha256": {
+    "LLM/src/metric_calc.py": "572fe52eabc95b3ecffe59aa26d30f5f0cbe1a431e295a57a42dc587d3f9ee3f",
+    "LLM/src/constants.py": "479f31a2e50ea17802eb7369f9d85caf246dad49133ad3b1c457e2066aa47722",
+    "LLM/src/images_extraction.py": "d4bc5824bee4e8863e9bdbde9c158a4966ee0506c29d6e94a37b91635388e31a",
+    "LLM/src/pdf_to_images.py": "65c07bd2e54b011b7c6dfc82f40d872c4d8345315f2da751babc71625d45d9ad",
+    "LLM/src/merge_suppl.py": "af45d9299cddd0af3e4aa48e2f028392d511a7fb6d3d43b122c3b608638d2c2a",
+    "LLM/data/prompts/magnetic.py": "6f94a666b9437dc36e0a449868da9e6bfae4d36cf35c69e9de6049faf02349dd",
+    "LLM/data/schemas/magnetic.json": "a379af4b93bf2752c9ed24674904506313a2c211e15cad2155905ecd25d55a14",
+    "datasets/Nanomag.csv": "61732699e8f432113a5d6b860a155cc1829f8dd91559ce3867a0d9747999915b"
+  },
+  "articles": [
+    {
+      "id": "d0na00820f.pdf",
+      "doi": "10.1039/d0na00820f",
+      "gold_rows": 4,
+      "license": "CC-BY-NC-3.0",
+      "pdfs": [
+        "rsc-institutional.pdf",
+        "d0na00820f_si.pdf"
+      ]
+    },
+    {
+      "id": "nano12183159.pdf",
+      "doi": "10.3390/nano12183159",
+      "gold_rows": 18,
+      "license": "CC-BY-4.0",
+      "pdfs": [
+        "nano12183159-institutional.pdf"
+      ]
+    }
+  ],
+  "assets_sha256": {
+    "rsc-institutional.pdf": "de61a4e45d964dd35347a7bfcd9db3a786e7b89ed16e8b93dee981142babc894",
+    "d0na00820f_si.pdf": "72e33de4fdbec855058182d5203226011fa9de1aa11f4f952a634a603d68700e",
+    "nano12183159-institutional.pdf": "03a0c4d55a369578427e7e1e40ed52c970608beeed0df561b46275a1854c51fc"
+  }
+}

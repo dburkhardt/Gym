@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+chemx_resources:
+  resources_servers:
+    chemx:
+      entrypoint: app.py
+      domain: knowledge
+      verified: false
+      upstream_repo: ${oc.env:CHEMX_SOURCE}
+      datasets:
+      - name: chemx
+        type: benchmark
+        required_model_capabilities: [vision]
+        jsonl_fpath: ${oc.env:CHEMX_PREPARED_DIR}/benchmark.jsonl
+        prepare_script: benchmarks/chemx/prepare.py
+        num_repeats: 1
+chemx_agent:
+  responses_api_agents:
+    simple_agent:
+      entrypoint: app.py
+      max_steps: 1
+      resources_server:
+        type: resources_servers
+        name: chemx_resources
+      model_server:
+        type: responses_api_models
+        name: policy_model
+chemx_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: chemx_agent
