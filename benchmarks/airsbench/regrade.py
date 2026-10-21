@@ -33,6 +33,19 @@ def validate_inputs(task_id: str, source: Path, workspace: Path) -> dict:
     return task
 
 
+def scorer_identity(task: dict) -> dict:
+    """Version each regrade by its scientific assets and orchestration source."""
+    manifest_path = Path(__file__).with_name("frozen_sources.json")
+    manifest = json.loads(manifest_path.read_text())
+    assets = {name: digest for name, digest in task["files"].items() if name.startswith("tests/")}
+    return {
+        "creator_revision": manifest["creator_revision"],
+        "scorer_assets_sha256": assets,
+        "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "regrade_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    }
+
+
 async def regrade_managed(
     *, task_id: str, source: Path, workspace: Path, output: Path, capture_complete: bool = False
 ) -> dict:
@@ -54,6 +67,7 @@ async def regrade_managed(
         raise ValueError("Model omitted submission.csv; no creator MAE exists")
     before = hashlib.sha256(prediction.read_bytes()).hexdigest()
     identity = {
+        **scorer_identity(task),
         "task_id": task_id,
         "image": task["image"],
         "prediction_sha256": before,

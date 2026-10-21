@@ -62,3 +62,23 @@ allow_internet = false
     assert parsed["artifacts"] == ["/workspace"]
     with pytest.raises(ValueError, match="Immutable"):
         runtime_config(original, "mutable-tag")
+
+
+def test_regrade_identity_records_scientific_and_controller_versions():
+    import hashlib
+    import json
+    from pathlib import Path
+    from benchmarks.airsbench import regrade
+
+    manifest_path = Path(regrade.__file__).with_name("frozen_sources.json")
+    manifest = json.loads(manifest_path.read_text())
+    task = manifest["tasks"][0]
+    identity = regrade.scorer_identity(task)
+    assert identity["creator_revision"] == manifest["creator_revision"]
+    assert identity["scorer_assets_sha256"] == {
+        name: digest for name, digest in task["files"].items() if name.startswith("tests/")
+    }
+    assert "tests/check.py" in identity["scorer_assets_sha256"]
+    assert identity["regrade_source_sha256"] == hashlib.sha256(Path(regrade.__file__).read_bytes()).hexdigest()
+    changed = dict(task, files=dict(task["files"], **{"tests/check.py": "changed"}))
+    assert regrade.scorer_identity(changed) != identity
