@@ -9,13 +9,18 @@ complete response has been durably captured or the provider can reconcile it.
 
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from time import time
 from typing import Callable
 from uuid import uuid4
 
 
 @dataclass
 class ProviderDispatch:
-    """Track physical attempts inside one logical captured model call."""
+    """Track physical attempts inside one logical captured model call.
+
+    Unix timestamps are observational evidence, not deadline or retry inputs.
+    Wall-clock adjustments can affect intervals; old records may omit timing.
+    """
 
     persist: Callable[[dict], None]
     attempts: list[dict] = field(default_factory=list)
@@ -23,11 +28,11 @@ class ProviderDispatch:
     def before_send(self) -> None:
         if self.attempts and self.attempts[-1]["outcome"] != "rejected":
             raise RuntimeError("previous provider dispatch is unresolved; automatic resend refused")
-        self.attempts.append({"attempt_id": uuid4().hex, "outcome": "unknown"})
+        self.attempts.append({"attempt_id": uuid4().hex, "outcome": "unknown", "started_at": time()})
         self.persist(self.evidence())
 
     def response_headers(self, status: int) -> None:
-        self.attempts[-1].update(outcome="response_headers", status_code=status)
+        self.attempts[-1].update(outcome="response_headers", status_code=status, response_headers_at=time())
         self.persist(self.evidence())
 
     def evidence(self) -> dict:

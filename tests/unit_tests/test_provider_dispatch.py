@@ -37,6 +37,30 @@ def test_guard_requires_capture():
         ModelCallCaptureConfig(provider_dispatch_guard=True)
 
 
+def test_physical_attempt_timing_survives_durable_dispatch(tmp_path, monkeypatch):
+    import json
+
+    ticks = iter([100.0, 101.0, 161.0, 162.0])
+    monkeypatch.setattr("nemo_gym.provider_dispatch.time", lambda: next(ticks))
+    store = store_at(tmp_path)
+    dispatch = dispatch_at(store)
+    dispatch.before_send()
+    dispatch.response_headers(429)
+    dispatch.attempts[-1]["outcome"] = "rejected"
+    dispatch.persist(dispatch.evidence())
+    dispatch.before_send()
+    dispatch.response_headers(200)
+    attempts = dispatch.evidence()["provider_attempts"]
+    assert [(a["started_at"], a["response_headers_at"]) for a in attempts] == [(100.0, 101.0), (161.0, 162.0)]
+    assert attempts[0]["attempt_id"] != attempts[1]["attempt_id"]
+    # Evidence must reach disk, not just the in-memory dispatch object.
+    persisted = json.loads(store.pending_path_for("episode", "call").read_text())
+    assert persisted["provider_attempts"] == attempts
+    # Timestamps do not make the second, accepted-but-uncaptured call retryable.
+    with pytest.raises(RuntimeError, match="unresolved"):
+        dispatch.before_send()
+
+
 def test_queued_cancellation_is_not_sent(tmp_path):
     store = store_at(tmp_path)
     dispatch_at(store)
