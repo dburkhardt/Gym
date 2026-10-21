@@ -2,12 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import hashlib
+import os
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from nemo_gym import dataset_staging
 from nemo_gym.dataset_staging import stage_file
+
+
+def test_fifo_destination_is_rejected_without_waiting_for_writer(tmp_path):
+    source, destination = tmp_path / "cached", tmp_path / "final"
+    source.write_bytes(b"dataset")
+    os.mkfifo(destination)
+    result = subprocess.run(
+        [sys.executable, "-c", "from nemo_gym.dataset_staging import stage_file; import sys; stage_file(*sys.argv[1:])",
+         str(source), str(destination)],
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode != 0
+    assert "Staging path must be a regular file" in result.stderr
+    assert destination.exists()
 
 
 def test_interruption_preserves_final_and_resumes(tmp_path, monkeypatch):

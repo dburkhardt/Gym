@@ -26,7 +26,8 @@ def _hash(path: Path) -> str:
 
 
 def _regular_fd(path: Path, flags: int) -> int:
-    fd = os.open(path, flags | os.O_NOFOLLOW, 0o600)
+    # A FIFO must not block before fstat can reject the non-regular file.
+    fd = os.open(path, flags | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     if not stat.S_ISREG(os.fstat(fd).st_mode):
         os.close(fd)
         raise ValueError(f"Staging path must be a regular file: {path}")
@@ -68,7 +69,11 @@ def stage_file(source: Path, destination: Path, *, expected_sha256: str | None =
         fcntl.flock(lock_stream, fcntl.LOCK_EX)
         if destination.is_symlink():
             raise ValueError(f"Destination must not be a symlink: {destination}")
-        if destination.exists() and _hash(destination) == digest:
+        existing_digest = None
+        if destination.exists():
+            with os.fdopen(_regular_fd(destination, os.O_RDONLY), "rb") as existing:
+                existing_digest = hashlib.file_digest(existing, "sha256").hexdigest()
+        if existing_digest == digest:
             # A prior publication may have failed after rename but before directory fsync.
             _sync_parent(destination)
             return destination
