@@ -649,7 +649,29 @@ def _build_verify_payload(pair: InputRolloutPair) -> Dict:
     for key in ("deliverables_dir", "reference_ids"):
         if key in pair.rollout:
             payload[key] = pair.rollout[key]
+    # Generation did not run again. Keep its observed budget failure separate
+    # from the new verifier verdict; never carry an old judge failure forward.
+    prior_generation = pair.rollout.get("generation_failure")
+    if isinstance(prior_generation, dict) and prior_generation.get("failure_kind") == "model_budget":
+        payload["_ng_generation_failure"] = dict(prior_generation)
+    elif pair.rollout.get("failure_kind") == "model_budget":
+        payload["_ng_generation_failure"] = {
+            "failure_kind": pair.rollout["failure_kind"],
+            "failure_reason": pair.rollout.get("failure_reason"),
+        }
     return payload
+
+
+def _retain_generation_failure(row: Dict, result: Dict) -> Dict:
+    failure = row.get("_ng_generation_failure")
+    if not failure:
+        return result
+    result = dict(result)
+    result["generation_failure"] = dict(failure)
+    # A new verifier failure takes precedence, but cannot erase generation evidence.
+    if not result.get("failure_kind"):
+        result.update(failure)
+    return result
 
 
 def _prepare_payloads(
@@ -830,7 +852,9 @@ def _run_verification_payloads(
     async def _post_subroutine(row: Dict) -> Tuple[Dict, Dict]:
         async with semaphore:
             rs_name = _rs_for_row(row, agent_to_rs, server_client.global_config_dict)
-            request_row = {key: value for key, value in row.items() if key != ATIF_PROVENANCE_KEY}
+            request_row = {
+                key: value for key, value in row.items() if key not in (ATIF_PROVENANCE_KEY, "_ng_generation_failure")
+            }
             # A regrade has its own persisted lineage rather than inheriting the
             # original generation attempt or an incidental launcher context.
             verification_id = row.get("verification_id")
@@ -855,7 +879,7 @@ def _run_verification_payloads(
                         flush=True,
                     )
                 raise
-            return row, await get_response_json(res)
+            return row, _retain_generation_failure(row, await get_response_json(res))
 
     return tqdm.as_completed(
         map(_post_subroutine, payloads),

@@ -3790,3 +3790,50 @@ async def test_guard_mismatch_preflight_preserves_existing_history(tmp_path, mon
         await RolloutReverificationHelper().run_from_config(config)
     assert output.read_text() == "old results\n"
     assert _verification_run_identity(output, resume=True, overwrite=False, append=False) == original
+
+
+class TestGenerationFailureRegrade:
+    def test_budget_failure_survives_but_new_judge_failure_takes_precedence(self):
+        from nemo_gym.rollout_reverification import _retain_generation_failure
+
+        pair = InputRolloutPair(
+            input={"task": "question"},
+            rollout={
+                "response": {"status": "incomplete"},
+                "failure_kind": "model_budget",
+                "failure_reason": "max_output_tokens",
+                "reward": 0.0,
+            },
+        )
+        payload = _build_verify_payload(pair)
+        original = {"reward": 0.0, "mask_sample": False, "failure_kind": None}
+        result = _retain_generation_failure(payload, original)
+        assert result["failure_kind"] == "model_budget"
+        assert result["failure_reason"] == "max_output_tokens"
+        assert result["mask_sample"] is False
+        assert original["failure_kind"] is None
+        failed = _retain_generation_failure(
+            payload, {"reward": 0.0, "mask_sample": True, "failure_kind": "judge_failed"}
+        )
+        assert failed["failure_kind"] == "judge_failed"
+        assert failed["generation_failure"]["failure_kind"] == "model_budget"
+        assert failed["mask_sample"] is True
+
+    def test_old_judge_failure_is_not_generation_failure(self):
+        pair = InputRolloutPair(input={"task": "question"}, rollout={"response": {}, "failure_kind": "judge_failed"})
+        assert "_ng_generation_failure" not in _build_verify_payload(pair)
+
+    def test_repeated_regrade_keeps_generation_failure_after_judge_failure(self):
+        from nemo_gym.rollout_reverification import _retain_generation_failure
+
+        pair = InputRolloutPair(
+            input={"task": "question"},
+            rollout={
+                "response": {},
+                "failure_kind": "judge_failed",
+                "generation_failure": {"failure_kind": "model_budget", "failure_reason": "max_output_tokens"},
+            },
+        )
+        result = _retain_generation_failure(_build_verify_payload(pair), {"reward": 0.0, "mask_sample": False})
+        assert result["failure_kind"] == "model_budget"
+        assert result["mask_sample"] is False
