@@ -40,7 +40,7 @@ from tqdm.auto import tqdm
 
 from nemo_gym import PARENT_DIR, _resolve_under_cwd_or_install, component_search_roots
 from nemo_gym.cli.port_ownership import PortOwnership
-from nemo_gym.cli.setup_command import get_venv_path, run_command, setup_env_command
+from nemo_gym.cli.setup_command import get_venv_path, run_command, setup_env_command, validate_server_launcher
 from nemo_gym.cli.utils import (
     exit_cleanly_on_config_error,
     exit_unknown_component,
@@ -571,6 +571,10 @@ class RunHelper:  # pragma: no cover
         # Fail fast before starting Ray if nothing is configured to run (covers env run and the
         # e2e rollout-collection path, which both start servers via this method).
         GlobalConfigDictParser().raise_on_no_server_instances(global_config_dict)
+        configured_servers = list(_configured_servers(global_config_dict))
+        for name, _, _, _, _, directory in configured_servers:
+            launcher = validate_server_launcher(directory, global_config_dict, name)
+            print(f"Launcher preflight: {launcher}")
         self._server_spinup_timeout_seconds = _server_spinup_timeout_seconds(global_config_dict)
         listeners = [
             ("head_server", global_config_dict["head_server"]["host"], global_config_dict["head_server"]["port"])
@@ -594,8 +598,6 @@ class RunHelper:  # pragma: no cover
         self._telemetry_metrics_enabled = is_telemetry_metrics_enabled()
         self._startup.begin_trace()
         self._startup.mark("init_telemetry")
-
-        configured_servers = list(_configured_servers(global_config_dict))
 
         # Start or join Ray only when a configured server may use it. Servers inherit the cluster address through
         # the config dict below, so this has to happen before any of them are spawned.

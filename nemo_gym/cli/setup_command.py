@@ -16,6 +16,7 @@ import importlib.metadata
 import os
 import re
 import shlex
+import shutil
 import sys
 from os import environ
 from pathlib import Path
@@ -27,6 +28,7 @@ import psutil
 from omegaconf import DictConfig
 
 from nemo_gym import NEMO_GYM_EXTRA_ROOTS_ENV_VAR_NAME, PARENT_DIR
+from nemo_gym.config_types import ConfigError
 from nemo_gym.global_config import (
     HEAD_SERVER_CONSTRAINTS_KEY_NAME,
     HEAD_SERVER_DEPS_KEY_NAME,
@@ -145,6 +147,35 @@ def get_venv_path(dir_path: Path, global_config_dict: DictConfig) -> Path:
     return (dir_path / ".venv").absolute()
 
 
+def _skip_venv_setup(venv_path: Path, global_config_dict: DictConfig) -> bool:
+    return bool(global_config_dict[SKIP_VENV_IF_PRESENT_KEY_NAME]) and all(
+        (venv_path / "bin" / name).exists() for name in ("python", "activate")
+    )
+
+
+def validate_server_launcher(dir_path: Path, global_config_dict: DictConfig, server_name: str) -> dict:
+    """Read-only admission using the setup command's exact reuse decision and inherited PATH.
+
+    A missing environment may still be installed by the existing setup policy. This check does
+    not install it, import its application, or attest its dependency closure.
+    """
+    venv = get_venv_path(dir_path, global_config_dict)
+    python = venv / "bin/python"
+    reuse = _skip_venv_setup(venv, global_config_dict)
+    if reuse and (not python.is_file() or not os.access(python, os.X_OK)):
+        raise ConfigError(f"Server {server_name!r} selected a non-executable venv interpreter: {python}")
+    activate = venv / "bin/activate"
+    if reuse and (not activate.is_file() or not os.access(activate, os.R_OK)):
+        raise ConfigError(f"Server {server_name!r} selected an unreadable venv activation file: {activate}")
+    uv = None if reuse else shutil.which("uv", path=os.environ.get("PATH", os.defpath))
+    if not reuse and uv is None:
+        raise ConfigError(
+            f"Server {server_name!r} requires venv setup at {venv}, but uv is not executable on the launcher PATH. "
+            "Provide uv on PATH or configure uv_venv_dir and skip_venv_if_present for an existing qualified environment."
+        )
+    return {"server": server_name, "python": str(python), "reuse_existing_venv": reuse, "uv": uv}
+
+
 def setup_env_command(dir_path: Path, global_config_dict: DictConfig, prefix: str) -> str:
     head_server_deps = global_config_dict[HEAD_SERVER_DEPS_KEY_NAME]
     # Pins applied only to packages a server installs anyway, e.g. the parent's exact Ray version.
@@ -163,7 +194,7 @@ def setup_env_command(dir_path: Path, global_config_dict: DictConfig, prefix: st
     venv_python_fpath = venv_path / "bin/python"
     venv_activate_fpath = venv_path / "bin/activate"
     skip_venv_if_present = global_config_dict[SKIP_VENV_IF_PRESENT_KEY_NAME]
-    should_skip_venv_setup = bool(skip_venv_if_present) and venv_python_fpath.exists() and venv_activate_fpath.exists()
+    should_skip_venv_setup = _skip_venv_setup(venv_path, global_config_dict)
     activate_cmd = f"source {shlex.quote(str(venv_activate_fpath))}"
     if should_skip_venv_setup:
         # Reuse existing environments, including prebuilt venvs without Gym's
