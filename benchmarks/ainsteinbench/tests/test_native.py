@@ -639,3 +639,68 @@ def test_history_conversion_does_not_mutate_or_silently_drop_unknown_fields():
     assert converted["messages"][0] == {key: value for key, value in original.items() if key != "annotations"}
     with pytest.raises(ValidationError):
         completion_payload([{**message, "unknown_response_extension": "reject"}], creator_methods(SOURCE)["TOOLS"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["cooldown", "response_read"])
+async def test_agent_logical_deadline_covers_entire_shared_call(tmp_path, monkeypatch, phase):
+    """Scale time only; retain the production 600-second boundary and one HTTP call."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from harbor.models.agent.context import AgentContext
+
+    from benchmarks.ainsteinbench import harbor_native as native
+
+    requested_deadlines = []
+    requests = []
+    released = []
+    cancelled = []
+
+    def scaled_timeout(seconds):
+        requested_deadlines.append(seconds)
+        return asyncio.timeout(0.02)
+
+    async def wait():
+        try:
+            await asyncio.sleep(1)
+        finally:
+            cancelled.append(phase)
+
+    class Reply:
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            await wait()
+
+        def release(self):
+            released.append(True)
+
+    async def request(*args, **kwargs):
+        requests.append(kwargs)
+        if phase == "cooldown":
+            await wait()
+        return Reply()
+
+    async def loop(**kwargs):
+        return await kwargs["completion"](0, [{"role": "user", "content": "fixture"}], [])
+
+    monkeypatch.setattr(native, "asyncio", SimpleNamespace(timeout=scaled_timeout))
+    monkeypatch.setattr(native, "isolate", AsyncMock())
+    monkeypatch.setattr(native, "creator_loop", loop)
+    monkeypatch.setattr(native, "request", request)
+    agent = object.__new__(native.AInsteinAgent)
+    agent.source = SOURCE
+    agent.logs_dir = tmp_path
+    agent.endpoint = "http://127.0.0.1/ng-rollout/0-0"
+    with pytest.raises(TimeoutError):
+        await agent.run("MSB_pyscf_pyscf_pr2373", None, AgentContext())
+    assert requested_deadlines == [600]
+    assert len(requests) == 1
+    assert requests[0]["_max_num_tries"] == 1
+    assert requests[0]["_max_connection_retries"] == 0
+    assert requests[0]["_resend_after_disconnect"] is False
+    assert cancelled == [phase]
+    assert released == ([True] if phase == "response_read" else [])
+    assert not (tmp_path / "native/call-0.response.json").exists()
