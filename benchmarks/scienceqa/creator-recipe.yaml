@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+scienceqa_recipe_resources:
+  resources_servers:
+    scienceqa_creator_recipe:
+      entrypoint: app.py
+      domain: knowledge
+      verified: false
+      datasets:
+      - name: scienceqa_creator_recipe
+        type: benchmark
+        required_model_capabilities: [raw_text_completion]
+        jsonl_fpath: benchmarks/scienceqa/data/creator-recipe.jsonl
+        prepare_script: benchmarks/scienceqa/prepare_recipe.py
+        num_repeats: 1
+scienceqa_recipe_agent:
+  responses_api_agents:
+    simple_completion:
+      entrypoint: app.py
+      output_root: ${oc.env:SCIENCEQA_COMPLETION_OUTPUT_ROOT}
+      model_name: ${oc.env:SCIENCEQA_COMPLETION_MODEL}
+      request_timeout_seconds: 600
+      resources_server:
+        type: resources_servers
+        name: scienceqa_recipe_resources
+      model_server:
+        type: responses_api_models
+        name: policy_model
+scienceqa_recipe_environment:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: scienceqa_recipe_agent

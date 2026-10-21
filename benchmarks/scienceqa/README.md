@@ -43,3 +43,24 @@ change the prompt semantics. Preparation therefore reports the missing
 benchmark config. A future guarded raw-completion route and actual provider
 capability evidence are required. Matching the recipe with another model would
 not reproduce the creator's text-davinci-002 performance.
+
+## Separate native creator-recipe configuration
+
+`creator-recipe.yaml` uses the shared `simple_completion` harness and the opt-in
+raw model route. Set `SCIENCEQA_CREATOR_REPO` to the pinned source checkout,
+`CAMPAIGN_SAMPLE_JSONL` to the original frozen IDs, and
+`SCIENCEQA_COMPLETION_OUTPUT_ROOT` to a fresh attempt directory. Set
+`SCIENCEQA_COMPLETION_MODEL` explicitly. The model config must enable
+`raw_completions_enabled` and declare `raw_text_completion` capability only after
+provider qualification. The frozen literal request contains the original recipe
+sampling settings; general chat-generation overrides do not rewrite that request.
+
+Per-row verification reports strict extraction accuracy. Invalid formatting is
+masked, with `creator_raw_accuracy: null`, because the creator's random fallback
+depends on earlier malformed outputs. Run `benchmarks.scienceqa.regrade_recipe`
+on the completed result file and prepared `.packet.json` to calculate that raw
+metric in the exact frozen order without model calls. It records scorer/output
+hashes and a scorer lineage; it refuses missing or duplicate task IDs. Subset RNG
+is explicitly not full-test RNG parity. Original caption/chat data and runs remain
+unchanged. The raw route and this configuration require separate actual provider
+qualification; no new scientific result is implied by local fixtures.

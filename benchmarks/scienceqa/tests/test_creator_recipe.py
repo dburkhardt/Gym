@@ -99,3 +99,55 @@ def test_reject_duplicate_ids_and_modified_packet():
     packet["solver_requests"][0]["request"]["max_tokens"] = 16384
     with pytest.raises(ValueError, match="differs"):
         score_ordered(REPO, packet, [""] * 5)
+
+
+def test_native_preparation_and_ordered_saved_regrade(tmp_path, monkeypatch):
+    from benchmarks.scienceqa import prepare_recipe
+    from benchmarks.scienceqa.regrade_recipe import regrade
+
+    sample = tmp_path / "frozen.jsonl"
+    sample.write_text("\n".join(json.dumps({"uuid": key}) for key in IDS) + "\n")
+    monkeypatch.setenv("CAMPAIGN_SAMPLE_JSONL", str(sample))
+    monkeypatch.setenv("SCIENCEQA_CREATOR_REPO", str(REPO))
+    monkeypatch.setattr(prepare_recipe, "__file__", str(tmp_path / "prepare_recipe.py"))
+    staged = prepare_recipe.prepare()
+    rows = [json.loads(line) for line in staged.read_text().splitlines()]
+    packet = prepare(REPO, IDS)
+    assert [row["task_id"] for row in rows] == IDS
+    for row, expected in zip(rows, packet["solver_requests"]):
+        assert json.loads(row["responses_create_params"]["input"][0]["content"]) == expected["request"]
+    outputs = ["invalid", "The answer is A.", "", "The answer is A.", "invalid"]
+    result_rows = []
+    for key, text in zip(IDS, outputs):
+        result_rows.append(
+            {
+                "task_id": key,
+                "response": {
+                    "id": key,
+                    "created_at": 1,
+                    "model": "fixture",
+                    "object": "response",
+                    "status": "completed",
+                    "parallel_tool_calls": False,
+                    "tool_choice": "none",
+                    "tools": [],
+                    "output": [
+                        {
+                            "id": key,
+                            "type": "message",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [{"type": "output_text", "text": text, "annotations": []}],
+                        }
+                    ],
+                },
+            }
+        )
+    saved = tmp_path / "saved.jsonl"
+    saved.write_text("\n".join(json.dumps(row) for row in reversed(result_rows)) + "\n")
+    result = regrade(REPO, staged.with_suffix(".packet.json"), saved)
+    assert result["results"] == score_ordered(REPO, packet, outputs)
+    assert result["model_calls"] == 0
+    saved.write_text(json.dumps(result_rows[0]) + "\n")
+    with pytest.raises(ValueError, match="exactly"):
+        regrade(REPO, staged.with_suffix(".packet.json"), saved)
