@@ -27,10 +27,8 @@ from responses_api_agents.promptbio_bench.managed_runtime import (
 
 
 class PromptBioConfig(BaseResponsesAPIAgentConfig):
-    model_server: ModelServerRef | None = None
+    model_server: ModelServerRef
     model_name: str
-    model_base_url: str | None = None
-    model_key_file: Path | None = None
     sandbox_image: str
     cache_dir: Path
     output_dir: Path
@@ -39,26 +37,16 @@ class PromptBioConfig(BaseResponsesAPIAgentConfig):
     scorer_image: str | None = None
     # Pairing is deliberate: both solvers share the upstream Detect/Recommend pass.
     comparison_models: list[str] = Field(default_factory=list)
-    judge_model: str = "gpt-5.4"
-    judge_base_url: str | None = None
-    judge_key_file: Path | None = None
-    budget_ledger: Path | None = None
-    budget_usd: float = 100
+    judge_model: str = "nvidia/nvidia/nemotron-3.5-super-vl"
     max_steps: int = 100
     max_tokens: int = 16384
 
     @model_validator(mode="after")
     def campaign_contract(self):
-        if self.judge_base_url is not None or self.model_server is not None:
-            from responses_api_agents.promptbio_bench.nemotron_proxy import GATEWAY, MODEL
+        from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL
 
-            if self.judge_model != MODEL or any(x != MODEL for x in [self.model_name, *self.comparison_models]):
-                raise ValueError("Campaign requires Super for every role")
-            if self.model_server is None and (
-                (self.model_base_url or "").rstrip("/") != GATEWAY
-                or (self.judge_base_url or "").rstrip("/") != GATEWAY
-            ):
-                raise ValueError("Campaign requires local gateway for every role")
+        if self.judge_model != MODEL or any(model != MODEL for model in [self.model_name, *self.comparison_models]):
+            raise ValueError("Campaign requires Super for every role")
         return self
 
 

@@ -9,8 +9,6 @@ promptbio_agent:
         type: responses_api_models
         name: policy_model
       model_name: nvidia/nvidia/nemotron-3.5-super-vl
-      model_base_url: ${oc.env:PROMPTBIO_MODEL_BASE_URL,null}
-      model_key_file: ${oc.env:PROMPTBIO_MODEL_KEY_FILE,null}
       sandbox_image: ${oc.env:PROMPTBIO_SANDBOX_IMAGE,null}
       cache_dir: ${oc.env:PROMPTBIO_CACHE_DIR,null}
       output_dir: ${oc.env:PROMPTBIO_OUTPUT_DIR,null}
@@ -19,10 +17,6 @@ promptbio_agent:
       scorer_python: ${oc.env:PROMPTBIO_SCORER_PYTHON,python}
       comparison_models: []
       judge_model: nvidia/nvidia/nemotron-3.5-super-vl
-      judge_base_url: http://127.0.0.1:49180/v1
-      judge_key_file: ${oc.env:PROMPTBIO_JUDGE_KEY_FILE,null}
-      budget_ledger: ${oc.env:PROMPTBIO_BUDGET_LEDGER,null}
-      budget_usd: 100
       datasets:
       - name: promptbio_bench
         type: benchmark

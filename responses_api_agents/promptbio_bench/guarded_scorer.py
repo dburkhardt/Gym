@@ -5,7 +5,6 @@
 import hashlib
 import json
 import runpy
-import subprocess
 import sys
 from pathlib import Path
 
@@ -56,19 +55,17 @@ def main():
     spec = json.loads(Path(sys.argv[1]).read_text())
     source = Path(spec["scorer_dir"])
     output = Path(spec["output"])
-    head = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
+    head = spec["creator_revision"]
     if head != SCORER_REVISION:
         raise ValueError("PromptBio evaluator revision mismatch")
-    if subprocess.check_output(
-        ["git", "-C", str(source), "status", "--porcelain", "--untracked-files=all"], text=True
-    ).strip():
-        raise ValueError("PromptBio evaluator checkout contains changed or untracked files")
-    tracked = subprocess.check_output(["git", "-C", str(source), "ls-files", "-z"]).split(b"\0")
-    source_hashes = {
-        name.decode(): hashlib.sha256((source / name.decode()).read_bytes()).hexdigest()
-        for name in tracked
-        if name and (source / name.decode()).is_file()
-    }
+    source_hashes = {}
+    for path in source.rglob("*"):
+        if path.is_symlink() or (not path.is_file() and not path.is_dir()):
+            raise ValueError("Creator source contains non-regular entry")
+        if path.is_file():
+            source_hashes[str(path.relative_to(source))] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if source_hashes != spec["creator_manifest"]:
+        raise ValueError("Creator committed-source manifest mismatch")
     transport_hash = hashlib.sha256(
         Path(sys.modules[GuardedSyncChatTransport.__module__].__file__).read_bytes()
     ).hexdigest()

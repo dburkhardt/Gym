@@ -11,6 +11,7 @@ import shlex
 import shutil
 import stat
 import sys
+import tarfile
 import time
 import uuid
 from pathlib import Path
@@ -53,9 +54,31 @@ def remove_socket_directory(path: Path) -> None:
 
 def source_hashes() -> dict[str, str]:
     root = Path(__file__).parent
-    return {
+    result = {
         name: hashlib.sha256((root / name).read_bytes()).hexdigest()
         for name in ("managed_runtime.py", "guarded_scorer.py", "runtime.py", "nemotron_proxy.py")
+    }
+    from nemo_gym.sandbox import guarded_chat_transport
+
+    result["guarded_chat_transport.py"] = hashlib.sha256(
+        Path(guarded_chat_transport.__file__).read_bytes()
+    ).hexdigest()
+    return result
+
+
+def tree_manifest(directory: Path, *, materialize_symlinks: bool = False) -> dict[str, str]:
+    if materialize_symlinks:
+        for path in directory.rglob("*"):
+            if path.is_symlink() and path.is_file():
+                continue
+            if not (stat.S_ISREG(path.lstat().st_mode) or stat.S_ISDIR(path.lstat().st_mode)):
+                raise ValueError("Unexpected pinned task source file type")
+    else:
+        validate_saved_outputs(directory)
+    return {
+        str(path.relative_to(directory)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
     }
 
 
@@ -222,7 +245,12 @@ async def solve_managed(
             and str(exc) in ("Task timeout", "Agent step limit", "Solver output token budget exhausted")
             else "failed"
         )
-        if status != "model_budget_exhausted":
+        if status == "model_budget_exhausted":
+            lifecycle = run / "solver-lifecycle.json"
+            if not lifecycle.exists() or not json.loads(lifecycle.read_text()).get("cleanup_confirmed"):
+                status = "failed"
+                raise RuntimeError("Solver budget ended but sandbox cleanup was not confirmed") from exc
+        else:
             raise
     finally:
         _publish(
@@ -240,6 +268,62 @@ async def solve_managed(
     return run
 
 
+async def validate_creator_source(source: Path) -> None:
+    """Reject non-committed checkout files before exposing a trusted creator tree."""
+    provider = LocalProvider()
+    checks = [
+        ("rev-parse", "HEAD"),
+        ("status", "--porcelain", "--untracked-files=all"),
+        ("ls-files", "--others", "--ignored", "--exclude-standard"),
+    ]
+    async with scoring_workspace(provider) as handle:
+        for index, arguments in enumerate(checks):
+            result = await provider.exec(
+                handle,
+                shlex.join(["git", "-C", str(source), *arguments]),
+                timeout_s=30,
+                terminate_background_children=True,
+            )
+            if result.return_code or result.error_type:
+                raise ValueError("PromptBio creator source preflight failed")
+            text = (result.stdout or "").strip()
+            if (index == 0 and text != SCORER_REVISION) or (index != 0 and text):
+                raise ValueError("PromptBio requires a clean pinned creator checkout, including no ignored files")
+
+
+async def snapshot_creator(source: Path, output: Path) -> tuple[Path, dict[str, str]]:
+    """Expose only pinned committed files, never Git configuration/hooks or ignored state."""
+    destination = output / "creator-source"
+    archive = output / "creator.tar"
+    provider = LocalProvider()
+    async with scoring_workspace(provider) as handle:
+        result = await provider.exec(
+            handle,
+            shlex.join(
+                [
+                    "git",
+                    "-C",
+                    str(source),
+                    "archive",
+                    "--format=tar",
+                    "--output=" + str(archive.resolve()),
+                    SCORER_REVISION,
+                ]
+            ),
+            timeout_s=30,
+            terminate_background_children=True,
+        )
+        if result.return_code or result.error_type:
+            raise ValueError("Pinned creator source archive failed")
+    destination.mkdir()
+    with tarfile.open(archive) as contents:
+        for member in contents.getmembers():
+            if not (member.isfile() or member.isdir()):
+                raise ValueError("Creator archive contains unsupported non-regular file")
+        contents.extractall(destination, filter="data")
+    return destination, tree_manifest(destination)
+
+
 async def grade_managed(
     task_dir: Path,
     runs: list[Path],
@@ -254,13 +338,16 @@ async def grade_managed(
 ) -> list[float]:
     """One owned creator invocation preserves shared Detect/Recommend across runs."""
     validate_image(scorer_image)
+    await validate_creator_source(scorer_dir)
     if scorer_memory_mib <= 0:
         raise ValueError("Invalid scorer memory bound")
     for run in runs:
         validate_saved_outputs(run / "workspace/outputs")
     output.mkdir(parents=True, exist_ok=False)
+    creator_copy, creator_manifest = await snapshot_creator(scorer_dir, output)
     lineage = uuid.uuid4().hex
     signature = {
+        "creator_files": creator_manifest,
         "scorer": SCORER_REVISION,
         "scoring_variant": "candidate-membership-v1",
         "dataset": DATA_REVISION,
@@ -271,8 +358,6 @@ async def grade_managed(
         "scorer_image": scorer_image,
         "scorer_memory_mib": scorer_memory_mib,
     }
-    digest = configuration_digest(signature)
-    _publish(output / "identity.json", {"lineage": lineage, "signature": signature})
     socket_dir = Path("/tmp") / ("gym-promptbio-judge-" + lineage)
     controller = output / "controller"
     package = controller / "responses_api_agents/promptbio_bench"
@@ -288,9 +373,31 @@ async def grade_managed(
         shutil.copyfile(Path(__file__).with_name(name), package / name)
     # HF source symlinks are materialized before mounting: no external cache or host path enters the judge.
     task_copy = output / "task-source"
+    task_manifest = tree_manifest(task_dir, materialize_symlinks=True)
     shutil.copytree(task_dir, task_copy, symlinks=False)
+    if tree_manifest(task_copy) != task_manifest:
+        raise ValueError("PromptBio pinned task files changed during snapshot")
+    signature["task_files"] = task_manifest
+    candidate_root = output / "candidate-inputs"
+    candidate_root.mkdir()
+    signature["candidate_files"] = []
+    candidates = []
+    for index, run in enumerate(runs):
+        original = run / "workspace/outputs"
+        manifest = tree_manifest(original)
+        snapshot = candidate_root / str(index)
+        shutil.copytree(original, snapshot)
+        if tree_manifest(snapshot) != manifest:
+            raise ValueError("PromptBio candidate files changed during snapshot")
+        candidates.append(snapshot)
+        signature["candidate_files"].append(manifest)
+    signature["controller_files"] = tree_manifest(controller)
+    digest = configuration_digest(signature)
+    _publish(output / "identity.json", {"lineage": lineage, "signature": signature})
     request = {
         "scorer_dir": "/creator",
+        "creator_revision": SCORER_REVISION,
+        "creator_manifest": creator_manifest,
         "task_dir": "/task",
         "runs": [f"/runs/{i}/{r.name}" for i, r in enumerate(runs)],
         "output": "/results",
@@ -303,18 +410,18 @@ async def grade_managed(
     }
     _publish(output / "request.json", request)
     volumes = [
-        f"{scorer_dir.resolve()}:/creator:ro",
+        f"{creator_copy.resolve()}:/creator:ro",
+        f"{creator_copy.resolve()}:/results/creator-source:ro",
         f"{controller.resolve()}:/controller:ro",
         f"{task_copy.resolve()}:/task:ro",
         f"{output.resolve()}:/results",
         f"{socket_dir}:/model:ro",
         f"{controller.resolve()}:/results/controller:ro",
         f"{task_copy.resolve()}:/results/task-source:ro",
+        f"{candidate_root.resolve()}:/results/candidate-inputs:ro",
         f"{(output / 'request.json').resolve()}:/results/request.json:ro",
     ]
-    volumes += [
-        f"{(r / 'workspace/outputs').resolve()}:/runs/{i}/{r.name}/workspace/outputs:ro" for i, r in enumerate(runs)
-    ]
+    volumes += [f"{candidates[i].resolve()}:/runs/{i}/{r.name}/workspace/outputs:ro" for i, r in enumerate(runs)]
     sandbox = AsyncSandbox(
         {
             "docker": {
@@ -392,7 +499,6 @@ async def grade_managed(
 
 async def download_managed(task_id: str, cache: Path, output: Path) -> Path:
     """Settle pinned task acquisition in an owned subprocess, not an unkillable thread."""
-    import sys
 
     safe_task_id(task_id)
     provider = LocalProvider()

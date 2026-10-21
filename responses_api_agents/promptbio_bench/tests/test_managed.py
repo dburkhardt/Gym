@@ -59,6 +59,7 @@ async def test_paired_judge_boundary_and_cancellation(tmp_path, monkeypatch):
         (run / "workspace/outputs").mkdir(parents=True)
         (run / "receipt.json").write_text("{}")
         runs.append(run)
+    (runs[0] / "workspace/outputs/value.txt").write_text("frozen input")
     output = tmp_path / "grade"
     entered = asyncio.Event()
     stopped = asyncio.Event()
@@ -86,6 +87,16 @@ async def test_paired_judge_boundary_and_cancellation(tmp_path, monkeypatch):
     async def bridge(socket_path, **kwargs):
         yield
 
+    async def valid_source(source):
+        pass
+
+    async def creator_snapshot(source, destination):
+        snapshot = destination / "creator-source"
+        snapshot.mkdir()
+        return snapshot, {}
+
+    monkeypatch.setattr(runtime, "snapshot_creator", creator_snapshot)
+    monkeypatch.setattr(runtime, "validate_creator_source", valid_source)
     monkeypatch.setattr(runtime, "AsyncSandbox", Sandbox)
     monkeypatch.setattr(runtime, "bridge", bridge)
     pending = asyncio.create_task(
@@ -101,10 +112,19 @@ async def test_paired_judge_boundary_and_cancellation(tmp_path, monkeypatch):
         )
     )
     await asyncio.wait_for(entered.wait(), 2)
+    (runs[0] / "workspace/outputs/value.txt").write_text("later host mutation")
+    assert (output / "candidate-inputs/0/value.txt").read_text() == "frozen input"
     pending.cancel()
     with pytest.raises(asyncio.CancelledError):
         await pending
     assert stopped.is_set()
+    signature = json.loads((output / "identity.json").read_text())["signature"]
+    assert signature["task_files"]["reference.txt"]
+    assert signature["implementation"]["guarded_chat_transport.py"]
+    assert signature["controller_files"]
+    import hashlib
+
+    assert signature["candidate_files"] == [{"value.txt": hashlib.sha256(b"frozen input").hexdigest()}, {}]
     receipt = json.loads((output / "judge-lifecycle.json").read_text())
     assert receipt["cleanup_confirmed"]
     request = json.loads((output / "request.json").read_text())
@@ -124,8 +144,11 @@ async def test_paired_judge_boundary_and_cancellation(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("finish,expected", [("stop", "completed"), ("length", "model_budget_exhausted")])
-async def test_native_solver_real_uds_guard(tmp_path, monkeypatch, finish, expected):
+@pytest.mark.parametrize(
+    "finish,expected,cleanup_failure",
+    [("stop", "completed", False), ("length", "model_budget_exhausted", False), ("length", "failed", True)],
+)
+async def test_native_solver_real_uds_guard(tmp_path, monkeypatch, finish, expected, cleanup_failure):
     from nemo_gym.sandbox import model_bridge
 
     task = tmp_path / "a-1-1"
@@ -145,7 +168,8 @@ async def test_native_solver_real_uds_guard(tmp_path, monkeypatch, finish, expec
             return {"owned": "solver"}
 
         async def stop(self):
-            pass
+            if cleanup_failure:
+                raise RuntimeError("Injected cleanup failure")
 
     class Reply:
         status = 200
@@ -173,7 +197,11 @@ async def test_native_solver_real_uds_guard(tmp_path, monkeypatch, finish, expec
         model=runtime.MODEL,
         image="sha256:" + "a" * 64,
     )
-    await runtime.solve_managed(task, tmp_path / "runs", **arguments)
+    if cleanup_failure:
+        with pytest.raises(RuntimeError, match="cleanup was not confirmed"):
+            await runtime.solve_managed(task, tmp_path / "runs", **arguments)
+    else:
+        await runtime.solve_managed(task, tmp_path / "runs", **arguments)
     run = next((tmp_path / "runs/a-1-1").iterdir())
     assert json.loads((run / "receipt.json").read_text())["status"] == expected
     identity = json.loads((run / "identity.json").read_text())
@@ -185,7 +213,7 @@ async def test_native_solver_real_uds_guard(tmp_path, monkeypatch, finish, expec
     )
     assert calls[0][1]["_max_num_tries"] == 1
     assert len(list((run / "calls").glob("*.request.json"))) == 1
-    assert json.loads((run / "solver-lifecycle.json").read_text())["cleanup_confirmed"]
+    assert json.loads((run / "solver-lifecycle.json").read_text())["cleanup_confirmed"] is (not cleanup_failure)
     assert len(specs[0].provider_options["volumes"]) == 1
     assert not any("reference" in m or "model.sock" in m for m in specs[0].provider_options["volumes"])
 
@@ -255,3 +283,39 @@ async def test_exhausted_outputs_reach_scorer_not_infrastructure(tmp_path, monke
     else:
         assert (await agent._evaluate("task", "http://local/ng-rollout/x/v1", "x"))[0] == 0.25
         assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_creator_source_rejects_ignored_file(tmp_path, monkeypatch):
+    import subprocess
+
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    (tmp_path / ".gitignore").write_text("private.env\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", ".gitignore"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=Control",
+            "-c",
+            "user.email=control@example.invalid",
+            "commit",
+            "-m",
+            "control",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    revision = subprocess.check_output(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], text=True).strip()
+    monkeypatch.setattr(runtime, "SCORER_REVISION", revision)
+    await runtime.validate_creator_source(tmp_path)
+    projection = tmp_path.parent / (tmp_path.name + "-projection")
+    projection.mkdir()
+    snapshot, manifest = await runtime.snapshot_creator(tmp_path, projection)
+    assert manifest and not (snapshot / ".git").exists()
+    assert set(manifest) == {".gitignore"}
+    (tmp_path / "private.env").write_text("CONTROL_ONLY=placeholder\n")
+    with pytest.raises(ValueError, match="ignored"):
+        await runtime.validate_creator_source(tmp_path)
