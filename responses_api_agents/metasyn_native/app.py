@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import PrivateAttr, Field
+from pydantic import PrivateAttr, Field, ConfigDict
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -60,10 +60,12 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
     verifier_metadata: dict[str, int]
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
     metrics: dict
     evaluation_status: str
     artifact_dir: str
