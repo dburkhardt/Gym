@@ -4,7 +4,7 @@ harbor_agent:
     harbor_agent:
       entrypoint: app.py
       domain: agent
-      description: CORE-Bench medium capsule-9070543 with creator scorer; single capsule coverage.
+      description: CORE-Bench medium capsules with pinned creator scoring; each selected runtime requires qualification.
       concurrency: 1
       harbor_datasets:
         corebench:
