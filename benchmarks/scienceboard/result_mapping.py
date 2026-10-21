@@ -11,7 +11,7 @@ def read_creator_result(
 ) -> dict:
     """Retain model failures in attempted denominator; absent scientific score remains null."""
     model_failure = transport_outcome in {"model_output_budget", "model_invalid_action"}
-    unresolved = transport_outcome == "transport_unresolved"
+    unresolved = transport_outcome in {"transport_unresolved", "provider_content_filter"}
     record = {
         "task_id": task_id,
         "raw_reward": None,

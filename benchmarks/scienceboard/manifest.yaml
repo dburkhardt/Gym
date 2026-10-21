@@ -1,0 +1,29 @@
+name: scienceboard
+version: 0.1.0
+experimental: true
+kind: benchmark
+integration_profile: external-agent-loop
+domain: agent
+description: >-
+  Pinned creator ScienceBoard screenshot AIO desktop tasks, exact creator parity20
+  selection, guarded single-attempt/no-overflow-trimming protocol variant.
+  Experimental native Tester integration requires task-specific admitted Linux
+  image/runtime/initializer and owned hard-death cleanup qualification before execution.
+modality: multimodal
+licensing: MIT
+determinism: unknown
+agent_server: scienceboard_agent
+resources_server: null
+model_server: policy_model
+canonical_split: creator_parity20
+prompt_source: prepared
+lifecycle: active
+reward:
+  range: [0.0, 1.0]
+  higher_is_better: true
+datasets:
+- name: scienceboard_creator_parity20
+  type: benchmark
+  jsonl_fpath: benchmarks/scienceboard/data/benchmark.jsonl
+  prepare_script: benchmarks/scienceboard/prepare.py
+  num_repeats: 1

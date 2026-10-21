@@ -1,0 +1,30 @@
+scienceboard_agent:
+  responses_api_agents:
+    scienceboard_native:
+      entrypoint: app.py
+      domain: agent
+      native_python: ${oc.env:SCIENCEBOARD_PYTHON}
+      creator_source: ${oc.env:SCIENCEBOARD_SOURCE_ROOT}
+      output_root: ${oc.env:SCIENCEBOARD_OUTPUT_ROOT,scienceboard-runs}
+      image_inspect: ${oc.env:SCIENCEBOARD_IMAGE_INSPECT,scienceboard-image-inspect.json}
+      image_audit: ${oc.env:SCIENCEBOARD_IMAGE_AUDIT,scienceboard-image-audit.json}
+      placement: ${oc.env:SCIENCEBOARD_PLACEMENT,scienceboard-placement.json}
+      runtime_qualified: false
+      timeout_seconds: 7200
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      datasets:
+      - name: scienceboard_creator_parity20
+        type: benchmark
+        jsonl_fpath: benchmarks/scienceboard/data/benchmark.jsonl
+        prepare_script: benchmarks/scienceboard/prepare.py
+        prompt_config: null
+        num_repeats: 1
+scienceboard_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: scienceboard_agent

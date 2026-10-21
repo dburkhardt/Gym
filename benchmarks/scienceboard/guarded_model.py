@@ -19,6 +19,10 @@ PROTOCOL_VARIANT = "creator-openai-guarded-single-attempt-no-overflow-trimming-v
 from nemo_gym.sandbox.guarded_chat_transport import GuardedSyncChatTransport
 
 
+class CapturedModelActionError(ValueError):
+    """A durable model answer failed to provide a textual action, not infrastructure."""
+
+
 class BoundedUDS(httpx.AsyncBaseTransport):
     """Bound connection and full body while retaining shared guard ownership."""
 
@@ -95,13 +99,17 @@ class CreatorModelHTTP:
         # answer silently trigger another inference request. The raw response is saved.
         if not isinstance(body["choices"][0]["message"].get("content"), str):
             self.outcome = (
-                "model_output_budget"
+                "provider_content_filter"
+                if body["choices"][0].get("finish_reason") == "content_filter"
+                else "model_output_budget"
                 if body["choices"][0].get("finish_reason") == "length"
                 else "model_invalid_action"
             )
-            raise ValueError("Captured model response has no textual action; no creator retry")
+            raise CapturedModelActionError("Captured model response has no textual action; no creator retry")
         self.no_resend = False
-        self.outcome = "captured_model_action"
+        self.outcome = (
+            "model_output_budget" if body["choices"][0].get("finish_reason") == "length" else "captured_model_action"
+        )
         return native
 
     def close(self) -> None:

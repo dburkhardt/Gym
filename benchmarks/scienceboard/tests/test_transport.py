@@ -179,3 +179,35 @@ def test_model_failure_mapping_is_not_transport_exclusion(tmp_path):
     bad = read_creator_result(missing, task_id="actual")
     assert bad["disposition"] == "verifier_artifact_failure" and bad["result_sha256"]
     assert missing.read_bytes() == b"corrupt\xff"
+
+
+def test_filtered_provider_reply_is_not_model_invalid_action(tmp_path):
+    transport = CreatorModelHTTP(
+        socket_path="unused",
+        token="fixture",
+        lineage="filtered",
+        digest="a" * 64,
+        model=MODEL,
+        output=tmp_path / "calls",
+        inner=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"model": MODEL, "choices": [{"message": {"content": None}, "finish_reason": "content_filter"}]},
+            )
+        ),
+    )
+    try:
+        with pytest.raises(ValueError):
+            transport.post(
+                "http://gym-internal/chat/completions",
+                headers={},
+                proxies=None,
+                json={"model": MODEL, "messages": []},
+                timeout=480,
+            )
+        assert transport.outcome == "provider_content_filter"
+        result = read_creator_result(tmp_path / "missing", task_id="id", transport_outcome=transport.outcome)
+        assert result["raw_reward"] is None and result["mask_sample"] is True
+        assert result["disposition"] == "provider_content_filter"
+    finally:
+        transport.close()

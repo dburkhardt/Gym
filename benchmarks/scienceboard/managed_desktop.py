@@ -34,6 +34,7 @@ class ManagedDesktop:
         startup_timeout: float = 240,
         sandbox_factory: Callable = Sandbox,
         session_factory: Callable = requests.Session,
+        receipt_dir: Path | None = None,
     ) -> None:
         if not DIGEST.fullmatch(image) or snapshot_name != "sci_bench" or startup_timeout <= 0:
             raise ValueError("An immutable admitted image and native sci_bench snapshot are required")
@@ -47,6 +48,7 @@ class ManagedDesktop:
         self.controller = None
         self.vm_ip = None
         self._http = None
+        self.receipt_dir = receipt_dir
         self._start_emulator()
 
     def _start_emulator(self) -> None:
@@ -54,6 +56,15 @@ class ManagedDesktop:
             return
         self._http = self.session_factory()
         self._http.trust_env = False
+        run_id = uuid4().hex
+        if self.receipt_dir is not None:
+            from nemo_gym.sandbox.guarded_chat_transport import publish
+
+            self.receipt_dir.mkdir(parents=True, exist_ok=True)
+            publish(
+                self.receipt_dir / f"{run_id}.intent.json",
+                {"ownership_labels": {"nemo-gym.run": run_id, "nemo-gym.workload": "scienceboard-desktop"}},
+            )
         try:
             self.sandbox = self.sandbox_factory(
                 {"docker": {"create": {"network": "bridge", "use_init": True}}},
@@ -61,7 +72,7 @@ class ManagedDesktop:
                     image=self.image,
                     entrypoint=["/usr/local/bin/scienceboard-entrypoint"],
                     resources=SandboxResources(cpu=8, memory_mib=24576),
-                    metadata={"workload": "scienceboard-desktop", "run": uuid4().hex},
+                    metadata={"workload": "scienceboard-desktop", "run": run_id},
                     env={"DISPLAY": ":0", "LIBGL_ALWAYS_SOFTWARE": "1", "GALLIUM_DRIVER": "llvmpipe"},
                     provider_options={
                         "run_args": ["--pull", "never", "--hostname", "scienceboard", "--shm-size", "2g"]
@@ -69,6 +80,11 @@ class ManagedDesktop:
                 ),
             )
             self.sandbox.start()
+            if self.receipt_dir is not None:
+                from nemo_gym.sandbox.guarded_chat_transport import publish
+
+                self.receipt_dir.mkdir(parents=True, exist_ok=True)
+                publish(self.receipt_dir / f"{run_id}.descriptor.json", self.sandbox.serialize())
             result = self.sandbox.exec("hostname -i", timeout_s=10)
             if result.return_code != 0:
                 raise RuntimeError("Desktop bridge address unavailable")
@@ -117,7 +133,9 @@ class ManagedDesktop:
                 self._http = None
 
 
-def creator_desktop_factory(source_root: Path, *, metadata: dict, audit: dict, resources: dict) -> Callable:
+def creator_desktop_factory(
+    source_root: Path, *, metadata: dict, audit: dict, resources: dict, receipt_dir: Path | None = None
+) -> Callable:
     """Return a pinned VManager-compatible constructor after image evidence admission.
 
     Install only in an isolated creator worker (`sci.docker.DockerDesktopEnv = factory`)
@@ -163,6 +181,7 @@ def creator_desktop_factory(source_root: Path, *, metadata: dict, audit: dict, r
             controller_factory=module.DockerController,
             snapshot_name=snapshot_name,
             startup_timeout=startup_timeout,
+            receipt_dir=receipt_dir,
         )
 
     return factory

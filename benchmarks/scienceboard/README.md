@@ -127,3 +127,63 @@ attempted model-failure denominators and are not masked as infrastructure. An
 absent creator score remains null, never an invented zero. Ambiguous timeout is
 `transport_unresolved`, unscored and masked. Malformed result artifacts retain
 their bytes/hash and map to explicit verifier-artifact failure.
+
+## Native worker registration (runtime held)
+
+`config.yaml` discovers `responses_api_agents/scienceboard_native`: it validates the
+exact prepared instruction and metadata, then requires admitted immutable image
+and placement evidence. **Execution remains fail-closed without a matching runtime receipt**; an operator
+boolean alone is insufficient. An image receipt does not qualify the current worker,
+bridge, dependencies or hard-controller-death cleanup. The qualification producer
+below binds these separately. No image is downloaded
+or started by preparation. `SCIENCEBOARD_PYTHON` must name an absolute compatible
+venv interpreter; it is never dereferenced for execution.
+
+The implemented worker invokes the actual pinned `Tester` with screenshot AllInOne
+and native model defaults (temperature0, max_tokens1500), using the shared task UDS
+bridge and durable guard. Exact creator modules/task bytes and actual worker imports
+are checked before use. Native Tester catches task exceptions as skipped; our scoped
+wrapper retains their origin. Captured model-action failure is distinct from a
+separate creator/verifier/cleanup error. The outer7200-second resource bound is an
+explicit execution limit; it is not a new per-step scientific budget.
+
+Missing scientific output uses a masked numeric schema placeholder only because
+Gym requires `reward: float`. `metadata.scienceboard.raw_reward` remains null,
+`verifier_result.rewards` remains empty, and attempted/model-failure/native task,
+rollout and attempt identity remain present. The disposition report excludes that
+placeholder from raw scored and quality-selected counts. Actual creator zero stays
+zero and scored. An empty response object is collection metadata, not a fabricated
+model answer; actual request/response artifacts are retained separately.
+
+Offline tests exercise actual pinned Tester's catch/log behavior while substituting
+GUI allocation and the unavailable desktop controller base. This is a controller
+contract test, not full desktop execution or scientific acceptance. The complete
+image/DesktopEnv dependency, Linux bridge, initializers, native verifier and hard-
+death cleanup gates remain open.
+
+### Runtime qualification producer
+
+The registration now uses `qualification.py` rather than a permanent refusal.
+Run `python -m benchmarks.scienceboard.qualification --packet <packet.json>
+--python <absolute-native-venv-python> --timeout 600` only on an admitted existing
+image/host. The packet contains `source`, `task_id`, `image` (Docker inspect object),
+`audit`, `resources`, and a fresh `output` directory. It has no model credential.
+The producer runs the exact creator task initializer, records imports and runtime
+identity, then cancels its owned LocalProvider worker (SIGKILL), checks the PID is
+absent, and reconciles task-owned desktops. It emits a task-specific receipt only
+if these controls pass. No such real GUI receipt has been produced here.
+
+Set `runtime_receipt` to that receipt and `runtime_qualified=true` only after review.
+The validator binds the immutable image, creator revision, exact selection/task,
+protocol, current implementation bytes and selected interpreter. The child compares
+actual loaded-module bytes, installed distribution metadata/origins and interpreter
+identity with the receipt before starting a desktop. External editable dependencies
+are refused. This is a runtime fingerprint, not an immutable full OS environment.
+
+Every desktop writes a unique run ownership intent **before** create. Cleanup uses
+shared Docker exact-label reconciliation after the creating process settles; it can
+remove stopped containers and rechecks immutable IDs/ownership. An intent without a
+create descriptor and without any observed container is unresolved, not proof of no
+allocation. Normal process cancellation and the qualification producer share this
+cleanup path. Whole-coordinator death still requires another operator/process to
+invoke the retained ownership reconciliation; this is not an autonomous TTL service.
