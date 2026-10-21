@@ -203,3 +203,44 @@ controller dependencies and task-specific GUI qualification remain required.
 The small local dependency overlay does not contain `desktop_env`; importing
 `worker` or `Tester` alone is insufficient because the Docker controller import
 must also succeed. No alternate desktop image or fake controller closes this gate.
+
+## Reproducible controller dependencies (separate from the desktop)
+
+`controller-dependencies.json` retains the qualified Ubuntu22.04/amd64,
+Python3.11 closure:225 exact wheels and25 Ubuntu archives, source-built wheel
+provenance, and the original CPU Torch source URLs. This is a controller-only
+lock, not a new GUI image or a published scientific result. The actual pinned
+VLC consumer and Docker controller imports passed with a private GL sysroot.
+
+Supply the exact retained artifacts, or acquire those exact filenames from the
+recorded sources and verify their hashes. The preparation command downloads
+nothing and refuses changed, missing or symlinked inputs. Required placeholders:
+
+```bash
+python -m benchmarks.scienceboard.controller_dependencies \
+  --source /absolute/pinned/ScienceBoard \
+  --wheels /absolute/verified-wheels \
+  --archives /absolute/verified-debs \
+  --output /absolute/new-controller-preparation
+```
+
+Within an admitted shared process-supervisor window, create a fresh Python3.11
+venv; use its pip with `--no-index --only-binary=:all: --require-hashes
+--find-links /absolute/verified-wheels -r /absolute/new-controller-preparation/requirements.txt`.
+The generated lock uses local wheel versions/hashes, including the CPU build
+suffixes; it cannot lose nondefault index routing or select a different build.
+Extract only the verified debs with `dpkg-deb --extract` into a fresh private
+sysroot, without maintainer scripts, host apt installation or host ldconfig.
+Set `LD_LIBRARY_PATH` to that sysroot's `usr/lib/x86_64-linux-gnu` only for the
+controller process. Run `pip check`, native extension/linkage checks and the
+four imports `desktop_env.evaluators.metrics.vlc`, `desktop_env.controllers.python`,
+`sci.docker.controller`, `sci.docker.desktop_env`; any missing ABI/display
+requirement remains a failure. A receipt is artifact verification, not proof
+that these later installation/import steps ran. Do not mutate verified inputs
+between preparation and use.
+
+The remaining GUI access action is to obtain the creator's sanitized flattened
+`scienceboard-docker-0.1.tar.zst`, its checksum and distribution-audit evidence
+from an authorized image owner. Admit the exact image using the existing gate
+above. A public source checkout, controller imports, or another scientific
+container cannot substitute for that desktop and its application state.
