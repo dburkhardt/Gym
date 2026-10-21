@@ -38,8 +38,16 @@ def test_native_receipts_join_without_fabricated_usage(tmp_path):
     assert usage is None
     assert t.turns[0].question == raw["request"]["messages"]
     assert t.turns[0].model_calls[0].response_id == "native-id"
-    assert t.tool_calls[0].output == body.decode()
+    assert t.tool_calls[0].output == str(body)
     assert t.invocations[0].stop_reason == "max_iterations"
     (tmp_path / "tool-001.body").write_bytes(b"modified")
     with pytest.raises(ValueError, match="hash mismatch"):
         observations(tmp_path, task_id="task", rollout_id="rollout", model_ref=None, status="completed")
+
+
+def test_tool_output_matches_creator_prompt_representation():
+    from responses_api_agents.genehop_native.trajectory import visible_tool_output
+
+    assert visible_tool_output("https://eutils.ncbi.nlm.nih.gov/", b"x" * 21000) == str(b"x" * 20000)
+    assert visible_tool_output("https://blast.ncbi.nlm.nih.gov/Put", b"RID = actual-id\nrest") == "actual-id"
+    assert visible_tool_output("https://blast.ncbi.nlm.nih.gov/Put", b"missing rid") is None

@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from nemo_gym.openai_utils import NeMoGymResponseUsage
@@ -14,6 +15,17 @@ from nemo_gym.rollout_observability import (
     TrajectoryToolCall,
     TrajectoryTurn,
 )
+
+
+def visible_tool_output(url, body):
+    """Mirror the native loop's byte truncation and BLAST RID presentation."""
+    tool = body
+    if "blast" in url and "Put" in url:
+        match = re.search("RID = (.*)\n", body.decode())
+        if not match:
+            return None
+        tool = match.group(1)
+    return str(tool[:20000])
 
 
 def observations(directory: Path, *, task_id, rollout_id, model_ref, status):
@@ -94,7 +106,7 @@ def observations(directory: Path, *, task_id, rollout_id, model_ref, status):
                 completed_at=receipt["time"],
                 timing_source="artifact",
                 status="completed",
-                output=body.decode("utf-8", errors="replace"),
+                output=visible_tool_output(receipt["url"], body),
             )
         )
     for intent in sorted(directory.glob("model-*-intent.json")):
