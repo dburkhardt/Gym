@@ -26,7 +26,7 @@ def setup_verifier(tmp_path, monkeypatch):
         task=SimpleNamespace(
             config=SimpleNamespace(
                 verifier=SimpleNamespace(environment_mode="separate"),
-                environment=SimpleNamespace(docker_image="sha256:fixed"),
+                environment=SimpleNamespace(docker_image="sha256:candidate"),
             ),
             paths=SimpleNamespace(task_dir=Path("task")),
         ),
@@ -56,6 +56,9 @@ async def test_native_verifier_uses_existing_environment_and_records_identity(se
     environment.download_file.side_effect = metrics
     result = await instance.verify()
     assert result.rewards == {"reward": 0.25, "raw_mae": 0.25}
+    identity = json.loads((output / "native-score/identity.json").read_text())
+    assert identity["image"] == "sha256:candidate"
+    assert identity["historical_manifest_image"] == "sha256:fixed"
     environment.exec.assert_awaited_once_with("python /tests/check.py", timeout_sec=300)
     assert (
         json.loads((output / "native-score/identity.json").read_text())["execution_boundary"]
