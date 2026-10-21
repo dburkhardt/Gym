@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Opt-in overlay for an existing policy_model/openai_model configuration.
+route_failures_to_sidecar: true
+policy_model:
+  responses_api_models:
+    openai_model:
+      upstream_max_num_tries: 1
+      upstream_retry_policy:
+        max_attempts: 1
+      upstream_rate_limit_cooldown_seconds: 60
+      upstream_rate_limit_shared_directory: ${oc.env:GYM_PROVIDER_COOLDOWN_DIRECTORY}
+      upstream_rate_limit_shared_namespace: ${oc.env:GYM_PROVIDER_COOLDOWN_NAMESPACE}
