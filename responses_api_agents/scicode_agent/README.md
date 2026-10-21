@@ -52,3 +52,39 @@ final-step metrics. Mixing versions is rejected.
   context
 
 The full wiring (resources server + this agent + dataset) lives in `benchmarks/scicode/config.yaml`.
+
+### Saved-response recovery with actual scientific verification
+
+The opt-in Linux/Docker control below extends the native component checkpoint
+control with the pinned SciCode scientific verifier. It never fetches an image,
+installs dependencies, or calls an external model. Supply the unchanged frozen
+problem input and its two preserved request/response capture records. An admitted
+runtime must already contain the exact image and H5 asset; mismatches are refused.
+
+```sh
+PYTHONPATH=.:responses_api_agents/scicode_agent:resources_servers/scicode \
+NEMO_GYM_EXTRA_ROOTS="$PWD" python \
+  responses_api_agents/scicode_agent/tests/scientific_recovery_control.py \
+  --input /absolute/frozen-problem.json \
+  --captures /absolute/original.capture.jsonl \
+  --test-data /absolute/test_data.h5 \
+  --sandbox-image sha256:2fae326d6d1d11e55b828f200bfcd349bf392e070fc69e7721a87d152db97918 \
+  --output /absolute/new-recovery-control
+```
+
+The control compares exact next requests, generated scientific programs and full
+scientific outcomes after SIGKILL and fresh-process native checkpoint restoration.
+The shared Linux supervisor owns the child process tree (480-second execution
+budget plus bounded cleanup). Only after positive process settlement does the
+existing Docker provider reconcile exact UUID/workload labels from durable
+pre-creation lifecycle receipts. Scientific sandboxes remain sequential, 4GiB,
+30 seconds each, network-disabled, with read-only reference/control mounts.
+SIGTERM/SIGINT request supervisor settlement before container reconciliation;
+SIGKILL of this outer supervisor/controller is not a promised recovery boundary.
+
+This is native component/process recovery with saved/mock transport, not full
+supported CLI recovery or restoration of mutable/in-flight scientific tool state.
+The original problem20 remote experiment passed both scientific substeps before
+and after restoration, with zero new restored fixture calls and four independently
+absent containers. That original control predates this maintained supervision
+refactor; local refactor controls do not constitute another remote acceptance.

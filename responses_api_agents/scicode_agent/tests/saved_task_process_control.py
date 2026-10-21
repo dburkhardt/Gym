@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Offline fresh-process control using preserved real SciCode inputs/captures.
 
-No scientific verifier is executed: its exact input is retained and compared.
+By default verification is intercepted; explicit scientific arguments enable the real isolated verifier.
 The deterministic transport returns historical responses, never contacts a provider.
 """
 
@@ -67,7 +67,32 @@ async def child(args):
     async def post(**kwargs):
         if kwargs["url_path"] == "/verify":
             write(out / f"{args.phase}-verify.json", kwargs["json"])
-            return _Resp({"verification_not_executed": True, "solutions": kwargs["json"]["solutions"]})
+            if args.test_data is None:
+                return _Resp({"verification_not_executed": True, "solutions": kwargs["json"]["solutions"]})
+            from resources_servers.scicode.app import (
+                ScicodeResourcesServer,
+                ScicodeResourcesServerConfig,
+                ScicodeVerifyRequest,
+            )
+
+            resource = ScicodeResourcesServer(
+                config=ScicodeResourcesServerConfig(
+                    name="scicode",
+                    host="127.0.0.1",
+                    port=0,
+                    entrypoint="app.py",
+                    num_processes=1,
+                    sandbox_memory_mib=4096,
+                    timeout_secs=30,
+                    sandbox_image=args.sandbox_image,
+                    test_data_fpath=str(args.test_data.resolve()),
+                    execution_artifact_dir=str(out / f"{args.phase}-execution"),
+                ),
+                server_client=agent.server_client,
+            )
+            result = await resource.verify(ScicodeVerifyRequest.model_validate(kwargs["json"]))
+            write(out / f"{args.phase}-scientific.json", result.model_dump(mode="json"))
+            return _Resp(result.model_dump(mode="json"))
         requests.append(kwargs)
         messages = [{"type": "http.request", "body": json.dumps(kwargs["json"]).encode()}]
         sent = []
@@ -141,7 +166,18 @@ def main():
     parser.add_argument("--captures", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--phase", choices=["baseline", "initial", "restore"])
+    parser.add_argument("--test-data", type=Path)
+    parser.add_argument("--sandbox-image")
+    parser.add_argument("--scientific-supervised", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if bool(args.test_data) != bool(args.sandbox_image):
+        parser.error("--test-data and --sandbox-image must be supplied together")
+    if args.test_data and not args.phase and not args.scientific_supervised:
+        parser.error("Use scientific_recovery_control.py for supervised scientific execution")
+    if args.test_data:
+        from responses_api_agents.scicode_agent.tests.scientific_recovery_control import validate_inputs
+
+        validate_inputs(args.test_data, args.sandbox_image)
     if args.phase:
         asyncio.run(child(args))
         return
@@ -156,7 +192,9 @@ def main():
         "--output",
         str(args.output.resolve()),
     ]
-    subprocess.run(command + ["--phase", "baseline"], check=True, timeout=60)
+    if args.test_data:
+        command += ["--test-data", str(args.test_data.resolve()), "--sandbox-image", args.sandbox_image]
+    subprocess.run(command + ["--phase", "baseline"], check=True, timeout=240 if args.test_data else 60)
     with (args.output / "initial.log").open("w") as log:
         process = subprocess.Popen(command + ["--phase", "initial"], stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -174,7 +212,7 @@ def main():
                 process.kill()
                 process.wait(timeout=10)
     assert process.returncode == -signal.SIGKILL
-    subprocess.run(command + ["--phase", "restore"], check=True, timeout=60)
+    subprocess.run(command + ["--phase", "restore"], check=True, timeout=240 if args.test_data else 60)
     baseline = json.loads((args.output / "baseline-calls.json").read_text())
     initial = json.loads((args.output / "initial-calls.json").read_text())
     restored = json.loads((args.output / "restore-calls.json").read_text())
@@ -194,7 +232,7 @@ def main():
             "capture_sha256": hashlib.sha256(args.captures.read_bytes()).hexdigest(),
             "initial_killed": True,
             "restored_new_physical_calls": 0,
-            "scientific_verifier_executed": False,
+            "scientific_verifier_executed": args.test_data is not None,
             "external_inference_calls": 0,
             "next_request_equal": True,
             "scientific_state_equal": True,
