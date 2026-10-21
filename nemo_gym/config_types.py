@@ -574,7 +574,17 @@ class DatasetConfig(BaseModel):
         return self
 
 
+class RequiredModelRole(BaseModel):
+    """Explicit capability contract for a model reference on a selected runtime component."""
+
+    model_config = ConfigDict(extra="forbid")
+    component: str = Field(min_length=1)
+    binding_field: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_]*$")
+    capabilities: List[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+
+
 class BenchmarkDatasetConfig(BaseModel):
+    required_model_roles: Dict[Annotated[str, Field(min_length=1)], RequiredModelRole] = Field(default_factory=dict)
     required_model_capabilities: List[str] = Field(default_factory=list)
     required_harness_capabilities: List[str] = Field(default_factory=list)
     name: str

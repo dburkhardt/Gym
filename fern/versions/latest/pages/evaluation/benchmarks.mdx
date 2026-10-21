@@ -128,3 +128,53 @@ Contribution checklist for adding a new benchmark to Gym.
 </Card>
 
 </Cards>
+
+## Explicit solver, judge and helper capability contracts
+
+Benchmark dataset entries may declare `required_model_capabilities` for the
+selected agent's `model_server`, and `required_harness_capabilities` for the
+selected agent. For additional model roles, use `required_model_roles` rather
+than assuming every role uses the solver model. For example, a BioMaze
+open-ended configuration can declare its actual resource judge binding:
+
+```yaml
+# Within the selected benchmark's dataset entry:
+required_model_roles:
+  conclusion_judge:
+    component: biomaze
+    binding_field: judge_model_server
+    capabilities: [text_generation]
+
+# At the top level of the merged configuration:
+component_capabilities:
+  judge_model:
+    text_generation: true
+```
+
+This assumes `biomaze.resources_servers.biomaze.judge_model_server` is explicitly
+configured as `{type: responses_api_models, name: judge_model}`. The validator
+reads that actual reference after configuration merging; changing its target to
+another model requires declarations for that model. Declaring a solver capability
+does not authorize a different judge. A helper can similarly reference an agent's
+explicit `policy_model_server` field, as used by the maintained conversational
+tool/policy generation agent. Role names are labels, not inferred behavior.
+
+Only literal `true` satisfies a required capability; missing/false declarations,
+invalid references and non-model targets fail before collection. A named component
+must be the selected dataset owner, selected agent, or that agent's explicitly
+bound `resources_server`. Unrelated components elsewhere in the configuration do
+not qualify. Nested/custom runtime graphs and external endpoints need their own
+explicit integration; the validator does not discover roles by field-name guesses.
+The named field must be a direct `ModelServerRef`, not a dotted path or a model-name
+string. The caller is responsible for declaring roles the actual implementation uses.
+
+These are **configuration assertions, not empirical capability certification**.
+Do not declare vision for a text-only judge merely because its solver sees images,
+or declare conditional likelihood for a generated-text endpoint. Capability words
+are explicit contracts chosen by the benchmark author and operator, not a central
+model registry. Runtime receipts and scientific protocol checks remain necessary.
+
+Validation runs in native end-to-end and `--no-serve` rollout collection before
+services/collection start. This dataset contract does not by itself qualify direct
+HTTP calls or resource-only regrading configurations without benchmark datasets.
+Existing configurations without requirements keep their previous behavior.
