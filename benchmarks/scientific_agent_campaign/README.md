@@ -1,3 +1,16 @@
+# Scientific evaluation campaign: operator entry point
+
+Use the maintained Gym configuration for each benchmark. Keep its scientific inputs and scorer separate from the model, harness and execution settings. The campaign covers the frozen 63 candidates; a discoverable configuration or a passing offline plan is not a completed integration.
+
+## Working sequence
+
+1. **Discover and prepare.** `gym list benchmarks scienceboard --json` exercises native discovery. Follow the selected benchmark's README to stage its pinned assets and frozen task IDs. For example, [ScienceBoard](../scienceboard/README.md) requires creator source, while [BioMaze](../biomaze/README.md) takes a checksum-bound sample. Do not replace frozen selections with new samples.
+2. **Plan without inference.** `gym eval plan --config /absolute/path/run.yaml --out /absolute/path/plan.json` writes task identities and input digests. This command path was exercised for BioMaze's remaining 15 tasks and ScienceBoard's 20. Inspect the plan and source receipts before admission. Planning can prepare missing data; it does not establish runtime resources or scorer validity.
+3. **Bind the run.** Record source revision, actual component imports, asset hashes, model/harness settings and scoring protocol. Assign a fresh attempt output directory, capture directory and disjoint service ports. Use `nvidia/nvidia/nemotron-3.5-super-vl` for every live solver, judge and helper role in this campaign. Judges have separate configuration; changing a solver must not silently change the judge.
+4. **Execute and inspect.** Use the selected integration's documented `gym eval run` command after its resource and scientific checks. Retain requests, responses, trajectories, verifier inputs, failures and native manifests. Inspect attempted, scored and unresolved counts separately; a budget-exhausted model answer remains an attempted model outcome, while an infrastructure failure is not an incorrect scientific answer.
+5. **Resume or regrade deliberately.** A completed-output `--resume` must preserve identities and captures. Unknown provider outcomes require reconciliation before another request. An explicitly selected new attempt is governed by the [restart contract](../../nemo_gym/batch-restart.md), whose supported components are narrower than ordinary execution. Use `gym eval reverify` with a separate output and scorer record to grade saved responses; an LLM judge may make new judge calls even when there are no new solver calls.
+
+Preserve original attempts when repairing a protocol. Compare systems only on matched tasks and scoring conditions. The shared controls establish specific recovery boundaries, not universal restoration of arbitrary agent or scientific-process state. Keep runtime-blocked candidates visible and respect the campaign's total compute/storage budget.
 
 ## Model and harness capability declarations
 
