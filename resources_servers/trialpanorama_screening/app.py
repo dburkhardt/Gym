@@ -25,6 +25,7 @@ class Request(BaseVerifyRequest):
 
 class Response(BaseVerifyResponse, Request):
     diagnostics: dict
+    metadata: dict
 
 
 class Verifier:
