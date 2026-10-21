@@ -4,5 +4,6 @@
   "evaluate_questions.py": "4c7e81a8fb2bbe132654171021c6c9fbeb38f726d9db9c68113138000fcdad2f",
   "curation/msb/log_parser.py": "a0b832d76446521e4d68ba5b8ae8a76508209ff82bd27c6a8fee5e29972c5572",
   "curation/msb/pyscf/pyscf.py": "457316d2698958d0287831526bca9847d55122f6ae4e0583a83306e7bc28f42a",
-  "data/questions/msb_converted.jsonl": "f66e80b7d86d7c6dea42126e5ace8722a48715ca7868980c658abf941d002bf2"
+  "data/questions/msb_converted.jsonl": "f66e80b7d86d7c6dea42126e5ace8722a48715ca7868980c658abf941d002bf2",
+  "data/questions/et_converted.jsonl": "73a1d11f36d64d3f6e4c41fca3641d0bc1a24cb55d44543acf162b840fd97fdc"
 }
