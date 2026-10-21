@@ -8,7 +8,9 @@ position: 9
 
 `--resume` normally reuses completed output rows. `--restore-checkpoint` additionally restores an unfinished episode from native participant state. It does not restart that episode from its input when restoration fails.
 
-The current scientific acceptance covers one source-bound QCBench route: SimpleAgent, its stateless legacy HTTP relay, the pinned creator scorer, and a checkpoint-enabled OpenAI model server. A saved-response loopback control exercises the actual CLI, kills the initial services after publication, and restores into fresh processes before real creator verification. This is not acceptance of arbitrary mutable tools, shell processes, container restoration, or heterogeneous scientific routes.
+The qualified graph supports source-bound QCBench, MolJSON and GenomeQA chains: one SimpleAgent and stateless legacy HTTP relay per pinned creator scorer, sharing a checkpoint-enabled OpenAI model server. Every configured chain must have materialized input rows; row routing must agree with its agent, relay and scorer. All selected source/runtime closures remain bound, including already completed rows.
+
+Actual CLI acceptance includes a mixed QCBench/MolJSON batch. The saved-response loopback control preserves a completed MolJSON row byte-for-byte, publishes a checkpoint for the remaining QCBench episode, kills the initial services, and restores into fresh processes before real creator verification. Independent preserved positive/negative outcomes are 1 and 0, with exactly two fixture model calls across both processes. GenomeQA is source-qualified but was not part of this mixed runtime control. This does not qualify arbitrary mutable tools, shell processes or container restoration.
 
 ## Configure and request a checkpoint
 
@@ -37,3 +39,5 @@ Restoration checks original artifact prefixes, source/runtime/configuration bind
 The initial implementation requires every pending row to belong to the published episode scope. A checkpoint is not a portable archive: its original bound filesystem paths and runtime remain required. Keep the checkpoint and later outputs together; do not delete later evidence to make an older checkpoint pass validation.
 
 The maintained deterministic acceptance driver is `tests/e2e/coordinator/scientific_checkpoint_control.py`. It compares the complete preserved response, reward, scoring details, mask and failure kind, and checks that restoration makes no second fixture model request. The preserved budget-exhausted response remains a scientific model outcome, including its original health flags.
+
+For the mixed deterministic control, add `--moljson-saved` and `--moljson-creator` to the maintained driver. It loads both existing benchmark configs into the same native CLI and collector, and verifies unequal per-agent checkpoint scopes against immutable routing captured before commit. No second scheduler or per-benchmark recovery registry is used.

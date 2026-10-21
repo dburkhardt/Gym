@@ -59,10 +59,10 @@ def expected_participants(config: dict) -> dict:
                 # This inspected implementation is only an opaque HTTP relay.
                 # Source/runtime binding happens before discovery; its target
                 # must be the participating agent in the exact creator graph.
-                from nemo_gym.creator_restart import exact_creator_graph
+                from nemo_gym.creator_restart import exact_creator_graphs
 
-                graph = exact_creator_graph(config)
-                if graph["relay"]["name"] != name:
+                graphs = exact_creator_graphs(config)
+                if name not in {graph["relay"]["name"] for graph in graphs}:
                     raise ConfigError("Unqualified checkpoint relay")
                 continue
             result[name] = kinds[roles[0]]
@@ -75,6 +75,21 @@ def require_coverage(participants: coordination.Participants, expected: dict) ->
     actual = {member.server_name: member.kind for member in participants.members}
     if actual != expected:
         raise ConfigError("Checkpoint participant coverage differs from configured role graph")
+
+
+def routed_commit_scope(participants, replies, active_agents):
+    """Accept only each native agent's own active scientific episodes."""
+    committed = set()
+    agents = {member.server_name for member in participants.members if member.kind == "agent"}
+    if not agents or not set(active_agents.values()).issubset(agents):
+        raise ConfigError("Checkpoint active episode has no participating agent")
+    for agent in agents:
+        scope = set(replies[agent]["episode_ids"])
+        allowed = {key for key, owner in active_agents.items() if owner == agent}
+        if not scope.issubset(allowed) or committed.intersection(scope):
+            raise ConfigError("Checkpoint participant committed an episode outside its routed scientific chain")
+        committed.update(scope)
+    return committed
 
 
 def publish(path: Path, payload: dict) -> None:
@@ -205,6 +220,7 @@ class EvaluationCheckpoint:
         self.admission.set()
         self.requested = asyncio.Event()
         self.active = {}
+        self.active_agents = {}
         self.returned = set()
         self.persisted = set()
         self.error = None
@@ -218,7 +234,11 @@ class EvaluationCheckpoint:
         if self.error is not None:
             raise self.error
         key = maybe_rollout_id_from_run_body(row)
+        from nemo_gym.creator_restart import creator_graph_for_row, exact_creator_graphs
+
+        graph = creator_graph_for_row(exact_creator_graphs(self.config), row)
         self.active[key] = EpisodeId.from_capture_key(key)
+        self.active_agents[key] = graph["agent"]["name"]
 
     def after_reply(self, row):
         from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
@@ -231,6 +251,7 @@ class EvaluationCheckpoint:
         key = maybe_rollout_id_from_run_body(row)
         self.persisted.add(key)
         self.active.pop(key, None)
+        self.active_agents.pop(key, None)
 
     async def discover(self):
         token = self.config.get("checkpoint", {}).get("control_auth_token")
@@ -259,6 +280,7 @@ class EvaluationCheckpoint:
                     raise ConfigError("Evaluation checkpoint could not drain completed rollout replies")
                 await asyncio.sleep(0.01)
             episodes = list(self.active.values())
+            routed_episodes = {episode.capture_key: self.active_agents[episode.capture_key] for episode in episodes}
             if not episodes:
                 raise ConfigError("No active episodes remain to checkpoint")
             captures = capture_snapshot(self.capture_dirs, episodes)
@@ -269,14 +291,7 @@ class EvaluationCheckpoint:
             # Commit replies identify episodes still present after prepare. A
             # terminal /run reply can be in transport while no participant owns it.
             # Drain those excluded replies through the normal finalizer before publish.
-            scopes = [
-                set(replies[m.server_name]["episode_ids"])
-                for m in self.participants.members
-                if m.kind in {"environment", "agent"}
-            ]
-            if not scopes or any(scope != scopes[0] for scope in scopes):
-                raise ConfigError("Checkpoint requires one qualified environment/agent routing scope")
-            committed = scopes[0]
+            committed = routed_commit_scope(self.participants, replies, routed_episodes)
             excluded = {episode.capture_key for episode in episodes} - committed
             while excluded - self.persisted:
                 if time.time() >= deadline:

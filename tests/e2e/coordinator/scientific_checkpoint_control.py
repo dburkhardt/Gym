@@ -15,12 +15,14 @@ import yaml
 from aiohttp import web
 
 
-async def main(out, saved, creator):
+async def main(out, saved, creator, moljson_saved=None, moljson_creator=None):
     out = out.resolve()
     out.mkdir(exist_ok=False)
     source = Path.cwd()
     original = [json.loads(line) for line in saved.read_text().splitlines()]
     row = original[0]
+    additional = json.loads(moljson_saved.read_text().splitlines()[0]) if moljson_saved else None
+    expected = [additional, row] if additional else [row]
     sample = {key: row[key] for key in ("uuid", "responses_create_params", "verifier_metadata")}
     sample["task_id"] = row["uuid"]
     (out / "sample.jsonl").write_text(json.dumps(sample) + "\n")
@@ -33,9 +35,10 @@ async def main(out, saved, creator):
         payload = await request.json()
         calls.append(payload)
         (out / "provider-calls.json").write_text(json.dumps(calls))
-        if len(calls) > 1:
-            raise AssertionError("Unexpected regeneration after checkpoint")
-        return web.json_response(row["response"])
+        matching = [item for item in expected if item["responses_create_params"]["input"] == payload["input"]]
+        if len(matching) != 1 or sum(call["input"] == payload["input"] for call in calls) > 1:
+            raise AssertionError("Unexpected or repeated generation request")
+        return web.json_response(matching[0]["response"])
 
     app = web.Application()
     app.router.add_post("/v1/responses", provider)
@@ -96,6 +99,27 @@ async def main(out, saved, creator):
         "route_failures_to_sidecar": True,
         "require_complete": False,
     }
+    if additional:
+        sample2 = {key: additional[key] for key in ("uuid", "responses_create_params", "verifier_metadata")}
+        sample2["task_id"] = additional["uuid"]
+        (out / "moljson.jsonl").write_text(json.dumps(sample2) + "\n")
+        config["config_paths"] = ["benchmarks/moljson/config.yaml", "benchmarks/qcbench/config.yaml"]
+        config["moljson_resources"] = {
+            "resources_servers": {
+                "campaign_creator_scoring": {
+                    "upstream_repo": str(moljson_creator.resolve()),
+                    "datasets": [
+                        {
+                            "name": "moljson",
+                            "type": "benchmark",
+                            "jsonl_fpath": str(out / "moljson.jsonl"),
+                            "prepare_script": "benchmarks/moljson/prepare.py",
+                            "num_repeats": 1,
+                        }
+                    ],
+                }
+            }
+        }
     (out / "runtime.yaml").write_text(yaml.safe_dump(config))
     command = [
         sys.executable,
@@ -112,7 +136,7 @@ async def main(out, saved, creator):
         "--split",
         "benchmark",
         "--limit",
-        "1",
+        str(len(expected)),
         "--concurrency",
         "1",
         "--health-check-workers",
@@ -128,7 +152,7 @@ from nemo_gym._checkpoint.agent import LegacyRun
 original = LegacyRun.boundary
 async def paused(self, state):
     marker = os.environ.get('GYM_TEST_BOUNDARY_MARKER')
-    if marker and state.get('next') == 'verify':
+    if marker and state.get('next') == 'verify' and state.get('response', {}).get('id') == os.environ.get('GYM_TEST_RESPONSE_ID'):
         Path(marker).write_text('completed solver; before verifier')
         while not self._steps.closed:
             await asyncio.sleep(0.01)
@@ -139,6 +163,7 @@ LegacyRun.boundary = paused
     env.update(
         PYTHONPATH=os.pathsep.join([str(hooks), str(source)]),
         GYM_TEST_BOUNDARY_MARKER=str(out / "boundary-ready"),
+        GYM_TEST_RESPONSE_ID=row["response"]["id"],
         NEMO_GYM_EXTRA_ROOTS=str(source),
         CAMPAIGN_UPSTREAM_REPO=str(creator.resolve()),
     )
@@ -170,6 +195,10 @@ LegacyRun.boundary = paused
                 await asyncio.sleep(0.01)
             else:
                 raise TimeoutError("Checkpoint publication timeout")
+            prior_output = (out / "results.jsonl").read_bytes()
+            if additional:
+                completed = [json.loads(line) for line in prior_output.splitlines()]
+                assert len(completed) == 1 and completed[0]["uuid"] == additional["uuid"]
             for process in reversed(owned):
                 if process.is_running():
                     process.kill()
@@ -187,16 +216,28 @@ LegacyRun.boundary = paused
                 stderr=asyncio.subprocess.STDOUT,
             )
             assert await asyncio.wait_for(child.wait(), 120) == 0
-        result = json.loads((out / "results.jsonl").read_text().splitlines()[0])
-        assert result["reward"] == row["reward"] and len(calls) == 1
-        for key in ("scoring_details", "mask_sample", "failure_kind"):
-            assert result.get(key) == row.get(key), key
+        results = [json.loads(line) for line in (out / "results.jsonl").read_text().splitlines()]
+        assert len(results) == len(expected) and len(calls) == len(expected)
+        assert (out / "results.jsonl").read_bytes().startswith(prior_output)
         from nemo_gym.openai_utils import NeMoGymResponse
 
-        assert NeMoGymResponse.model_validate(result["response"]) == NeMoGymResponse.model_validate(row["response"])
+        for result, original_row in zip(results, expected, strict=True):
+            assert result["uuid"] == original_row["uuid"]
+            for key in ("reward", "scoring_details", "mask_sample", "failure_kind"):
+                assert result.get(key) == original_row.get(key), key
+            assert NeMoGymResponse.model_validate(result["response"]) == NeMoGymResponse.model_validate(
+                original_row["response"]
+            )
         assert sentinel.returncode is None
         (out / "acceptance.json").write_text(
-            json.dumps({"calls": len(calls), "reward": result["reward"], "external_inference": 0, "status": "passed"})
+            json.dumps(
+                {
+                    "calls": len(calls),
+                    "rewards": [result["reward"] for result in results],
+                    "external_inference": 0,
+                    "status": "passed",
+                }
+            )
         )
     finally:
         if child and child.returncode is None:
@@ -218,5 +259,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--saved", type=Path, required=True)
     parser.add_argument("--creator", type=Path, required=True)
+    parser.add_argument("--moljson-saved", type=Path)
+    parser.add_argument("--moljson-creator", type=Path)
     args = parser.parse_args()
-    asyncio.run(main(args.output, args.saved, args.creator))
+    asyncio.run(main(args.output, args.saved, args.creator, args.moljson_saved, args.moljson_creator))
