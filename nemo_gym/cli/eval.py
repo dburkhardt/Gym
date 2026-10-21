@@ -751,6 +751,11 @@ def e2e_rollout_collection():  # pragma: no cover
         print(f"Dispatch plan only: {manifest_path}; no services started.")
         return
 
+    if global_config_dict.get("provider_dispatch_guard") is True:
+        from nemo_gym.restart_admission import install_key
+
+        install_key()
+
     rh = RunHelper()
     if global_config_dict.get("provider_dispatch_guard", False):
         import hashlib

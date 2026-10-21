@@ -324,7 +324,20 @@ class ScicodeAgent(SimpleResponsesAPIAgent):
             if continuation["next"] == "return":
                 return continuation["result"]
         elif guard and (not rollout_id or EpisodeId.from_capture_key(rollout_id).attempt > 0):
-            raise ValueError("Guarded SciCode requires fresh rollout or explicit native checkpoint continuation")
+            from nemo_gym.restart_admission import HEADER, consume
+
+            proof = request.headers.get(HEADER)
+            if not proof:
+                raise ValueError("Guarded SciCode requires fresh rollout or explicit native checkpoint continuation")
+            if not hasattr(self, "_consumed_restart_admissions"):
+                self._consumed_restart_admissions = set()
+            consume(
+                proof,
+                await request.json(),
+                agent=self.config.name,
+                config=self.server_client.global_config_dict,
+                consumed=self._consumed_restart_admissions,
+            )
 
         async def boundary(next_step, stage="generate", result=None):
             if legacy_run is None:

@@ -3432,6 +3432,16 @@ class RolloutCollectionHelper(BaseModel):
             elif not global_config.get("provider_dispatch_guard", False):
                 print("Clearing existing model-call captures for rollouts being dispatched")
                 clear_model_call_captures_for_rollouts(input_rows, capture_dirs)
+        self._explicit_restart_admission = None
+        if admitted_prior:
+            import hashlib
+
+            self._explicit_restart_admission = {
+                "prior": {EpisodeId.from_capture_key(key).rollout_id: key for key in admitted_prior},
+                "binding": execution_binding_sha256,
+                "receipt_sha256": hashlib.sha256(Path(config.guarded_restart_receipt_fpath).read_bytes()).hexdigest(),
+                "capture_dirs": capture_dirs,
+            }
         if batch_tracker is not None:
             batch_tracker.write_status(batch_completed_rows, batch_failure_rows, force=True)
         token_capture_rows = [
@@ -4596,7 +4606,19 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                 succeeded = False
                 try:
                     request_body = _episode_request_body(row) if _materialized_taskset(row) else row
-                    res = await server_client.post(server_name=server_name, url_path="/run", json=request_body)
+                    post_kwargs = {"json": request_body}
+                    admission = getattr(self, "_explicit_restart_admission", None)
+                    if admission:
+                        from nemo_gym.restart_admission import headers_for_request
+
+                        headers = headers_for_request(
+                            admission,
+                            request_body,
+                            agent=self._agent_name_for_row(row, server_client.global_config_dict),
+                        )
+                        if headers:
+                            post_kwargs["headers"] = headers
+                    res = await server_client.post(server_name=server_name, url_path="/run", **post_kwargs)
                     await raise_for_status(res)
                     result = await get_response_json(res)
                     if checkpoint is not None:
