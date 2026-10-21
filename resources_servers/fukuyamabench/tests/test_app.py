@@ -652,3 +652,20 @@ async def test_creator_partial_keeps_fraction_and_raw_metrics():
     assert result.reward == 0
     assert result.checkpoint_accuracy == 0.5
     assert result.raw_creator_metrics["checkpoints_correct"] == 1
+
+
+@pytest.mark.asyncio
+async def test_creator_saved_regrade_is_stateless_across_instances_and_order():
+    from nemo_gym.base_resources_server import ReverifyMode
+
+    original = _make_server()
+    original.config.scoring_mode = "creator_63bb79f"
+    good = _make_request(_fenced([{"product_smiles": "CO"}]), gt_pathway=[{"products": ["CO"]}], checkpoints=[[1]])
+    bad = _make_request(_fenced([{"product_smiles": "[He]"}]), gt_pathway=[{"products": ["CO"]}], checkpoints=[[1]])
+    first = [await original.verify(request) for request in (good, bad)]
+    fresh = _make_server()
+    fresh.config.scoring_mode = "creator_63bb79f"
+    assert await fresh.get_reverify_mode() == ReverifyMode.STATELESS
+    second = [await fresh.verify(request) for request in (bad, good)]
+    assert [result.model_dump() for result in first] == [result.model_dump() for result in reversed(second)]
+    assert [result.reward for result in first] == [1.0, 0.0]

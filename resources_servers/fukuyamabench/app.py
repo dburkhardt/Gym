@@ -17,7 +17,7 @@ import json
 import logging
 import re
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, ClassVar, Literal, Optional
 
 from metrics import score_pathway
 
@@ -26,6 +26,7 @@ from nemo_gym.base_resources_server import (
     BaseRunRequest,
     BaseVerifyRequest,
     BaseVerifyResponse,
+    ReverifyMode,
     SimpleResourcesServer,
 )
 from nemo_gym.reward_profile import compute_subset_metrics
@@ -71,6 +72,8 @@ class FukuyamaBenchVerifyResponse(BaseVerifyResponse):
 
 
 class FukuyamaBenchConfig(BaseResourcesServerConfig):
+    REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
+
     scoring_mode: Literal["native_strict_components", "creator_63bb79f"] = "native_strict_components"
 
 
