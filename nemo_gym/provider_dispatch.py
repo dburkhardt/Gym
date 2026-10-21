@@ -7,6 +7,7 @@ anything. Once intent is durable, a crash must be treated as ambiguous until a
 complete response has been durably captured or the provider can reconcile it.
 """
 
+from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from time import time
@@ -31,8 +32,22 @@ class ProviderDispatch:
         self.attempts.append({"attempt_id": uuid4().hex, "outcome": "unknown", "started_at": time()})
         self.persist(self.evidence())
 
-    def response_headers(self, status: int) -> None:
+    def response_headers(self, status: int, headers: Mapping[str, str] | None = None) -> None:
         self.attempts[-1].update(outcome="response_headers", status_code=status, response_headers_at=time())
+        # Diagnostic evidence only: never change admission/retry policy here.
+        # Do not persist arbitrary provider headers (cookies or credentials).
+        allowed = {"retry-after", "ratelimit-limit", "ratelimit-remaining", "ratelimit-reset"}
+        allowed.update(
+            f"x-ratelimit-{field}-{unit}"
+            for field in ("limit", "remaining", "reset")
+            for unit in ("requests", "tokens")
+        )
+        if headers is not None:
+            self.attempts[-1]["quota_response_headers"] = {
+                key.lower(): value[:512]
+                for key, value in headers.items()
+                if key.lower() in allowed and isinstance(value, str)
+            }
         self.persist(self.evidence())
 
     def evidence(self) -> dict:

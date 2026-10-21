@@ -1748,7 +1748,7 @@ class NeMoGymAsyncOpenAI(BaseModel):  # pragma: no cover
                 )
             response = await request(**request_kwargs)
             if dispatch is not None:
-                dispatch.response_headers(response.status)
+                dispatch.response_headers(response.status, getattr(response, "headers", None))
                 if 300 <= response.status < 400:
                     raise RuntimeError("guarded provider dispatch refuses automatic HTTP redirects")
                 # Explicit request-validation rejections are terminal non-generations.

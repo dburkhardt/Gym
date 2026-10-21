@@ -94,7 +94,7 @@ def test_failed_persistence_prevents_send_state(tmp_path, monkeypatch):
 async def test_429_then_success_records_two_sends(tmp_path, monkeypatch):
     dispatch = dispatch_at(store_at(tmp_path))
     replies = [
-        SimpleNamespace(status=429, content=SimpleNamespace(read=AsyncMock(return_value=b"busy"))),
+        SimpleNamespace(status=429, headers={"Retry-After": "60"}, content=SimpleNamespace(read=AsyncMock(return_value=b"busy"))),
         SimpleNamespace(status=200),
     ]
     request = AsyncMock(side_effect=replies)
@@ -106,6 +106,7 @@ async def test_429_then_success_records_two_sends(tmp_path, monkeypatch):
         assert await client._request_with_retry() is replies[-1]
     finally:
         current_provider_dispatch.reset(token)
+    assert dispatch.attempts[0]["quota_response_headers"] == {"retry-after": "60"}
     assert [row["outcome"] for row in dispatch.attempts] == ["rejected", "response_headers"]
     assert len({row["attempt_id"] for row in dispatch.attempts}) == 2
     assert all(call.kwargs["_max_num_tries"] == 1 for call in request.await_args_list)
@@ -761,3 +762,27 @@ async def test_validation_rejection_is_terminal_without_automatic_retry(tmp_path
     store.assert_restore_safe(["episode"])
     store.clear_pending("episode", "call")
     assert not store.has_pending("episode")
+
+
+def test_quota_headers_are_allowlisted_bounded_and_durable(tmp_path):
+    import json
+
+    store = store_at(tmp_path)
+    dispatch = dispatch_at(store)
+    dispatch.before_send()
+    dispatch.response_headers(429, {
+        "Retry-After": "60",
+        "X-RateLimit-Remaining-Tokens": "0",
+        "RateLimit-Reset": "1" * 600,
+        "Authorization": "must-not-persist",
+        "Set-Cookie": "must-not-persist",
+        "X-RateLimit-Secret": "must-not-persist",
+    })
+    record = json.loads(store.pending_path_for("episode", "call").read_text())
+    assert record["provider_attempts"][0]["quota_response_headers"] == {
+        "retry-after": "60", "x-ratelimit-remaining-tokens": "0", "ratelimit-reset": "1" * 512,
+    }
+    assert "must-not-persist" not in json.dumps(record)
+    # Observing headers alone still cannot authorize a resend.
+    with pytest.raises(RuntimeError, match="unresolved"):
+        dispatch.before_send()

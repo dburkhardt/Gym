@@ -62,7 +62,7 @@ A run with no scored rows can exit nonzero after recording a definitive provider
 gym eval health-check /absolute/attempt --rollouts-file results.jsonl --json
 ```
 
-A dead coordinator or absent listener does not prove provider settlement or complete cleanup. Reconcile exact owned service identities; never kill processes by name or port. For quota handling, use the reviewed [shared overlays](../configs/eval/README.md): one-attempt peer settlement is distinct from explicitly versioned rejected-only retries. Cooldown does not extend scientific deadlines or establish provider capacity.
+A dead coordinator or absent listener does not prove provider settlement or complete cleanup. Reconcile exact owned service identities; never kill processes by name or port. For quota handling, use the reviewed [shared overlays](../configs/eval/README.md): one-attempt peer settlement is distinct from explicitly versioned rejected-only retries. Cooldown does not extend scientific deadlines or establish provider capacity. New guarded captures retain allowlisted retry and quota response headers under `provider_attempts[].quota_response_headers` when exposed by the transport. These are diagnostic evidence, not automatic retry instructions; older captures may omit them.
 
 ## Resolve admission budgets from the actual workflow
 
