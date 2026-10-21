@@ -51,3 +51,21 @@ def test_recipe_variant_is_explicit_and_bound():
     assert "COPY harness_install.py" in dockerfile(variant)
     with pytest.raises(ValueError, match="Unsupported"):
         dockerfile({**variant, "id": "capsule-other"})
+
+
+def test_1906954_variant_requires_exact_published_identity():
+    import json
+    from pathlib import Path
+
+    from benchmarks.corebench.image_controls import dockerfile, recipe_digest
+
+    rows = json.loads((Path(__file__).parents[1] / "frozen20.json").read_text())["rows"]
+    original = next(row for row in rows if row["id"] == "capsule-1906954")
+    variant = {**original, "harness_install_variant": "ubuntu-bionic-isolated-v1"}
+    assert recipe_digest(original) != recipe_digest(variant)
+    assert "corebench-harness-install.py" in dockerfile(variant)
+    assert "apt-get update &&" not in dockerfile(variant)
+    for key, value in [("published_image", "unreviewed"), ("id", "capsule-other")]:
+        with pytest.raises(ValueError, match="Unsupported capsule-specific"):
+            dockerfile({**variant, key: value})
+    assert "harness_install_variant" not in original

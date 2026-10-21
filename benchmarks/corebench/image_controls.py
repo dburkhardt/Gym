@@ -43,7 +43,15 @@ def dockerfile(row):
     installer = "RUN command -v tmux >/dev/null 2>&1 || (apt-get update && apt-get install -y --no-upgrade --no-install-recommends tmux && rm -rf /var/lib/apt/lists/*)"
     variant = row.get("harness_install_variant")
     if variant is not None:
-        if variant != "ubuntu-bionic-isolated-v1" or row["id"] != "capsule-6133093":
+        admitted_capsule = row["id"] == "capsule-6133093" or (
+            row["id"] == "capsule-1906954"
+            and row["published_image"]
+            == (
+                "registry.codeocean.com/published/fd033d1a-d09f-43fc-a1fe-2b8e348df846"
+                "@sha256:86040eccc32964f6b99b2e1c4aac8d4c49bd55e4da16c68c7e14884042afda4a"
+            )
+        )
+        if variant != "ubuntu-bionic-isolated-v1" or not admitted_capsule:
             raise ValueError("Unsupported capsule-specific harness variant")
         from pathlib import Path
 
