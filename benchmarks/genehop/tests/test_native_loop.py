@@ -385,7 +385,9 @@ async def test_cancel_waits_for_inflight_model_receipt_and_prevents_next_turn(tm
             output_root=tmp_path / "out",
             model_server={"type": "responses_api_models", "name": "policy_model"},
         ),
-        server_client=MagicMock(spec=ServerClient, global_config_dict={"provider_dispatch_guard": True}),
+        server_client=MagicMock(
+            spec=ServerClient, global_config_dict={"provider_dispatch_guard": True, "observability_enabled": True}
+        ),
     )
     body = RunRequest.model_validate(
         {
@@ -402,7 +404,7 @@ async def test_cancel_waits_for_inflight_model_receipt_and_prevents_next_turn(tm
         patch.object(NativeLoop, "call_api") as tool,
     ):
         task = asyncio.create_task(agent.run(None, body))
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         task.cancel()
         await asyncio.sleep(0.01)
         assert not task.done() and agent._lock.locked()
@@ -411,5 +413,9 @@ async def test_cancel_waits_for_inflight_model_receipt_and_prevents_next_turn(tm
             await task
         tool.assert_not_called()
     assert calls == [0]
-    assert (tmp_path / "out/test/model-00-intent.json").exists()
-    assert (tmp_path / "out/test/model-00.json").exists()
+    directories = list((tmp_path / "out").iterdir())
+    assert len(directories) == 1
+    directory = directories[0]
+    assert json.loads((directory / "execution-identity.json").read_text())["capture_key"] == "fresh"
+    assert (directory / "model-00-intent.json").exists()
+    assert (directory / "model-00.json").exists()

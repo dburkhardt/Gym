@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,8 +20,10 @@ from benchmarks.genehop.source_identity import validate_source
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
+from nemo_gym.episode_types import EpisodeId
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.provider_dispatch import configuration_digest
+from nemo_gym.rollout_correlation import maybe_rollout_id_from_run_body
 from nemo_gym.server_utils import raise_for_status, rollout_path_prefix
 from responses_api_agents.genehop_native.trajectory import observations
 
@@ -86,8 +89,23 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
         if not re.fullmatch(r"[A-Za-z0-9_: -]+", body.uuid):
             raise ValueError("Unsafe task UUID")
         taskid = body.uuid.replace(":", "-").replace(" ", "_")
+        capture_key = maybe_rollout_id_from_run_body(body)
+        if self.server_client.global_config_dict.get("provider_dispatch_guard"):
+            provider_key = self.rollout_id_from_run(body)
+            if provider_key is None or provider_key != capture_key:
+                raise ValueError("GeneHop artifacts require the same native identity as guarded transport")
+        identity = None
+        if capture_key is not None:
+            episode = EpisodeId.from_capture_key(capture_key)
+            identity = {"task_uuid": body.uuid, "episode": episode.model_dump(), "capture_key": episode.capture_key}
+            taskid = "episode-" + sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         out = self.config.output_root / taskid
         out.mkdir(parents=True, exist_ok=False)
+        if identity is not None:
+            with (out / "execution-identity.json").open("x") as handle:
+                json.dump(identity, handle, sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
         try:
             loop = NativeLoop(
                 self.config.upstream_repo,
