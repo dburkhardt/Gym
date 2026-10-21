@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 
 from benchmarks.bioagentbench.outcomes import disposition
 from benchmarks.bioagentbench.prepare import rows
@@ -56,10 +56,14 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     native_metrics: dict
     artifact_dir: str
     imported_saved_execution: bool = False
