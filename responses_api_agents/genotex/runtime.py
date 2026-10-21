@@ -51,7 +51,9 @@ async def execution_identity(*, image: dict, grader_python: str, data_root: Path
         Path(inspect.getfile(inspect.unwrap(obj))).resolve()
         for obj in (AsyncSandbox, LocalProvider, _owned_sandbox, scoring_workspace)
     ]
-    interpreter = Path(shutil.which(grader_python) or grader_python).resolve()
+    # Preserve the invocation path: resolving a venv symlink selects the base environment.
+    interpreter = Path(shutil.which(grader_python) or grader_python).absolute()
+    resolved_interpreter = interpreter.resolve()
     try:
         code, freeze = await command(
             str(interpreter),
@@ -72,7 +74,8 @@ async def execution_identity(*, image: dict, grader_python: str, data_root: Path
         "files": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
         "grader_interpreter": {
             "path": str(interpreter),
-            "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest(),
+            "resolved_path": str(resolved_interpreter),
+            "sha256": hashlib.sha256(resolved_interpreter.read_bytes()).hexdigest(),
         },
     }
 

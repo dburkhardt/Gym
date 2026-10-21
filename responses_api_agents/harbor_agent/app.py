@@ -47,6 +47,11 @@ from nemo_gym.openai_utils import (
     NeMoGymResponseCreateParamsNonStreaming,
 )
 from nemo_gym.sandbox.lifecycle import _publish
+from nemo_gym.server_utils import (
+    GlobalAIOHTTPAsyncClientConfig,
+    global_aiohttp_client_exit_async,
+    set_global_aiohttp_client,
+)
 from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure, required_artifact_failure
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
@@ -218,7 +223,28 @@ async def run_harbor_job(job_config_dict: dict) -> str:
 _RAY_WORKER_EVENT_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 
-def _run_harbor_job_sync(job_config_dict: dict) -> str:
+async def _run_harbor_job_with_transport(job_config_dict: dict, transport_config: dict) -> str:
+    # Only the typed parent-selected pool settings cross the Ray boundary. Never
+    # parse worker argv or forward the credential-bearing global configuration.
+    cfg = GlobalAIOHTTPAsyncClientConfig.model_validate(transport_config)
+    set_global_aiohttp_client(cfg)
+    primary_error = None
+    try:
+        return await run_harbor_job(job_config_dict)
+    except BaseException as error:
+        primary_error = error
+        raise
+    finally:
+        try:
+            await global_aiohttp_client_exit_async()
+        except BaseException as cleanup_error:
+            if primary_error is None:
+                raise
+            primary_error.add_note(f"Worker HTTP cleanup failed: {type(cleanup_error).__name__}")
+            logger.exception("Worker HTTP cleanup failed while preserving the original job error")
+
+
+def _run_harbor_job_sync(job_config_dict: dict, transport_config: Optional[dict] = None) -> str:
     """Synchronous wrapper for run_harbor_job for use in Ray remote.
 
     Ray workers are long-lived processes. Reusing a single event loop per worker
@@ -229,7 +255,9 @@ def _run_harbor_job_sync(job_config_dict: dict) -> str:
     if _RAY_WORKER_EVENT_LOOP is None or _RAY_WORKER_EVENT_LOOP.is_closed():
         _RAY_WORKER_EVENT_LOOP = asyncio.new_event_loop()
         asyncio.set_event_loop(_RAY_WORKER_EVENT_LOOP)
-    task = _RAY_WORKER_EVENT_LOOP.create_task(run_harbor_job(job_config_dict))
+    task = _RAY_WORKER_EVENT_LOOP.create_task(
+        _run_harbor_job_with_transport(job_config_dict, transport_config or {})
+    )
     try:
         return _RAY_WORKER_EVENT_LOOP.run_until_complete(task)
     except KeyboardInterrupt:
@@ -407,6 +435,9 @@ class HarborAgent(SimpleResponsesAPIAgent):
             try:
                 params = dict(
                     job_config_dict=job_config_dict,
+                    transport_config=GlobalAIOHTTPAsyncClientConfig.model_validate(global_config_dict).model_dump(
+                        mode="json"
+                    ),
                 )
                 runner = runner_ray_remote
                 resource_options = {}

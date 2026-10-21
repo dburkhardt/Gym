@@ -411,7 +411,7 @@ class KeepaliveHttpToolsProtocol(HttpToolsProtocol):
 
 
 def set_global_aiohttp_client(cfg: GlobalAIOHTTPAsyncClientConfig) -> ClientSession:  # pragma: no cover
-    assert not is_global_aiohttp_client_setup(), (
+    assert not is_global_aiohttp_client_setup() and _GLOBAL_AIOHTTP_CONTROL_CLIENT is None, (
         "There is already a global aiohttp client setup. Please refactor your code or call `global_aiohttp_client_exit` if you want to explicitly re-make the client!"
     )
 
@@ -479,22 +479,34 @@ def is_global_aiohttp_client_request_debug_enabled() -> bool:
     return _GLOBAL_AIOHTTP_CLIENT_REQUEST_DEBUG
 
 
+async def global_aiohttp_client_exit_async() -> None:
+    """Close worker-owned pools on their running event loop before worker reuse."""
+    global _GLOBAL_AIOHTTP_CLIENT, _GLOBAL_AIOHTTP_CONTROL_CLIENT, _GLOBAL_AIOHTTP_CLIENT_CONFIG
+    global _GLOBAL_AIOHTTP_CLIENT_QUEUE_TELEMETRY, _GLOBAL_AIOHTTP_CLIENT_REQUEST_DEBUG
+    first_error = None
+    for name in ("_GLOBAL_AIOHTTP_CLIENT", "_GLOBAL_AIOHTTP_CONTROL_CLIENT"):
+        client = globals()[name]
+        if client is None:
+            continue
+        try:
+            await client.close()
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+        finally:
+            if client.closed:
+                globals()[name] = None
+    if _GLOBAL_AIOHTTP_CLIENT is None and _GLOBAL_AIOHTTP_CONTROL_CLIENT is None:
+        _GLOBAL_AIOHTTP_CLIENT_CONFIG = None
+        _GLOBAL_AIOHTTP_CLIENT_QUEUE_TELEMETRY = False
+        _GLOBAL_AIOHTTP_CLIENT_REQUEST_DEBUG = False
+    if first_error is not None:
+        raise first_error
+
+
 def global_aiohttp_client_exit():  # pragma: no cover
-    if not is_global_aiohttp_client_setup():
-        return
-
-    global _GLOBAL_AIOHTTP_CLIENT, _GLOBAL_AIOHTTP_CONTROL_CLIENT, _GLOBAL_AIOHTTP_CLIENT_QUEUE_TELEMETRY
-
-    async def close() -> None:
-        await _GLOBAL_AIOHTTP_CLIENT.close()
-        if _GLOBAL_AIOHTTP_CONTROL_CLIENT is not None:
-            await _GLOBAL_AIOHTTP_CONTROL_CLIENT.close()
-
-    asyncio.run(close())
-
-    _GLOBAL_AIOHTTP_CLIENT = None
-    _GLOBAL_AIOHTTP_CONTROL_CLIENT = None
-    _GLOBAL_AIOHTTP_CLIENT_QUEUE_TELEMETRY = False
+    if is_global_aiohttp_client_setup() or _GLOBAL_AIOHTTP_CONTROL_CLIENT is not None:
+        asyncio.run(global_aiohttp_client_exit_async())
 
 
 atexit.register(global_aiohttp_client_exit)
