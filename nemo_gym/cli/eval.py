@@ -915,15 +915,70 @@ def export_rollouts_as_atif() -> None:  # pragma: no cover
     print(f"Manifest: {result.manifest_fpath}")
 
 
+def _reverification_service_ownership(global_config: DictConfig, config):
+    """Bind lifecycle ownership before startup, independently of scientific score lineage."""
+    import hashlib
+
+    from nemo_gym.cli.service_ownership import ServiceOwnership, component_binding
+    from nemo_gym.rollout_reverification import _resolve_under_cwd_or_install, failures_path_for
+
+    output = Path(config.output_jsonl_fpath).absolute()
+    candidates = [output]
+    # The live /reverify_mode response chooses this prefix after startup. Do not
+    # guess that response or change the scorer's existing force semantics.
+    if config.force and not config.judge_failed_only and config.input_format != "atif":
+        candidates.append(output.with_name("unsafe_" + output.name))
+    for candidate in candidates:
+        for path in (candidate, failures_path_for(candidate)):
+            if path.is_symlink() or (path.exists() and not path.is_file()):
+                raise ConfigError("Reverification requires regular output paths, not directories or symlinks")
+        if candidate.parent.exists() and not candidate.parent.is_dir():
+            raise ConfigError("Reverification output parent must be a directory")
+    inputs = {}
+    for name in ("materialized_inputs_jsonl_fpath", "rollouts_jsonl_fpath", "atif_manifest_jsonl_fpath"):
+        value = getattr(config, name)
+        if value is not None:
+            path = _resolve_under_cwd_or_install(value)
+            if not path.is_file():
+                raise ConfigPathNotFoundError(f"Reverification input file not found: {path}")
+            inputs[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    components = {
+        key: OmegaConf.to_container(value, resolve=True)
+        for key, value in global_config.items()
+        if OmegaConf.is_dict(value)
+        and any(
+            kind in value
+            for kind in ("responses_api_models", "responses_api_agents", "resources_servers", "environment_servers")
+        )
+    }
+    source_root = Path(__file__).parent
+    binding = {
+        "operation": "reverify",
+        "output": str(output.resolve()),
+        "possible_outputs": [str(path.resolve()) for path in candidates],
+        "components": component_binding(components),
+        "inputs": inputs,
+        "source": {
+            name: hashlib.sha256((source_root / name).read_bytes()).hexdigest()
+            for name in ("env.py", "eval.py", "setup_command.py", "service_ownership.py")
+        },
+    }
+    return ServiceOwnership(output.with_suffix("") / "native_services", binding)
+
+
 @exit_cleanly_on_config_error
 def reverify_rollouts():  # pragma: no cover
     from nemo_gym.rollout_reverification import RolloutReverificationConfig, RolloutReverificationHelper
 
+    global_config = get_global_config_dict()
+    config = RolloutReverificationConfig.model_validate(global_config)
+    ownership = _reverification_service_ownership(global_config, config)
     rh = RunHelper()
+    rh._service_ownership = ownership
+    # RunHelper.start settles partial startup and closes its ownership lease on failure.
     rh.start(None)
 
     try:
-        config = RolloutReverificationConfig.model_validate(get_global_config_dict())
         rrh = RolloutReverificationHelper()
         asyncio.run(rrh.run_from_config(config))
     finally:
