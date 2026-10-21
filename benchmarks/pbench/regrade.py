@@ -24,8 +24,8 @@ def regrade(source: Path, task_id: str, workspace: Path, *, missing_result_is_mo
         paths[relative] = path
     workspace = workspace.resolve(strict=True)
     prediction = workspace / "result.json"
-    if prediction.is_symlink():
-        raise ValueError("Saved result must not be a symlink")
+    if prediction.is_symlink() or (prediction.exists() and not prediction.is_file()):
+        raise ValueError("Saved result must be a regular file")
     if not prediction.exists() and not missing_result_is_model_output:
         raise ValueError("Missing saved artifact is not evidence of a model omission")
     before = prediction.read_bytes() if prediction.exists() else None
