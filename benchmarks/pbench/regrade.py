@@ -15,7 +15,7 @@ def regrade(source: Path, task_id: str, workspace: Path, *, missing_result_is_mo
         raise ValueError("Task is outside frozen P-Bench sample")
     source = source.resolve(strict=True)
     paths = {}
-    for relative in ("tests/evaluate.py", "tests/answer_key.json"):
+    for relative in ("tests/evaluate.py", "tests/answer_key.json", "instruction.md", "environment/dataset.csv"):
         path = source / "tasks" / task_id / relative
         if path.is_symlink() or not path.resolve().is_relative_to(source):
             raise ValueError("Unsafe verifier source")
@@ -50,6 +50,7 @@ def regrade(source: Path, task_id: str, workspace: Path, *, missing_result_is_mo
         "strict": float(strict),
         "prediction_sha256": hashlib.sha256(before).hexdigest() if before is not None else None,
         "scorer_sha256": task["files"]["tests/evaluate.py"],
+        "source_hashes": {relative: task["files"][relative] for relative in paths},
         "new_model_calls": 0,
         "protocol": "creator single-run scores; not three-repeat pass@1/pass@3",
     }
