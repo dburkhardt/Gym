@@ -31,3 +31,16 @@ execution allocation. For capsule 8197429 the image control used 4 GiB, while th
 historical scientific workflow used 8 GiB. This option does not claim that the image
 probe ran with 8 GiB; CPU, storage and scientific deadlines remain unchanged.
 Only integer memory increases for already qualified capsules are supported.
+
+A narrowly reviewed compatibility transition admits the original capsule8197429
+v2 receipt under the exact later qualification implementation that only added
+capsule1906954 to the bionic allowlist. It requires the original qualification
+hash, default variant, exact reviewed implementation hash, and recomputed recipe,
+source, reference, scorer, runtime archive and probe inputs. All image/control
+checks still apply. Preparation preserves the original receipt and adds a separate
+`qualification_compatibility_reviews` entry; it does not claim a new image probe.
+Unknown implementations or changed inputs require review and remain refused.
+
+A future digest schema should bind the selected generated recipe and probes plus
+a versioned qualification engine, avoiding repeated mappings for unrelated
+capsule allowlist additions. That redesign is not part of this exception.

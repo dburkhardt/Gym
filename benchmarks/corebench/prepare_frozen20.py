@@ -56,7 +56,10 @@ def validate_qualification(row, receipt):
     if receipt.get("recipe_sha256") != recipe_digest(row) or receipt.get("source_sha256") != source_digest(row):
         raise ValueError("Qualification recipe/source differs")
     if receipt.get("qualification_sha256") != qualification_digest(row):
-        raise ValueError("Qualification probe/task/runtime binding missing or stale")
+        from benchmarks.corebench.qualification_compatibility import reviewed_compatibility
+
+        if reviewed_compatibility(row, receipt) is None:
+            raise ValueError("Qualification probe/task/runtime binding missing or stale")
     if not SHA.fullmatch(receipt["final_image"]):
         raise ValueError("Final image must be immutable")
     if not receipt["scientific_before"] or receipt["scientific_before"] != receipt["scientific_after"]:
@@ -100,9 +103,15 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
     unknown = set(qualifications) - set(sources)
     if unknown:
         raise ValueError("Qualification for an unknown capsule")
+    compatibility = {}
     for r in rows:
         if r["id"] in qualifications:
             validate_qualification(r, qualifications[r["id"]])
+            from benchmarks.corebench.qualification_compatibility import reviewed_compatibility
+
+            review = reviewed_compatibility(r, qualifications[r["id"]])
+            if review is not None:
+                compatibility[r["id"]] = review
     if not qualifications:
         raise ValueError("No qualified images; source inventory alone is not runnable")
     execution_resources = {} if execution_resources is None else execution_resources
@@ -183,6 +192,7 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
                     "retained": len(rows),
                     "published": len(published),
                     "qualification_receipts": qualifications,
+                    "qualification_compatibility_reviews": compatibility,
                     "execution_resources": resolved_resources,
                     "execution_resource_overrides": execution_resources,
                     "blocked": [{"id": r["id"], "status": r["status"]} for r in rows if r["id"] not in qualifications],
