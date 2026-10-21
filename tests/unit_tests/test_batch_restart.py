@@ -408,3 +408,95 @@ def test_external_harness_remains_unsupported(tmp_path):
     config["agent"] = {"responses_api_agents": {"harbor_agent": {"entrypoint": "app.py"}}}
     with pytest.raises(ConfigError, match="unsupported"):
         bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+
+
+@pytest.mark.parametrize("target", ["agent", "missing", "model"])
+def test_native_legacy_relay_restart_binding(tmp_path, target):
+    tracker, config, inputs, *_ = fixture(tmp_path)
+    tracker.execution_binding = None
+    config["relay"] = {
+        "environment_servers": {
+            "legacy_agent": {
+                "entrypoint": "app.py",
+                "agent_server": {"type": "responses_api_agents", "name": target},
+            }
+        }
+    }
+    bind_execution(tracker, config, inputs, resume=False, require_prior=False, capture_dirs=[tmp_path / "captures"])
+    if target == "agent":
+        assert tracker.execution_binding["restart_scope_qualified"]
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+    else:
+        assert not tracker.execution_binding["restart_scope_qualified"]
+        with pytest.raises(ConfigError, match="unsupported"):
+            bind_execution(
+                tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"]
+            )
+
+
+@pytest.mark.parametrize("bad", [None, [], {"name": []}, {"name": "agent", "type": None}])
+def test_legacy_relay_invalid_reference_fails_closed(tmp_path, bad):
+    tracker, config, inputs, *_ = fixture(tmp_path)
+    tracker.execution_binding = None
+    config["relay"] = {"environment_servers": {"legacy_agent": {"agent_server": bad}}}
+    with pytest.raises(ConfigError):
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+
+
+def test_legacy_relay_target_change_rejected(tmp_path):
+    tracker, config, inputs, *_ = fixture(tmp_path)
+    tracker.execution_binding = None
+    config["other"] = config["agent"]
+    config["relay"] = {
+        "environment_servers": {"legacy_agent": {"agent_server": {"type": "responses_api_agents", "name": "agent"}}}
+    }
+    bind_execution(tracker, config, inputs, resume=False, require_prior=False, capture_dirs=[tmp_path / "captures"])
+    config["relay"]["environment_servers"]["legacy_agent"]["agent_server"]["name"] = "other"
+    with pytest.raises(ConfigError, match="binding changed"):
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+
+
+@pytest.mark.parametrize(
+    "outcomes,accepted",
+    [
+        ([("rejected", 429)], True),
+        ([], False),
+        ([("rejected", 503)], False),
+        ([("response_headers", 503)], False),
+        ([("rejected", 503), ("captured", 200)], False),
+    ],
+)
+def test_capture_qualified_rejection_only(tmp_path, outcomes, accepted):
+    tracker, config, inputs, row, receipt, kwargs = fixture(tmp_path)
+    row.pop("failure_kind")
+    kwargs["failures_path"].write_text(json.dumps(row) + "\n")
+    payload = json.loads(receipt.read_text())
+    payload["failures"][0]["failure_sha256"] = digest(row)
+    receipt.write_text(json.dumps(payload))
+    capture = tmp_path / "captures"
+    if outcomes:
+        (capture / "1-0.capture.jsonl").write_text(
+            json.dumps(
+                {
+                    "model_call_id": "actual-call",
+                    "provider_attempts": [{"outcome": outcome, "status_code": status} for outcome, status in outcomes],
+                }
+            )
+            + "\n"
+        )
+    if accepted:
+        assert admitted_prior_attempts(receipt, capture_dirs=[capture], **kwargs) == {"1-0"}
+    else:
+        with pytest.raises(Exception, match="infrastructure failure|unresolved provider"):
+            admitted_prior_attempts(receipt, capture_dirs=[capture], **kwargs)
+
+
+@pytest.mark.parametrize("malformed", [None, [], {"legacy_agent": None}])
+def test_malformed_relay_implementation_rejected(tmp_path, malformed):
+    tracker, config, inputs, *_ = fixture(tmp_path)
+    tracker.execution_binding = None
+    config["relay"] = {"environment_servers": malformed}
+    with pytest.raises(ConfigError, match="Malformed"):
+        bind_execution(
+            tracker, config, inputs, resume=False, require_prior=False, capture_dirs=[tmp_path / "captures"]
+        )

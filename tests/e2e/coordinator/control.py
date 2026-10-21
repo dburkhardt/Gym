@@ -14,12 +14,16 @@ import yaml
 from aiohttp import web
 
 
-async def main(out, *, logged=False, completed=False, distribution_control=False):
+async def main(out, *, logged=False, completed=False, distribution_control=False, restart_control=False):
     if distribution_control and not completed:
         raise ValueError("Distribution control requires completed-run mode")
+    if restart_control:
+        completed = True
     task_count = 4 if distribution_control else 3
     repeat_count = 2 if distribution_control else 1
     expected_calls = task_count * repeat_count if completed else 2
+    if restart_control:
+        expected_calls += 1
     out = out.absolute()
     out.mkdir(exist_ok=False)
     source = Path.cwd()
@@ -33,6 +37,8 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         body = await req.json()
         calls.append(body)
         (out / "provider-calls.json").write_text(json.dumps(calls))
+        if restart_control and len(calls) == 2:
+            return web.json_response({"error": {"message": "controlled quota rejection"}}, status=429)
         if len(calls) > 1 and not completed:
             await asyncio.sleep(180)
         return web.json_response(
@@ -48,7 +54,13 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
                         "type": "message",
                         "role": "assistant",
                         "status": "completed",
-                        "content": [{"type": "output_text", "text": "Option 1", "annotations": []}],
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "\\boxed{A}" if restart_control else "Option 1",
+                                "annotations": [],
+                            }
+                        ],
                     }
                 ],
                 "parallel_tool_calls": False,
@@ -91,7 +103,7 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         for c in [
             "responses_api_models/openai_model",
             "responses_api_agents/simple_agent",
-            "resources_servers/proteinlmbench",
+            "resources_servers/mcqa" if restart_control else "resources_servers/proteinlmbench",
             "environment_servers/legacy_agent",
         ]:
             p = out / "venvs" / c / ".venv"
@@ -143,6 +155,17 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
                 }
             },
         }
+        if restart_control:
+            for row in rows:
+                row["expected_answer"] = "A"
+                row["grading_mode"] = "strict_single_letter_boxed"
+            (out / "sample.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            dataset = config.pop("proteinlmbench")["resources_servers"]["proteinlmbench"]["datasets"]
+            dataset[0]["name"] = "restart_fixture"
+            config["config_paths"] = ["resources_servers/mcqa/configs/mcqa.yaml"]
+            config["mcqa_simple_agent"] = {"responses_api_agents": {"simple_agent": {"datasets": dataset}}}
+            config["route_failures_to_sidecar"] = True
+            config["require_complete"] = False
         if logged:
             config["nemo_gym_log_dir"] = str(out / "server-logs")
         (out / "runtime.yaml").write_text(yaml.safe_dump(config))
@@ -204,6 +227,27 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         await child.wait()
         report["coordinator_exit"] = child.returncode
         report["orphan_cleanup_scope"] = "fresh native CLI reconciles durable exact-owned service receipts"
+        if restart_control:
+            from nemo_gym.batch_restart import digest
+
+            status_path = out / "results" / "batch_status.json"
+            failures_path = out / "results_failures.jsonl"
+            failed = [json.loads(line) for line in failures_path.read_text().splitlines()]
+            assert len(failed) == 1
+            row = failed[0]
+            key = f"{row['_ng_task_index']}-{row['_ng_rollout_index']}"
+            status = json.loads(status_path.read_text())
+            (out / "restart-selection.json").write_text(
+                json.dumps(
+                    {
+                        "execution_binding_sha256": digest(status["execution_binding"]),
+                        "failures": [{"capture_key": key, "failure_sha256": digest(row)}],
+                    }
+                )
+            )
+            config["guarded_restart_receipt_fpath"] = str(out / "restart-selection.json")
+            (out / "runtime.yaml").write_text(yaml.safe_dump(config))
+            report["original_failure_sha256"] = hashlib.sha256(failures_path.read_bytes()).hexdigest()
         log2 = (out / "resume.log").open("w")
         resume = await asyncio.create_subprocess_exec(
             *(command + ["--resume"]), env=env, stdout=log2, stderr=asyncio.subprocess.STDOUT
@@ -211,12 +255,29 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         children.append(resume)
         resume_children = {}
         for _ in range(900):
-            if psutil.pid_exists(resume.pid):
+            try:
                 for owned in psutil.Process(resume.pid).children(recursive=True):
                     resume_children[(owned.pid, owned.create_time())] = owned
+            except psutil.NoSuchProcess:
+                pass
             if resume.returncode is not None or len(calls) > expected_calls:
                 break
             await asyncio.sleep(0.1)
+        if restart_control:
+            assert resume.returncode == 0
+            completed_bytes = (out / "results.jsonl").read_bytes()
+            calls_before_completed_resume = len(calls)
+            config.pop("guarded_restart_receipt_fpath")
+            (out / "runtime.yaml").write_text(yaml.safe_dump(config))
+            with (out / "completed-resume.log").open("w") as completed_log:
+                completed_resume = await asyncio.create_subprocess_exec(
+                    *(command + ["--resume"]), env=env, stdout=completed_log, stderr=asyncio.subprocess.STDOUT
+                )
+                children.append(completed_resume)
+                assert await asyncio.wait_for(completed_resume.wait(), 60) == 0
+            assert len(calls) == calls_before_completed_resume
+            assert (out / "results.jsonl").read_bytes() == completed_bytes
+            report["completed_resume_additional_calls"] = 0
         report["initial_owned_children_alive"] = [
             p.pid for p in descendants if p.is_running() and p.status() != psutil.STATUS_ZOMBIE
         ]
@@ -267,7 +328,17 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         report["logged_server_launch"] = logged
         report["resume_exit"] = resume.returncode
         report["calls_after_resume"] = len(calls)
-        report["completed_result_preserved"] = (out / "results.jsonl").read_bytes() == prior
+        report["completed_result_preserved"] = (
+            (out / "results.jsonl").read_bytes().startswith(prior)
+            if restart_control
+            else (out / "results.jsonl").read_bytes() == prior
+        )
+        if restart_control:
+            final_rows = [json.loads(line) for line in (out / "results.jsonl").read_text().splitlines()]
+            assert len(final_rows) == task_count
+            assert sum(row.get("_ng_attempt_index", 0) == 1 for row in final_rows) == 1
+            assert hashlib.sha256(failures_path.read_bytes()).hexdigest() == report["original_failure_sha256"]
+            report["explicit_new_attempt"] = True
         report["resumed_unknown_resend"] = not completed and len(calls) > 2
         report["completed_run_control"] = completed
         if distribution_control:

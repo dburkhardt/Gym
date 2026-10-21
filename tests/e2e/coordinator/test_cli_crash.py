@@ -22,3 +22,8 @@ async def test_completed_run_resume_retains_calls(tmp_path):
 @pytest.mark.skipif(os.environ.get("NEMO_GYM_COORDINATOR_E2E") != "1", reason="local native CLI processes")
 async def test_dataset_repeat_distribution_and_completed_resume(tmp_path):
     await main(tmp_path / "control", completed=True, distribution_control=True)
+
+
+@pytest.mark.skipif(os.environ.get("NEMO_GYM_COORDINATOR_E2E") != "1", reason="Opt-in native subprocess control")
+async def test_explicit_rejected_provider_restart(tmp_path):
+    await main(tmp_path / "control", restart_control=True)

@@ -7,7 +7,8 @@ select a better answer.
 
 Default guarded resume still skips completed rows and refuses occupied capture
 identities. The explicit path currently supports only inspected built-in
-`simple_agent`, `openai_model`, `mcqa` and `example_single_tool_call` components.
+`simple_agent`, `openai_model`, `mcqa` and `example_single_tool_call` components,
+including the native `legacy_agent` relay bound to that simple agent.
 The exact maintained SciCode graph can also qualify when its native component
 interpreters, prompt/source files, H5 checksum and locally inspected immutable
 Docker image all validate. Missing environments or images fail closed; no setup,
@@ -21,7 +22,13 @@ Harbor and other external creator runtimes, skills and external prompt configura
 unsupported; their dependency/runtime qualification is not inferred from Python
 source alone. No historical run is retroactively made eligible.
 
-From the first guarded run, an existing native `batch_manifest_fpath` gains an
+The standard guarded CLI creates an existing-schema batch manifest beside the
+output when none is explicitly supplied, including for one benchmark. Its
+component-recipe digest binds resolved server settings; the separate full execution
+binding also covers global scientific settings. An explicit manifest remains
+authoritative. Incompatible existing manifests are never overwritten.
+
+From the first guarded run, the native `batch_manifest_fpath` gains an
 `execution_binding` in its existing `batch_status.json`. It binds the manifest,
 exact materialized input bytes, resolved server settings, collector configuration,
 other global options, capture-store IDs/paths, Python/package versions and current
@@ -53,7 +60,11 @@ Native failure counts supply monotonically higher attempt indices.
 
 Eligible rows need a bound native failure record, no reward, and a positive
 infrastructure `failure_kind`: provider unavailable/quota/OOM, session lost or
-expired. A generic agent error is insufficient. All prior provider sends must be
+expired. An untyped outer agent failure can additionally qualify only when every
+physical request in its exact bound capture is conclusively rejected HTTP 429,
+with no successful or ambiguous sibling request. The raw failure row is unchanged.
+HTTP 503 is intentionally not such proof: the current transport records its
+acceptance as unknown, and recovery refuses to resend. A generic agent error is insufficient. All prior provider sends must be
 reconciled, with no incomplete/pending captures; changing attempt suffix or capture
 storage cannot evade uncertainty. Same-attempt reuse is always refused. Scientific
 budget exhaustion remains in its original denominator and cannot be selected.

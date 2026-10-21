@@ -55,6 +55,7 @@ def bind_execution(
     supported = {
         ("responses_api_models", "openai_model"),
         ("responses_api_agents", "simple_agent"),
+        ("environment_servers", "legacy_agent"),
         ("resources_servers", "mcqa"),
         ("resources_servers", "example_single_tool_call"),
     }
@@ -64,7 +65,11 @@ def bind_execution(
         if not isinstance(value, dict):
             continue
         for kind in _SERVER_TYPES & value.keys():
+            if not isinstance(value[kind], dict):
+                raise ConfigError("Malformed server implementation mapping in batch binding")
             for implementation, settings in value[kind].items():
+                if not isinstance(settings, dict):
+                    raise ConfigError("Malformed server settings in batch binding")
                 root = Path(kind) / implementation
                 entrypoint = root / settings.get("entrypoint", "app.py")
                 if (kind, implementation) not in supported or settings.get("entrypoint", "app.py") != "app.py":
@@ -79,6 +84,26 @@ def bind_execution(
                     implementation: configuration_digest(settings) for implementation, settings in value[kind].items()
                 }
             }
+    # The native CLI relays legacy agents through this built-in environment.
+    # Qualify only the unchanged relay to an admitted simple agent, never an
+    # arbitrary target selected through the otherwise generic AgentServerRef.
+    for value in config.values():
+        if not isinstance(value, dict):
+            continue
+        environments = value.get("environment_servers", {})
+        if "legacy_agent" not in environments:
+            continue
+        relay = environments["legacy_agent"]
+        reference = relay.get("agent_server")
+        if not isinstance(reference, dict) or not isinstance(reference.get("name"), str):
+            raise ConfigError("Malformed legacy relay agent reference in batch binding")
+        target = config.get(reference["name"], {})
+        if (
+            reference.get("type") != "responses_api_agents"
+            or not isinstance(target, dict)
+            or set(target.get("responses_api_agents", {})) != {"simple_agent"}
+        ):
+            qualified = False
     if not servers:
         raise ConfigError("Guarded batch binding requires resolved server configurations")
     collector = dict(collector_config or {})
@@ -124,6 +149,10 @@ def bind_execution(
         "observability_enabled",
         "model_call_capture_dir",
         "provider_dispatch_guard",
+        "guarded_restart_receipt_fpath",
+        "resume_from_cache",
+        "reuse_existing_data_preparation",
+        "disallowed_ports",
     ):
         global_science.pop(key, None)
     scientific_closure = None
@@ -156,6 +185,7 @@ def bind_execution(
         "server_protocol_sha256": digest(servers),
         "collector_protocol_sha256": configuration_digest(collector),
         "global_options_sha256": configuration_digest(global_science),
+        "global_option_digests": {key: configuration_digest({key: value}) for key, value in global_science.items()},
         "implementation_sha256": digest(source_hashes),
         "capture_stores": stores,
         "restart_scope_qualified": qualified,
@@ -176,12 +206,47 @@ def bind_execution(
             "Explicit restart requires a previously bound native batch; old unbound runs cannot be relabeled"
         )
     if prior is not None and prior != binding:
-        raise ConfigError("Batch execution binding changed: manifest, tasks, model or protocol differ")
+        changed = sorted(key for key in set(prior) | set(binding) if prior.get(key) != binding.get(key))
+        details = ""
+        if "global_option_digests" in changed:
+            old = prior.get("global_option_digests", {})
+            new = binding["global_option_digests"]
+            details = (
+                " (global keys: "
+                + ", ".join(sorted(key for key in set(old) | set(new) if old.get(key) != new.get(key)))
+                + ")"
+            )
+        raise ConfigError("Batch execution binding changed: " + ", ".join(changed) + details)
     tracker.execution_binding = binding
     return digest(binding)
 
 
-def admitted_prior_attempts(receipt_path, *, binding_sha256, failures_path, pending_rows, completed_keys):
+def _captured_provider_quota_rejection(key, capture_dirs):
+    """Qualify only a fully rejected 429 attempt, never an outer relay error."""
+    from nemo_gym.base_responses_api_model import CaptureStore
+
+    attempts = []
+    for directory in capture_dirs:
+        store = CaptureStore(directory, provider_dispatch_guard=True)
+        store.assert_dispatch_reconciled([key])
+        if store.is_incomplete(key) or store.has_pending(key):
+            return False
+        calls = store.read(key)
+        records = store.dispatch_records(key)
+        if len(calls) != len(records):
+            return False
+        for record in records:
+            if not record["provider_attempts"]:
+                return False
+            attempts.extend(record["provider_attempts"])
+    return bool(attempts) and all(
+        attempt.get("outcome") == "rejected" and attempt.get("status_code") == 429 for attempt in attempts
+    )
+
+
+def admitted_prior_attempts(
+    receipt_path, *, binding_sha256, failures_path, pending_rows, completed_keys, capture_dirs=()
+):
     """Return exact prior capture keys; receipt is an explicit operator choice, not a retry policy."""
     from nemo_gym.base_responses_api_model import maybe_rollout_id_from_run_body
 
@@ -217,8 +282,11 @@ def admitted_prior_attempts(receipt_path, *, binding_sha256, failures_path, pend
             raise ConfigError("Completed scientific output cannot be selected for restart")
         if pending.get(logical.rollout_id, -1) <= logical.attempt:
             raise ConfigError("Restart must be a monotonically new native attempt")
+        failure_kind = row.get("failure_kind")
+        if failure_kind is None and _captured_provider_quota_rejection(key, capture_dirs):
+            failure_kind = "provider_quota_exhausted"
         if (
-            row.get("failure_kind") not in _INFRASTRUCTURE_KINDS
+            failure_kind not in _INFRASTRUCTURE_KINDS
             or not row.get("_ng_failure_class")
             or row.get("reward") is not None
         ):

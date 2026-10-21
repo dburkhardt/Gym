@@ -3356,6 +3356,7 @@ class RolloutCollectionHelper(BaseModel):
                         failures_path=failures_fpath,
                         pending_rows=input_rows,
                         completed_keys=persisted_success_keys,
+                        capture_dirs=capture_dirs,
                     )
                 )
         if admitted_prior:

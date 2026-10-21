@@ -553,6 +553,73 @@ def plan_rollout_collection():
     e2e_rollout_collection()
 
 
+def _ensure_guarded_batch_manifest(config, collector, planned_rows, output_fpath):
+    """Use the existing batch contract for guarded native CLI runs, including one member."""
+    if not config.get("provider_dispatch_guard", False) or collector.batch_manifest_fpath:
+        return
+    import os
+    from uuid import uuid4
+
+    from nemo_gym.batch_status import BatchManifest, observe_materialized_rows
+    from nemo_gym.provider_dispatch import configuration_digest
+    from nemo_gym.rollout_collection import NG_ENVIRONMENT_SERVER_KEY, RolloutCollectionHelper, _materialized_taskset
+
+    if any(_materialized_taskset(row) is not None for row in planned_rows):
+        print(
+            "Explicit infrastructure restart is unqualified for native taskset routing; ordinary execution unchanged."
+        )
+        return
+    rows = deepcopy(planned_rows)
+    RolloutCollectionHelper.resolve_task_sources([row for row in rows if NG_ENVIRONMENT_SERVER_KEY not in row], config)
+    RolloutCollectionHelper._stamp_environment_server_agent_refs(rows, config)
+    observations = observe_materialized_rows(rows)
+    resolved = OmegaConf.to_container(config, resolve=True)
+    kinds = {"responses_api_agents", "responses_api_models", "resources_servers", "environment_servers"}
+    recipe = {
+        name: {
+            kind: {implementation: configuration_digest(settings) for implementation, settings in value[kind].items()}
+            for kind in kinds.intersection(value)
+        }
+        for name, value in resolved.items()
+        if isinstance(value, dict) and kinds.intersection(value)
+    }
+    recipe_hash = configuration_digest(recipe)
+    manifest = BatchManifest.model_validate(
+        {
+            "members": {
+                agent: {
+                    "agent_name": agent,
+                    "task_sources": observation.task_sources,
+                    "dataset_sha256": observation.dataset_sha256,
+                    "expected_task_count": observation.task_count,
+                    "expected_rollout_count": observation.rollout_count,
+                    "repeat_policy": observation.repeat_policy.model_dump(),
+                    "resolved_recipe_sha256": recipe_hash,
+                    "metric_keys": [],
+                }
+                for agent, observation in observations.items()
+            }
+        }
+    ).model_dump(mode="json")
+    path = output_fpath.with_suffix("") / "batch_manifest.json"
+    encoded = json.dumps(manifest, sort_keys=True, indent=2).encode() + b"\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != encoded:
+                raise ConfigError("Existing guarded batch manifest differs; preserve run and use a distinct output")
+    finally:
+        temporary.unlink(missing_ok=True)
+    collector.batch_manifest_fpath = str(path)
+
+
 @exit_cleanly_on_config_error
 def e2e_rollout_collection():  # pragma: no cover
     from nemo_gym.rollout_collection import (
@@ -619,6 +686,7 @@ def e2e_rollout_collection():  # pragma: no cover
     if any("_ng_dataset_num_repeats" not in row for row in prepared_rows):
         raise ConfigError("Prepared eval cache predates deferred repeats; use a fresh output/preparation directory.")
     planned_rows = RolloutCollectionHelper()._preprocess_rows_from_config(rollout_collection_config)
+    _ensure_guarded_batch_manifest(global_config_dict, rollout_collection_config, planned_rows, output_fpath)
     from collections import Counter
 
     distribution = Counter(row["_ng_task_index"] for row in planned_rows)
