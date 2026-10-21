@@ -82,6 +82,8 @@ Harbor defaults to a 60-second worker-finalizer settlement window and a 70-secon
 
 Inspect the job's `gym-cancellation-request.json` and `gym-cancellation-worker.json`, retained artifacts, and exact owned container/service state. A settled Ray result or worker receipt alone does not prove Docker cleanup. Missing receipts, artifact errors, or remaining containers require reconciliation before releasing resources. See the [Harbor integration guide](../responses_api_agents/harbor_agent/README.md) for the supported boundaries. Local regression tests cover this policy; each new execution environment still needs its native cleanup check.
 
+For readonly nested artifact trees, the [opt-in bundled Docker export](../responses_api_agents/harbor_agent/README.md) preserves source permissions and validates the captured tree before publication. Select only the exact required paths through the existing environment configuration. Before a long run, check the complete tree against its 1GiB and 100,000-member limits, including expected outputs; links and special files are unsupported. Do not omit required inputs or merge a prior partial capture to make export pass. Retain both Harbor's artifact manifest and the sibling bundle receipt. A capture failure leaves the scientific result unqualified even when the solver finished.
+
 For visual tasks, verify the complete generated-file → image observation → model request path. A vision-capable model behind a text-only terminal harness does not establish visual-task support. Keep an image-capable harness variant explicit and preserve exact image bytes in model-call evidence.
 
 ## Resume or regrade deliberately
