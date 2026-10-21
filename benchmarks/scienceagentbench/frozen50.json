@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "source_revision": "c26e151ed601ba109dc4d35e057ff8e73fec469d",
+  "dataset_revision": "9c6e96c9e74572e979b0930ee735041cef528cb7",
+  "split": "verified",
+  "parquet_sha256": "c6f937863a220bd1762a00c20a0f79cc8dfca900b819bdb552150310731ae147",
+  "source_files": {
+    "agent.py": "41552973b8eaae55bb7c78012b37d2e3487570802f01f5bec12b5c39be21e0df",
+    "run_infer.py": "de02f45825fcfaeb9ca8a3430e6fed1e03436f4071dba5e2e333488b7cb8316a",
+    "engine/base_engine.py": "8b6a93d411dc6d8ad7fc86f1da240be3815d0293ff31e0c0a16afb07a96ec4f1",
+    "engine/openai_engine.py": "26186e1c90a2ebdc677ffd8787bde367459d213c43440c47d84eae6fff713dda",
+    "compute_scores.py": "5cb7e93cc0403e0aac99e14c9feb2cf45973351f7bd47861c5c82d374bbf2eb0",
+    "gpt4_visual_judge.py": "e9a95f36638485c6e478c7412b14e8d9b94e0f0055a8db57ff71be6092a3d61a",
+    "evaluation/harness/run_evaluation.py": "1de6a40b3536bb983fce467217fb1b343774372501597b801b1f60f99428f8b3",
+    "evaluation/harness/test_spec.py": "d73889e6f566bc833b157638562d889238b39f23b5f126b35675d1b4d221ca8a",
+    "evaluation/harness/dockerfiles.py": "b0122b82a64165389a134216dffda8d6e9d3ff8bfc3ebb3795a00d54f2194b25"
+  },
+  "tasks": [
+    {
+      "row_index": 69,
+      "instance_id": 70,
+      "metadata_sha256": "8e78b15b71d3365f0fd292acf39192239d87030a1637926c8893723926953961"
+    },
+    {
+      "row_index": 52,
+      "instance_id": 53,
+      "metadata_sha256": "f6437f8ad870b5358484892c6c306a38878efd4e166c3568ab907288aae94206"
+    },
+    {
+      "row_index": 65,
+      "instance_id": 66,
+      "metadata_sha256": "7865cf4333b457149b5a805743f27664e68015e36f3187dabe90d116e29ddb6d"
+    },
+    {
+      "row_index": 71,
+      "instance_id": 72,
+      "metadata_sha256": "d2f3fdc48f54faea743d9672fc61b46c888373dee829041f7dfb5ca96d5e9955"
+    },
+    {
+      "row_index": 13,
+      "instance_id": 14,
+      "metadata_sha256": "fc33b540f3802f8cf2a9e2a89d384e2a306b8ef85eda0c8341af8bd4c00a566b"
+    },
+    {
+      "row_index": 31,
+      "instance_id": 32,
+      "metadata_sha256": "2a7b75f797c8a5b28b68768fdb2d5bf1f2aa2af6fd73f0a5f940254f8c45e328"
+    },
+    {
+      "row_index": 46,
+      "instance_id": 47,
+      "metadata_sha256": "94d5d2cef4e2d9d246c0a9b2638933719e7a9ee48d5a7e915503643958fb088c"
+    },
+    {
+      "row_index": 36,
+      "instance_id": 37,
+      "metadata_sha256": "38b4d9b7c1a816503f08fc577853a85a0ee84e368b7c6d773ff569556ac487bb"
+    },
+    {
+      "row_index": 100,
+      "instance_id": 101,
+      "metadata_sha256": "9db68a78eb6de412df5b8ac061472a60796d561b5e23fbcbad13754378313532"
+    },
+    {
+      "row_index": 22,
+      "instance_id": 23,
+      "metadata_sha256": "917ef623e4cd80e5cbdfb6896b315a87ae20bccc5f320ea6a669d87fe6d86ace"
+    },
+    {
+      "row_index": 77,
+      "instance_id": 78,
+      "metadata_sha256": "a4f8e47dd3e2fbf94e2549c69ded890a6aefedfb6f57c02318d63f284652a655"
+    },
+    {
+      "row_index": 58,
+      "instance_id": 59,
+      "metadata_sha256": "0b7ab4d5f6f0c2fcefda55f65ce47dee6bbeef050035feddffdfe9900229b455"
+    },
+    {
+      "row_index": 20,
+      "instance_id": 21,
+      "metadata_sha256": "274eb7101c9704319e6bacfabbef3a9c325e14919a2da7ff185408f5038034cd"
+    },
+    {
+      "row_index": 94,
+      "instance_id": 95,
+      "metadata_sha256": "51fe3c4c726b818690d566b4da79b3d378e538afb6f600b6593432946972c6a3"
+    },
+    {
+      "row_index": 83,
+      "instance_id": 84,
+      "metadata_sha256": "fc2f1b0e0e801bf4979e27a59a412f8863b54b6b8ed71d1e01b17259d6a260c7"
+    },
+    {
+      "row_index": 91,
+      "instance_id": 92,
+      "metadata_sha256": "ffaa0ee53222d0705002a3b5881bc84384ad757f2221ee869528623041ab8722"
+    },
+    {
+      "row_index": 12,
+      "instance_id": 13,
+      "metadata_sha256": "79c44830be9bb5867006019126f7737a97bc79603fa8ceeb9d65e45dcefdc96b"
+    },
+    {
+      "row_index": 2,
+      "instance_id": 3,
+      "metadata_sha256": "b79cbab1770e80fa5e8d70ec27f9e06e7de12ec282766d65324766dc5faf424e"
+    },
+    {
+      "row_index": 64,
+      "instance_id": 65,
+      "metadata_sha256": "e710d8af83b38df0d93e8d1385ad095560cdcd944ffb2e985d4556618f2df63c"
+    },
+    {
+      "row_index": 37,
+      "instance_id": 38,
+      "metadata_sha256": "c404a098dcffb5ccbc3ab53ed7ea5ec2d0958a35220f4f9ac83664ea791e8919"
+    },
+    {
+      "row_index": 19,
+      "instance_id": 20,
+      "metadata_sha256": "86d42d8961dc5096f966904623c8ffd8b3ea3a370ce7e5696b470ed11bf59de6"
+    },
+    {
+      "row_index": 101,
+      "instance_id": 102,
+      "metadata_sha256": "d0e8a75ace9fc229598e051f86c146b705144ed5875e6ed1e7330a99be2cd787"
+    },
+    {
+      "row_index": 33,
+      "instance_id": 34,
+      "metadata_sha256": "5700fb417dd9e299e3738d558592e7d2aa03b787c879ed3e72990477af4635da"
+    },
+    {
+      "row_index": 68,
+      "instance_id": 69,
+      "metadata_sha256": "90f19a2b0a83d9cacb07049700478e44734f980f8b3ccb632139da448eeaf899"
+    },
+    {
+      "row_index": 79,
+      "instance_id": 80,
+      "metadata_sha256": "7b8be7cbc5b468f2ac2de0f673bdfc52b3deafbe17ceb2ed61e2ce69e064f3ad"
+    },
+    {
+      "row_index": 51,
+      "instance_id": 52,
+      "metadata_sha256": "b58be3c68230ad73f7aec13133d1fca6168ff2de2a3ea4a8a586ea79c8bfc5ac"
+    },
+    {
+      "row_index": 23,
+      "instance_id": 24,
+      "metadata_sha256": "54bd70536a48fabebb308fee5e44308d28ce66d7ca5a406e01d26b4790a71b31"
+    },
+    {
+      "row_index": 92,
+      "instance_id": 93,
+      "metadata_sha256": "6d34b1d76d5c2d7a2e66534734b43685cf26845d4f7ca6003489000e6902fa50"
+    },
+    {
+      "row_index": 80,
+      "instance_id": 81,
+      "metadata_sha256": "86d90b14da24e5a07558dac9ece55f6028fb89bb4a7ee6060c9008c90a3b5f1b"
+    },
+    {
+      "row_index": 39,
+      "instance_id": 40,
+      "metadata_sha256": "60f0f23b38b0ff85962b734c7e9dccaf4591bd253e92a3efa3b561a9d3597389"
+    },
+    {
+      "row_index": 10,
+      "instance_id": 11,
+      "metadata_sha256": "cb33e3f62308f558196b3a3444af20f2695d465661d6a0b20796494b073d671f"
+    },
+    {
+      "row_index": 44,
+      "instance_id": 45,
+      "metadata_sha256": "e9011338a3ad7d5bebfcdb3d93e6ab035060c801fd2908be5e090f494ea9dc8a"
+    },
+    {
+      "row_index": 11,
+      "instance_id": 12,
+      "metadata_sha256": "e1acae3889f12ae06645c22c35512d1d039c6be0e8e67fd8753d791f009038c6"
+    },
+    {
+      "row_index": 26,
+      "instance_id": 27,
+      "metadata_sha256": "7ed1919f33ad37bf5f81b70332c1de036341e15c1591bae283814377746c3ec6"
+    },
+    {
+      "row_index": 76,
+      "instance_id": 77,
+      "metadata_sha256": "681b7c08e6f028858560454dde2d764ab8a279c574f73cfa1d021d2cadb137da"
+    },
+    {
+      "row_index": 61,
+      "instance_id": 62,
+      "metadata_sha256": "f3425112a71ffe97d176c296bd3241d8ab480556b73ddcfbeb71bc206e971f89"
+    },
+    {
+      "row_index": 7,
+      "instance_id": 8,
+      "metadata_sha256": "9104298266950afec4d25e17dd0b79b485a4cb413525590f394e15ebdec68303"
+    },
+    {
+      "row_index": 95,
+      "instance_id": 96,
+      "metadata_sha256": "839cf8b3a4e74936b6488d0fd86e65f34fd790b7a9f5934e9d7fa03222935372"
+    },
+    {
+      "row_index": 32,
+      "instance_id": 33,
+      "metadata_sha256": "d2c04903adfaee3e037e18858fce4f8e8831607aec06353e380c9e62291f70cd"
+    },
+    {
+      "row_index": 57,
+      "instance_id": 58,
+      "metadata_sha256": "71b20dad2ff807235188062e4c87b679884746e2a220c916d794d96c1e9102f8"
+    },
+    {
+      "row_index": 6,
+      "instance_id": 7,
+      "metadata_sha256": "4bfc6f12cfb6b5a252a8ee7b3b5b222a0d5770b0a9b48edeffa28b5f1d216e57"
+    },
+    {
+      "row_index": 3,
+      "instance_id": 4,
+      "metadata_sha256": "32d96908667dd0041826b0570ceb07ad338a0d1745919108e56aa52142fe320a"
+    },
+    {
+      "row_index": 21,
+      "instance_id": 22,
+      "metadata_sha256": "8aa55d05e26815160d36298c0311dec0ee3cb0c3673bf27f239ac8225cbe44cd"
+    },
+    {
+      "row_index": 60,
+      "instance_id": 61,
+      "metadata_sha256": "34072313de7e8c1198c57afe5879b32d840cb51154302bfe83d77adddb26f7fd"
+    },
+    {
+      "row_index": 27,
+      "instance_id": 28,
+      "metadata_sha256": "613db475c4600072842a04d9516cae3f9cae0455ca40c359e820e0d724abf3ef"
+    },
+    {
+      "row_index": 1,
+      "instance_id": 2,
+      "metadata_sha256": "3b54f29b0be2770de34ffa19e352063a50e25b22939f8476ec2c495294aa8ea1"
+    },
+    {
+      "row_index": 47,
+      "instance_id": 48,
+      "metadata_sha256": "0a153e78b5ea9775c88141868f7e069586c216309d39f37b2d35e8d1c944620b"
+    },
+    {
+      "row_index": 59,
+      "instance_id": 60,
+      "metadata_sha256": "0afb145ec6c60340ba95330415265bca099bd6de202d7a3fffba88f0f7ad3bc9"
+    },
+    {
+      "row_index": 75,
+      "instance_id": 76,
+      "metadata_sha256": "bab6f731713215a694c99070279a5c2ecfa0076c25c8ca2b42dfd83c5f3354b7"
+    },
+    {
+      "row_index": 17,
+      "instance_id": 18,
+      "metadata_sha256": "45fe9361dd8990563e43571c04bcd1d22dc8b5e47db370af2cb2d7e6593cff51"
+    }
+  ]
+}
