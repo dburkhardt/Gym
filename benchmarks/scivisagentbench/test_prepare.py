@@ -25,5 +25,6 @@ def test_all_identities_preserved_without_judge_material_in_rows(tmp_path, monke
     rows = [json.loads(line) for line in out.read_text().splitlines()]
     assert [r['verifier_metadata']['task_id'] for r in rows] == list(tasks)
     assert len({r['task_id'] for r in rows}) == 11
+    assert all(r['verifier_metadata']['frozen_manifest_sha256'] == module.FROZEN_SHA256 for r in rows)
     assert b'secret-rubric' not in first
     assert (out.parent / 'tasks.json').read_bytes() == source.read_bytes()

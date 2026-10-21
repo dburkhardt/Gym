@@ -27,7 +27,7 @@ def prepare(source: Path | None = None, destination: Path | None = None) -> Path
         rows.append({
             'task_id': f'scivisagentbench::{key}',
             'responses_create_params': {'input': []},
-            'verifier_metadata': {'task_id': key},
+            'verifier_metadata': {'task_id': key, 'frozen_manifest_sha256': FROZEN_SHA256},
             'agent_ref': {'name': 'scivis_agent'},
         })
         if task['case_name'] != 'case_' + key.removeprefix('napari-case'):
