@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -24,6 +25,12 @@ from nemo_gym.rollout_observability import TrajectoryRecord
 
 
 CHECK_REGISTRY: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        id="model_call_invalid_likelihood_evidence",
+        evaluation_scope=CheckScope.ROLLOUT,
+        subject=CheckSubject.MODEL_CALL,
+        reads=frozenset({CheckInput.TRAJECTORY}),
+    ),
     CheckSpec(
         id="check_execution_error",
         evaluation_scope=CheckScope.ROLLOUT,
@@ -273,6 +280,7 @@ def _normalized_trajectory_calls(trajectory: dict[str, Any]) -> list[dict[str, A
                 "model_call_id": raw.get("model_call_id"),
                 "response_id": metadata.get("response_id"),
                 "model_ref": metadata.get("model_ref"),
+                "model": metadata.get("model"),
                 "status_code": metadata.get("status_code"),
                 "response_status": metadata.get("response_status"),
                 "finish_reason": metadata.get("finish_reason"),
@@ -508,7 +516,110 @@ def _rollout_missing_agent_turns(trajectory: dict[str, Any], subject: dict[str, 
     ]
 
 
+def _valid_prompt_likelihood(call: dict[str, Any]) -> bool:
+    """Require actual linked prompt likelihood evidence, never generated-token scores."""
+    request, response = call.get("request"), call.get("response")
+    if not isinstance(request, dict) or not isinstance(response, dict):
+        return False
+    if (
+        call.get("status_code") != 200
+        or _is_failed(call)
+        or not call.get("model_call_id")
+        or not call.get("model_ref")
+        or not call.get("response_id")
+        or response.get("id") != call["response_id"]
+        or not isinstance(request.get("model"), str)
+        or not request["model"]
+        or request["model"] != response.get("model")
+        or request["model"] != call.get("model")
+        or type(request.get("prompt_logprobs")) is not int
+        or request["prompt_logprobs"] != 0
+        or type(request.get("max_tokens")) is not int
+        or request["max_tokens"] != 1
+    ):
+        return False
+    usage = response.get("usage")
+    likelihoods = response.get("prompt_logprobs")
+    if not isinstance(usage, dict) or not isinstance(likelihoods, list):
+        return False
+    if (
+        type(usage.get("prompt_tokens")) is not int
+        or len(likelihoods) != usage["prompt_tokens"]
+        or len(likelihoods) < 2
+        or likelihoods[0] is not None
+        or call.get("tokens_in") != usage["prompt_tokens"]
+    ):
+        return False
+    for token in likelihoods[1:]:
+        if not isinstance(token, dict) or len(token) != 1:
+            return False
+        value = next(iter(token.values()))
+        if not isinstance(value, dict):
+            return False
+        score = value.get("logprob")
+        if type(score) not in (int, float) or not math.isfinite(score) or score > 0:
+            return False
+    return True
+
+
+def _likelihood_applicability(trajectory: dict[str, Any]) -> tuple[dict[str, set[str]], list[str]]:
+    """Return qualified invocation/call identities and explicit invalid intents."""
+    calls = _normalized_trajectory_calls(trajectory)
+    qualified, invalid = {}, []
+    for invocation in trajectory.get("invocations") or []:
+        if invocation.get("output_semantics") != "prompt_likelihood":
+            continue
+        identifier = invocation["invocation_id"]
+        _, bound = _bind_policy_call_views({"invocations": [invocation]}, calls)
+        if (
+            invocation.get("status") != "completed"
+            or _trajectory_has_any_gap(trajectory, _INCOMPLETE_MODEL_CALL_GAPS)
+            or _trajectory_has_gap(trajectory, "trajectory_projection_failed")
+            or bool(_trajectory_reference_contradictions(trajectory))
+            or not bound.matched_calls
+            or not bound.complete
+            or not all(_valid_prompt_likelihood(call) for call in bound.matched_calls)
+        ):
+            invalid.append(identifier)
+        else:
+            qualified[identifier] = {_call_identity(call) for call in bound.matched_calls}
+    # A call also attributed to a generative/unknown invocation is not an
+    # exclusively likelihood-only operation, even if an intent claims otherwise.
+    for item in [*(trajectory.get("invocations") or []), *(trajectory.get("turns") or [])]:
+        identifier = item.get("invocation_id")
+        if identifier in qualified:
+            continue
+        _, bound = _bind_policy_call_views({"invocations": [item]}, calls)
+        identities = {_call_identity(call) for call in bound.matched_calls}
+        for qualified_id in list(qualified):
+            if qualified[qualified_id] & identities:
+                qualified.pop(qualified_id)
+                invalid.append(qualified_id)
+    return qualified, invalid
+
+
+def _invalid_likelihood_evidence(trajectory: dict[str, Any], subject: dict[str, int | str]) -> list[Finding]:
+    _, invalid = _likelihood_applicability(trajectory)
+    return [
+        Finding(
+            check="model_call_invalid_likelihood_evidence",
+            subject=subject,
+            locator={"invocation_id": identifier},
+            detail={"reason": "likelihood intent lacks complete valid linked captured prompt likelihoods"},
+        )
+        for identifier in invalid
+    ]
+
+
 def _agent_turn_hollow(trajectory: dict[str, Any], subject: dict[str, int | str]) -> list[Finding]:
+    qualified, _ = _likelihood_applicability(trajectory)
+    exempt_turns = set()
+    calls = _normalized_trajectory_calls(trajectory)
+    for index, turn in enumerate(trajectory.get("turns") or []):
+        allowed = qualified.get(turn.get("invocation_id"), set())
+        bound, _ = _bind_policy_call_views({"turns": [turn]}, calls)
+        if allowed and bound.complete and all(_call_identity(call) in allowed for call in bound.matched_calls):
+            exempt_turns.add(index)
     return [
         Finding(
             check="agent_turn_hollow",
@@ -516,8 +627,8 @@ def _agent_turn_hollow(trajectory: dict[str, Any], subject: dict[str, int | str]
             locator=step.locator,
             detail={"reason": "agent turn has no message or tool calls"},
         )
-        for step in _agent_steps(trajectory)
-        if not step.has_message and not step.has_tool_calls
+        for index, step in enumerate(_agent_steps(trajectory))
+        if index not in exempt_turns and not step.has_message and not step.has_tool_calls
     ]
 
 
@@ -713,7 +824,11 @@ def _rollout_token_count_mismatch(
     return []
 
 
-def _model_call_runaway_generation(bindings: _CallBindings, subject: dict[str, int | str]) -> list[Finding]:
+def _model_call_runaway_generation(
+    bindings: _CallBindings, subject: dict[str, int | str], trajectory: dict[str, Any]
+) -> list[Finding]:
+    qualified, _ = _likelihood_applicability(trajectory)
+    exempt = set().union(*qualified.values()) if qualified else set()
     return [
         Finding(
             check="model_call_runaway_generation",
@@ -722,7 +837,8 @@ def _model_call_runaway_generation(bindings: _CallBindings, subject: dict[str, i
             detail={"finish_reason": call.get("finish_reason")},
         )
         for position, call in enumerate(bindings.matched_calls)
-        if not _is_context_overflow_rejection(call)
+        if _call_identity(call) not in exempt
+        and not _is_context_overflow_rejection(call)
         and call.get("finish_reason") in _LENGTH_LIMIT_FINISH_REASONS
         and not _response_has_content(call.get("response"))
     ]
@@ -758,6 +874,10 @@ _ROLLOUT_CHECKS: dict[
         record, bindings, subject
     ),
     "model_call_runaway_generation": lambda record, trajectory, bindings, subject: _model_call_runaway_generation(
-        bindings, subject
+        bindings, subject, trajectory
     ),
+    "model_call_invalid_likelihood_evidence": lambda record,
+    trajectory,
+    bindings,
+    subject: _invalid_likelihood_evidence(trajectory, subject),
 }

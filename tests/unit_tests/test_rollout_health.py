@@ -286,6 +286,14 @@ def test_all_registered_semantic_checks_fire_on_synthetic_artifacts(tmp_path: Pa
         (_record(8, 0, usage={"input_tokens": 3, "output_tokens": 2}), [_call(status_code=500)]),
         (_record(8, 1, usage={"input_tokens": 3, "output_tokens": 2}), [_call(status_code=408)]),
     ]
+    rows[2][0]["ng_trajectory"]["invocations"] = [
+        {
+            "invocation_id": "root",
+            "status": "completed",
+            "output_semantics": "prompt_likelihood",
+            "model_calls": [{"model_call_id": "c1"}],
+        }
+    ]
     rows.append(deepcopy(rows[0]))
     rollout_path = _write_fixture(tmp_path, rows)
 
@@ -1167,6 +1175,7 @@ def test_malformed_records_and_check_failures_become_findings(tmp_path: Path, mo
     assert digest.findings[0].locator == {"source_file": str(malformed), "line": 2}
     assert digest.findings[0].detail["reason"] == "rollout record is unreadable"
     assert set(digest.unobserved) == {
+        "model_call_invalid_likelihood_evidence",
         "check_execution_error",
         "rollout_duplicate_identity",
         "rollout_missing_agent_turns",

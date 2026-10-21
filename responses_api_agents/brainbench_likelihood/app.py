@@ -80,7 +80,9 @@ class BrainBenchAgent(NonExecutingSimpleAgent):
         publish(directory / "attempt.json", {"rollout_id": rollout_id, "lineage": lineage, "digest": digest})
         receipts, values, usages = [], [], []
         trajectory = TrajectoryRecord(task_id=rollout_id, rollout_id=rollout_id)
-        invocation = AgentInvocation(invocation_id="likelihood", status="completed")
+        invocation = AgentInvocation(
+            invocation_id="likelihood", status="completed", output_semantics="prompt_likelihood"
+        )
         trajectory.invocations.append(invocation)
         for ordinal, text in enumerate(pair["choices"]):
             payload = {

@@ -111,6 +111,10 @@ class AgentInvocation(ObservationModel):
 
     kind: Literal["agent_invocation"] = "agent_invocation"
     invocation_id: str
+    output_semantics: Literal["generation", "prompt_likelihood"] = Field(
+        default="generation",
+        description="Explicit scientific output contract; likelihood applicability still requires captured evidence.",
+    )
     parent_invocation_id: Optional[str] = None
     spawned_by_tool_call_id: Optional[str] = None
     status: Literal["completed", "failed", "incomplete", "unknown"] = Field(
