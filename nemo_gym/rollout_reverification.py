@@ -28,7 +28,7 @@ from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple
 from uuid import uuid4
 
 import orjson
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 from tqdm.asyncio import tqdm
 
@@ -819,12 +819,137 @@ def _verification_output_lease(output: Path):
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _verification_run_identity(output: Path, *, resume: bool, overwrite: bool, append: bool) -> str:
+def _verification_binding(config: RolloutReverificationConfig) -> dict:
+    """Bind local regrade ingredients, without persisting config values or source paths.
+
+    This is a cache-integrity boundary, not attestation of external data, packages,
+    remote services or runtime imports. Source trees are deliberately conservative.
+    """
+    from nemo_gym.cli.env import _resolve_server_dir
+    from nemo_gym.provider_dispatch import configuration_digest
+
+    placement = {
+        "host",
+        "port",
+        "num_workers",
+        "head_server",
+        "port_range_low",
+        "port_range_high",
+        "disallowed_ports",
+        "uv_venv_dir",
+        "skip_venv_if_present",
+        "observability_enabled",
+        "model_call_capture_dir",
+        "config_paths",
+        "resume_from_cache",
+        "overwrite",
+        "append",
+        "output_jsonl_fpath",
+        "materialized_inputs_jsonl_fpath",
+        "rollouts_jsonl_fpath",
+        "atif_manifest_jsonl_fpath",
+        "num_samples_in_parallel",
+        "disable_aggregation",
+        "rollout_reverification",
+        "reverify",
+        "reverify_rollouts",
+    }
+
+    def scientific(value):
+        if isinstance(value, dict):
+            return {
+                k: scientific(v)
+                for k, v in value.items()
+                if not any(
+                    word in k.lower()
+                    for word in ("api_key", "password", "auth_token", "access_token", "refresh_token", "authorization")
+                )
+            }
+        if isinstance(value, (list, tuple)):
+            return [scientific(v) for v in value]
+        return value
+
+    raw = setup_server_client().global_config_dict
+    resolved = OmegaConf.to_container(raw, resolve=True) if OmegaConf.is_config(raw) else dict(raw)
+    resolved = scientific({k: v for k, v in resolved.items() if k not in placement})
+    roots = {"shared/nemo_gym": Path(__file__).resolve().parent}
+    benchmarks = _resolve_under_cwd_or_install("benchmarks")
+    if benchmarks.is_dir():
+        roots["shared/benchmarks"] = benchmarks.resolve()
+    kinds = {"resources_servers", "responses_api_models", "responses_api_agents", "environment_servers"}
+    for value in resolved.values():
+        if not isinstance(value, dict):
+            continue
+        for kind in kinds & value.keys():
+            if not isinstance(value[kind], dict):
+                raise ConfigError("Invalid component mapping for reverification lineage")
+            for implementation, settings in value[kind].items():
+                if not isinstance(settings, dict):
+                    raise ConfigError("Invalid component settings for reverification lineage")
+                root = _resolve_server_dir(Path(kind) / implementation).resolve()
+                entry = (root / settings.get("entrypoint", "app.py")).resolve()
+                if not entry.is_relative_to(root) or not entry.is_file():
+                    raise ConfigError("Reverification component source unavailable")
+                roots[f"{kind}/{implementation}"] = root
+                # Only native service placement fields are non-scientific here;
+                # identically named fields nested inside tools remain bound.
+                for key in ("host", "port", "num_workers", "uvicorn_proxy_headers", "uvicorn_forwarded_allow_ips"):
+                    settings.pop(key, None)
+    sources = {}
+    for label, root in sorted(roots.items()):
+        tree = {}
+        for folder, directories, files in os.walk(root):
+            directories[:] = sorted(
+                d for d in directories if d not in {".venv", "__pycache__", "tests", "data", ".git"}
+            )
+            for name in sorted(files):
+                if name.endswith(".py"):
+                    path = Path(folder) / name
+                    tree[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        sources[label] = configuration_digest(tree)
+
+    def file_hash(path):
+        try:
+            return hashlib.sha256(_resolve_under_cwd_or_install(path).read_bytes()).hexdigest()
+        except OSError as error:
+            raise ConfigError("Reverification lineage input unavailable") from error
+
+    binding = {
+        "version": 1,
+        "inputs_sha256": file_hash(config.materialized_inputs_jsonl_fpath),
+        "rollouts_sha256": file_hash(
+            config.atif_manifest_jsonl_fpath if config.input_format == "atif" else config.rollouts_jsonl_fpath
+        ),
+        "config_sha256": configuration_digest(scientific(resolved)),
+        "options_sha256": configuration_digest(
+            scientific({k: v for k, v in config.model_dump().items() if k not in placement})
+        ),
+        "source_sha256": configuration_digest({"trees": sources}),
+        "scope": "local_python_and_resolved_config; external_assets_packages_and_services_unattested",
+    }
+    if config.judge_failed_only:
+        binding["failure_source_sha256"] = file_hash(failures_path_for(Path(config.rollouts_jsonl_fpath)))
+    if config.input_format == "atif":
+        # Manifest paths alone do not bind the referenced trajectory bytes.
+        payloads = _prepare_atif_payloads(
+            _resolve_under_cwd_or_install(config.materialized_inputs_jsonl_fpath),
+            _resolve_under_cwd_or_install(config.atif_manifest_jsonl_fpath),
+            config.limit,
+        )
+        binding["atif_projection_sha256"] = configuration_digest({"payloads": payloads})
+    return binding
+
+
+def _verification_run_identity(
+    output: Path, *, resume: bool, overwrite: bool, append: bool, binding: dict | None = None
+) -> str:
     """Durably bind one regrade run before dispatch; resume retains, overwrite replaces."""
     path = output.with_name(output.name + ".reverify-identity.json")
     existed = path.exists()
-    if resume and not existed:
-        raise ConfigError("cannot resume guarded reverification without its persisted run identity")
+    if (resume or (append and (output.exists() or failures_path_for(output).exists()))) and not existed:
+        raise ConfigError(
+            "cannot resume reverification without its persisted run identity and scorer lineage; use a new output"
+        )
     with path.open("a+b") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
@@ -832,12 +957,18 @@ def _verification_run_identity(output: Path, *, resume: bool, overwrite: bool, a
             existing = handle.read()
             if existed:
                 try:
-                    identity = orjson.loads(existing)["verification_run_id"]
+                    record = orjson.loads(existing)
+                    identity = record["verification_run_id"]
                     if not isinstance(identity, str) or not identity:
                         raise ValueError("missing identity")
                 except (ValueError, KeyError, TypeError) as error:
                     raise ConfigError("invalid verification run identity; reconcile before resuming") from error
             if existing and (resume or append):
+                if binding is not None and record.get("binding") != binding:
+                    raise ConfigError(
+                        "Reverification scorer/input/config lineage changed or legacy binding missing; "
+                        "preserve old artifacts and use a new output"
+                    )
                 os.fsync(handle.fileno())
                 directory = os.open(path.parent, os.O_RDONLY)
                 try:
@@ -852,7 +983,14 @@ def _verification_run_identity(output: Path, *, resume: bool, overwrite: bool, a
             identity = uuid4().hex
             handle.seek(0)
             handle.truncate()
-            handle.write(orjson.dumps({"verification_run_id": identity}))
+            handle.write(
+                orjson.dumps(
+                    {
+                        "verification_run_id": identity,
+                        **({"version": 2, "binding": binding} if binding is not None else {}),
+                    }
+                )
+            )
             handle.flush()
             os.fsync(handle.fileno())
             directory = os.open(path.parent, os.O_RDONLY)
@@ -1170,9 +1308,6 @@ def _load_reverified_results(output_fpath: Path) -> Tuple[List[Dict], List[Dict]
 
 class RolloutReverificationHelper(BaseModel):
     async def run_from_config(self, config: RolloutReverificationConfig) -> List[Dict]:
-        if not config.provider_dispatch_guard:
-            _validate_reverification_guard(False)
-            return await self._run_from_config(config)
         warning = await _guard_reverify_mode(config) if config.input_format != "atif" else None
         output = Path(config.output_jsonl_fpath)
         output = output.with_name(("unsafe_" if warning else "") + output.name)
@@ -1183,7 +1318,8 @@ class RolloutReverificationHelper(BaseModel):
             if not (config.resume_from_cache or config.append or config.overwrite):
                 if output.exists() or failures_path_for(output).exists():
                     raise ConfigError("Output file already exists; use explicit overwrite or resume")
-            # Validate inputs before either the lineage or prior result files change.
+            # Fingerprint and validate before any cache skip or output preparation.
+            binding = _verification_binding(config)
             inputs = _resolve_under_cwd_or_install(config.materialized_inputs_jsonl_fpath)
             if config.input_format == "atif":
                 payloads = _prepare_atif_payloads(
@@ -1198,14 +1334,18 @@ class RolloutReverificationHelper(BaseModel):
                     inputs,
                     source,
                     OutputPaths(output=output, failures=failures_path_for(output)),
-                    config.resume_from_cache,
+                    False,
                     config.limit,
                     retry_terminal_timeouts=config.retry_terminal_timeouts,
                 )
-            _validate_reverification_guard(True)
+            _validate_reverification_guard(config.provider_dispatch_guard)
             # Validate persisted identity before output preparation can unlink results.
             identity = _verification_run_identity(
-                output, resume=config.resume_from_cache, overwrite=config.overwrite, append=config.append
+                output,
+                resume=config.resume_from_cache,
+                overwrite=config.overwrite,
+                append=config.append,
+                binding=binding,
             )
             return await self._run_from_config(config, verification_run_id=identity, preflight_warning=warning)
 

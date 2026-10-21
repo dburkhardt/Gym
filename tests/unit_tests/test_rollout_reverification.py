@@ -565,7 +565,7 @@ class TestAtifPreflight:
         )
 
         with pytest.raises(AtifProjectionError, match="does not carry Gym's canonical"):
-            await RolloutReverificationHelper().run_from_config(config)
+            await RolloutReverificationHelper()._run_from_config(config)
 
     async def test_invalid_text_routing_preserves_existing_output_before_overwrite(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -596,7 +596,7 @@ class TestAtifPreflight:
         )
 
         with pytest.raises(ConfigError, match="cannot find a resources server for row"):
-            await RolloutReverificationHelper().run_from_config(config)
+            await RolloutReverificationHelper()._run_from_config(config)
 
         assert output.read_text() == "existing result\n"
 
@@ -2313,7 +2313,7 @@ class TestRolloutReverificationRunFromConfig:
             disable_aggregation=True,
         )
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         assert len(posted_rows) == 1
         assert queried_reverify_modes == ["fixture-rs"]
@@ -2360,7 +2360,7 @@ class TestRolloutReverificationRunFromConfig:
         self._patch_common(monkeypatch, pairs)
         config = self._make_config(tmp_path, disable_aggregation=True)
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         output_rows = self._read_jsonl(tmp_path / "output.jsonl")
         failure_rows = self._read_jsonl(tmp_path / "output_failures.jsonl")
@@ -2454,7 +2454,7 @@ class TestRolloutReverificationRunFromConfig:
             disable_aggregation=True,
         )
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         assert returned == []
         assert self._read_jsonl(tmp_path / "output.jsonl") == []
@@ -2485,7 +2485,7 @@ class TestRolloutReverificationRunFromConfig:
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", agg_mock)
         config = self._make_config(tmp_path)
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         # all 3 successes are returned, sorted task 0 → 1 → 2 (despite arriving 2 → 1 → 0)
         assert len(returned) == 3
@@ -2517,7 +2517,7 @@ class TestRolloutReverificationRunFromConfig:
         monkeypatch.setattr("nemo_gym.rollout_reverification._run_verification_payloads", capturing_run_verification)
         config = self._make_config(tmp_path, disable_aggregation=True, num_samples_in_parallel=3)
 
-        await RolloutReverificationHelper().run_from_config(config)
+        await RolloutReverificationHelper()._run_from_config(config)
 
         assert len(captured_semaphore) == 1
         assert isinstance(captured_semaphore[0], Semaphore)
@@ -2538,7 +2538,7 @@ class TestRolloutReverificationRunFromConfig:
         monkeypatch.setattr("nemo_gym.rollout_reverification._run_verification_payloads", capturing_run_verification)
         config = self._make_config(tmp_path, disable_aggregation=True, num_samples_in_parallel=None)
 
-        await RolloutReverificationHelper().run_from_config(config)
+        await RolloutReverificationHelper()._run_from_config(config)
 
         assert len(captured_semaphore) == 1
         assert not isinstance(captured_semaphore[0], Semaphore)
@@ -2554,7 +2554,7 @@ class TestRolloutReverificationRunFromConfig:
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", agg_mock)
         config = self._make_config(tmp_path, disable_aggregation=True)
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         agg_mock.assert_not_awaited()
         assert len(self._read_jsonl(tmp_path / "output.jsonl")) == 1
@@ -2608,7 +2608,7 @@ class TestRolloutReverificationRunFromConfig:
         monkeypatch.setattr("nemo_gym.rollout_reverification._resolve_under_cwd_or_install", lambda p: Path(p))
         config = self._make_config(tmp_path)
 
-        returned = await RolloutReverificationHelper().run_from_config(config)
+        returned = await RolloutReverificationHelper()._run_from_config(config)
 
         # /verify called 4 times: 2 to rs_a, 2 to rs_b
         assert len(verify_calls) == 4
@@ -2683,7 +2683,7 @@ class TestRunFromConfigForceFlag:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         self._patch_common(monkeypatch, force_warning=None)
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
         assert (tmp_path / "output.jsonl").exists()
         assert not (tmp_path / "unsafe_output.jsonl").exists()
 
@@ -2694,7 +2694,7 @@ class TestRunFromConfigForceFlag:
             "WARNING: resource server(s) ['rs_a'] have reverify_mode=UNSUPPORTED. Output is prefixed with 'unsafe_'."
         )
         self._patch_common(monkeypatch, force_warning=warning)
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path, force=True))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path, force=True))
 
         assert (tmp_path / "unsafe_output.jsonl").exists()
         assert not (tmp_path / "output.jsonl").exists()
@@ -2706,7 +2706,7 @@ class TestRunFromConfigForceFlag:
             "WARNING: resource server(s) ['rs_a'] have reverify_mode=UNSUPPORTED. Output is prefixed with 'unsafe_'."
         )
         self._patch_common(monkeypatch, force_warning=warning)
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path, force=True))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path, force=True))
 
         out = capsys.readouterr().out
         assert out.count(warning) == 2
@@ -2785,7 +2785,7 @@ class TestRunFromConfigResumeFromCache:
         dispatched: list = []
         self._patch(monkeypatch, pairs, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=True)
         )
 
@@ -2823,7 +2823,7 @@ class TestRunFromConfigResumeFromCache:
         dispatched: list = []
         self._patch(monkeypatch, pairs, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(
+        await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=True, retry_terminal_timeouts=retry_terminal_timeouts)
         )
 
@@ -2835,7 +2835,7 @@ class TestRunFromConfigResumeFromCache:
         pairs = [InputRolloutPair(input=self._row("agent_a", 0), rollout={"response": {}})]
         self._patch(monkeypatch, pairs, [], result={"reward": 0.0, "invalid_judge_response": True})
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=False)
         )
 
@@ -2849,7 +2849,7 @@ class TestRunFromConfigResumeFromCache:
         pairs = [InputRolloutPair(input=self._row("agent_a", 0), rollout={"response": {}})]
         self._patch(monkeypatch, pairs, [], result={"reward": 0.0, "invalid_judge_response": True})
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=False, retry_invalid_judge_responses=True)
         )
 
@@ -2872,7 +2872,7 @@ class TestRunFromConfigResumeFromCache:
         dispatched: list = []
         self._patch(monkeypatch, pairs, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=False, overwrite=True)
         )
 
@@ -2899,7 +2899,7 @@ class TestRunFromConfigResumeFromCache:
         self._patch(monkeypatch, pairs, dispatched)
 
         with pytest.raises(ConfigError, match="already exists"):
-            await RolloutReverificationHelper().run_from_config(
+            await RolloutReverificationHelper()._run_from_config(
                 self._make_config(tmp_path, resume_from_cache=False, overwrite=False)
             )
 
@@ -2925,7 +2925,7 @@ class TestRunFromConfigResumeFromCache:
         dispatched: list = []
         self._patch(monkeypatch, pairs, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=True)
         )
 
@@ -2959,7 +2959,7 @@ class TestRunFromConfigResumeFromCache:
         agg_mock = AsyncMock(return_value=None)
         monkeypatch.setattr("nemo_gym.rollout_reverification._call_aggregate_metrics", agg_mock)
 
-        await RolloutReverificationHelper().run_from_config(
+        await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=True, disable_aggregation=False)
         )
 
@@ -3089,7 +3089,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        returned = await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         # only the two judge-failed keys are re-verified; the two successes are not
         assert sorted(p[TASK_INDEX_KEY_NAME] for p in dispatched) == [2, 3]
@@ -3125,7 +3125,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched, recovered_reward=0.8)
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, retry_invalid_judge_responses=True)
         )
 
@@ -3150,7 +3150,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched, recovered_reward=0.8)
 
-        returned = await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        returned = await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         assert [row[TASK_INDEX_KEY_NAME] for row in dispatched] == [1]
         assert [(row[TASK_INDEX_KEY_NAME], row["reward"]) for row in returned] == [(0, 0.0), (1, 0.8)]
@@ -3183,7 +3183,7 @@ class TestRunFromConfigJudgeFailedOnly:
         self._patch(monkeypatch, dispatched)
 
         with pytest.raises(ConfigError, match="does not support multi-stage rows"):
-            await RolloutReverificationHelper().run_from_config(
+            await RolloutReverificationHelper()._run_from_config(
                 self._make_config(tmp_path, retry_invalid_judge_responses=retry_invalid_judge_responses)
             )
 
@@ -3217,7 +3217,7 @@ class TestRunFromConfigJudgeFailedOnly:
         )
         self._patch(monkeypatch, [])
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         assert _RECOVERY_TWO_SOURCES_WARNING in capsys.readouterr().out
 
@@ -3231,7 +3231,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         # only the judge failure (task 1) is re-verified; the timeout failure (task 2) is skipped
         assert [p[TASK_INDEX_KEY_NAME] for p in dispatched] == [1]
@@ -3250,7 +3250,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         _, agg_mock = self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path, disable_aggregation=False))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path, disable_aggregation=False))
 
         # only the two failures were re-verified...
         assert sorted(p[TASK_INDEX_KEY_NAME] for p in dispatched) == [1, 2]
@@ -3271,7 +3271,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        returned = await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         assert sorted(p[TASK_INDEX_KEY_NAME] for p in dispatched) == [0, 1, 2]
         assert sorted(r[TASK_INDEX_KEY_NAME] for r in returned) == [0, 1, 2]
@@ -3289,7 +3289,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         # task 0 already succeeded → not re-verified; only task 1 is
         assert [p[TASK_INDEX_KEY_NAME] for p in dispatched] == [1]
@@ -3318,7 +3318,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path, resume_from_cache=True))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path, resume_from_cache=True))
 
         # tasks 0 (seeded) and 1 (already recovered) are cached; only task 2 still needs re-verifying
         assert [p[TASK_INDEX_KEY_NAME] for p in dispatched] == [2]
@@ -3341,7 +3341,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         _, agg_mock = self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(
+        await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, resume_from_cache=True, disable_aggregation=False)
         )
 
@@ -3366,7 +3366,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+        await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
         assert dispatched == []
         assert "Nothing to be re-verified" in capsys.readouterr().out
@@ -3390,7 +3390,7 @@ class TestRunFromConfigJudgeFailedOnly:
         dispatched: list = []
         self._patch(monkeypatch, dispatched)
 
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, append=True, output_name="merged.jsonl")
         )
 
@@ -3414,11 +3414,11 @@ class TestRunFromConfigJudgeFailedOnly:
         cfg = self._make_config(tmp_path, append=True, output_name="merged.jsonl")
 
         self._patch(monkeypatch, [])
-        await RolloutReverificationHelper().run_from_config(cfg)
+        await RolloutReverificationHelper()._run_from_config(cfg)
         # second identical append run
         dispatched2: list = []
         self._patch(monkeypatch, dispatched2)
-        await RolloutReverificationHelper().run_from_config(cfg)
+        await RolloutReverificationHelper()._run_from_config(cfg)
 
         assert dispatched2 == []  # task 1 already recovered → nothing re-verified
         rows = self._read_jsonl(out)
@@ -3432,7 +3432,7 @@ class TestRunFromConfigJudgeFailedOnly:
         self._patch(monkeypatch, [])
 
         with pytest.raises(FileNotFoundError, match="rollouts_failures.jsonl"):
-            await RolloutReverificationHelper().run_from_config(self._make_config(tmp_path))
+            await RolloutReverificationHelper()._run_from_config(self._make_config(tmp_path))
 
     @pytest.mark.parametrize(
         ("retry_invalid_judge_responses", "refail_result", "expected_class"),
@@ -3473,7 +3473,7 @@ class TestRunFromConfigJudgeFailedOnly:
 
         dispatched1: list = []
         self._patch_with_result(monkeypatch, dispatched1, first_pass)
-        await RolloutReverificationHelper().run_from_config(
+        await RolloutReverificationHelper()._run_from_config(
             self._make_config(tmp_path, retry_invalid_judge_responses=retry_invalid_judge_responses)
         )
 
@@ -3488,7 +3488,7 @@ class TestRunFromConfigJudgeFailedOnly:
         # and now succeed.
         dispatched2: list = []
         self._patch_with_result(monkeypatch, dispatched2, lambda _p: {"reward": 1.0, "verdict": "correct"})
-        returned = await RolloutReverificationHelper().run_from_config(
+        returned = await RolloutReverificationHelper()._run_from_config(
             self._make_config(
                 tmp_path, resume_from_cache=True, retry_invalid_judge_responses=retry_invalid_judge_responses
             )
@@ -3560,6 +3560,12 @@ class TestVerifyAggregationRoutingConsistency:
         await _call_aggregate_metrics(results, rows, tmp_path / "out.jsonl")
 
         assert posted == ["math_rs"]
+
+
+@pytest.fixture(autouse=True)
+def isolate_lineage_in_legacy_pipeline_tests(monkeypatch):
+    """These tests isolate payload/lease mechanics; real source binding is tested separately."""
+    monkeypatch.setattr("nemo_gym.rollout_reverification._verification_binding", lambda config: None)
 
 
 def test_guarded_reverify_identity_is_durable_and_explicitly_fresh(tmp_path):
