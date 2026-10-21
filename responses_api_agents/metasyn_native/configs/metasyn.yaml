@@ -2,6 +2,8 @@ metasyn_agent:
   responses_api_agents:
     metasyn_native:
       entrypoint: app.py
+      inference_enabled: ${oc.env:METASYN_INFERENCE_ENABLED,false}
+      scientific_threads: ${oc.env:METASYN_SCIENTIFIC_THREADS,1}
       domain: agent
       description: Native MetaSyn BM25 top200 RAG and complete creator evaluator, Super judge variant
       creator_source_root: ${oc.env:METASYN_CREATOR_SOURCE,/unqualified-metasyn-source}
