@@ -22,6 +22,7 @@ import math
 import os
 import re
 import signal
+import sys
 import tempfile
 import time
 import warnings
@@ -3902,6 +3903,7 @@ class RolloutCollectionHelper(BaseModel):
                 )
             collection_succeeded = True
         finally:
+            collection_error = sys.exc_info()[1]
             try:
                 if evaluation_checkpoint is not None:
                     if config.eval_checkpoint_dir:
@@ -3930,10 +3932,29 @@ class RolloutCollectionHelper(BaseModel):
                 try:
                     resource_stack.close()
                 finally:
-                    if upload_spool is not None and not collection_succeeded:
-                        upload_spool_fpath.unlink(missing_ok=True)
-                    if owned_token_source is not None:
-                        await owned_token_source.close()
+                    try:
+                        if upload_spool is not None and not collection_succeeded:
+                            upload_spool_fpath.unlink(missing_ok=True)
+                    except Exception as spool_error:
+                        if collection_error is None:
+                            raise
+                        collection_error.add_note(f"Upload spool cleanup failed: {spool_error!r}")
+                    finally:
+                        try:
+                            if owned_token_source is not None:
+                                await owned_token_source.close()
+                        finally:
+                            # Progress snapshots are throttled. Publish the persisted counts
+                            # even when cancellation or cleanup skips normal aggregation.
+                            # This says nothing about the physical dispatch of pending rows.
+                            terminal_error = collection_error or sys.exc_info()[1]
+                            if batch_tracker is not None:
+                                try:
+                                    batch_tracker.write_status(batch_completed_rows, batch_failure_rows, force=True)
+                                except Exception as status_error:
+                                    if terminal_error is None:
+                                        raise
+                                    terminal_error.add_note(f"Final batch status publication failed: {status_error!r}")
 
         if evaluation_checkpoint is not None and evaluation_checkpoint.error is not None:
             raise evaluation_checkpoint.error
