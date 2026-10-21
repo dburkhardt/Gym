@@ -1,3 +1,4 @@
+provider_dispatch_guard: true
 # Nemotron judge/scaffold variant; original molecular-dynamics inputs and budgets remain unchanged.
 # Prepare pinned tasks and record image/artifact overlays before use. See benchmarks/mdarena/README.md.
 harbor_agent:
@@ -37,3 +38,16 @@ harbor_agent:
         type: responses_api_models
         name: policy_model
       harbor_jobs_dir: responses_api_agents/harbor_agent/jobs
+      datasets:
+      - name: mdarena_xml
+        type: benchmark
+        jsonl_fpath: benchmarks/mdarena/data/benchmark.jsonl
+        prepare_script: benchmarks/mdarena/prepare.py
+        num_repeats: 1
+harbor_agent_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: harbor_agent

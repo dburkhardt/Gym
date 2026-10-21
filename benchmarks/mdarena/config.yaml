@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+  - responses_api_agents/harbor_agent/configs/harbor_agent_mdarena_json.yaml
