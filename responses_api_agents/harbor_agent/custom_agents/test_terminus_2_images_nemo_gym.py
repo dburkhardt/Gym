@@ -61,8 +61,11 @@ def test_registry_exact_history_and_refusal(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("unknown,first_complete", [(False, False), (False, True), (True, False)])
-async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, first_complete):
+@pytest.mark.parametrize(
+    "unknown,first_complete,bad_first",
+    [(False, False, False), (False, True, False), (True, False, False), (False, False, True)],
+)
+async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, first_complete, bad_first):
     import asyncio
     import socket
     from unittest.mock import MagicMock
@@ -76,6 +79,7 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
     from responses_api_models.openai_model.app import SimpleModelServer, SimpleModelServerConfig
 
     calls = []
+    image_call = 2 if bad_first else 1
 
     async def provider(request):
         calls.append(await request.json())
@@ -96,10 +100,19 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                                 {
                                     "analysis": "view",
                                     "plan": "inspect",
-                                    "commands": [{"keystrokes": "gym_view_image plot.png", "duration": "invalid"}]
-                                    if len(calls) == 1
+                                    "commands": [
+                                        {
+                                            "keystrokes": (
+                                                "gym_view_image ../secret"
+                                                if bad_first and len(calls) == 1
+                                                else "gym_view_image plot.png"
+                                            ),
+                                            "duration": "invalid",
+                                        }
+                                    ]
+                                    if len(calls) <= image_call
                                     else [],
-                                    "task_complete": first_complete or len(calls) > 1,
+                                    "task_complete": first_complete or len(calls) > image_call,
                                 }
                             ),
                         },
@@ -192,7 +205,10 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
 
                 class Environment:
                     async def exec(self, command, timeout_sec):
-                        return SimpleNamespace(return_code=0, stdout=base64.b64encode(png()).decode())
+                        return SimpleNamespace(
+                            return_code=0,
+                            stdout="image-root-ok" if "image-root-ok" in command else base64.b64encode(png()).decode(),
+                        )
 
                 agent = Terminus2ImagesNemoGym(
                     logs_dir=tmp_path / "native-agent",
@@ -201,7 +217,7 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                     gym_provider_dispatch_guard=True,
                     enable_summarize=False,
                     image_root="/workspace/results",
-                    max_turns=3,
+                    max_turns=4,
                     responses_create_params={"input": [], "temperature": 0, "max_output_tokens": 128},
                 )
                 agent._session = Session()
@@ -211,9 +227,9 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                 await agent.run(original, Environment(), AgentContext())
                 assert original in calls[0]["messages"][0]["content"]
                 assert "Harness tool:" in calls[0]["messages"][0]["content"]
-                expected_calls = 2 if first_complete else 3
+                expected_calls = 2 if first_complete else image_call + 2
                 assert agent._n_episodes == expected_calls
-                image_text = calls[1]["messages"][-1]["content"][0]["text"]
+                image_text = calls[image_call]["messages"][-1]["content"][0]["text"]
                 assert (
                     ("Previous response had warnings" in image_text)
                     if not first_complete
@@ -222,7 +238,7 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                 assert len(calls) == expected_calls
                 serialized = [json.dumps(c) for c in calls]
                 encoded = base64.b64encode(png()).decode()
-                assert encoded not in serialized[0] and all(encoded in row for row in serialized[1:])
+                assert encoded not in serialized[0] and all(encoded in row for row in serialized[image_call:])
                 assert all(
                     c["model"] == "fixture-model"
                     and c["temperature"] == 0
@@ -232,7 +248,7 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                 for _ in range(100):
                     if (
                         sum(len(p.read_text().splitlines()) for p in (tmp_path / "capture").glob("*.capture.jsonl"))
-                        == 3
+                        == expected_calls
                     ):
                         break
                     await asyncio.sleep(0.01)
@@ -242,7 +258,10 @@ async def test_guarded_converter_three_requests(tmp_path, monkeypatch, unknown, 
                     for line in p.read_text().splitlines()
                 ]
                 assert len(records) == expected_calls
-                assert encoded in json.dumps(records[1])
+                assert encoded in json.dumps(records[image_call])
+                if bad_first:
+                    assert "Image tool error:" in serialized[1]
+                    assert agent._max_episodes == 4
     finally:
         await client.aclose()
         host.should_exit = True
@@ -277,7 +296,10 @@ async def test_variant_hook_and_instruction_prefix(tmp_path, monkeypatch):
         async def exec(self, command, timeout_sec):
             assert timeout_sec == 30
             assert "O_NOFOLLOW" in command
-            return SimpleNamespace(return_code=0, stdout=base64.b64encode(png()).decode())
+            return SimpleNamespace(
+                return_code=0,
+                stdout="image-root-ok" if "image-root-ok" in command else base64.b64encode(png()).decode(),
+            )
 
     original = "Exact frozen scientific question.\nDo not modify."
     await agent.run(original, Environment(), None)
@@ -290,10 +312,10 @@ async def test_variant_hook_and_instruction_prefix(tmp_path, monkeypatch):
         {"role": "user", "content": token},
     ]
     assert agent._images.project(messages)[2]["content"][1]["type"] == "image_url"
-    with pytest.raises(ValueError, match="sole"):
-        await agent._execute_commands(
-            [SimpleNamespace(keystrokes="gym_view_image plot.png"), SimpleNamespace(keystrokes="echo next")], None
-        )
+    _, error = await agent._execute_commands(
+        [SimpleNamespace(keystrokes="gym_view_image plot.png"), SimpleNamespace(keystrokes="echo next")], None
+    )
+    assert error.startswith("Image tool error:") and "sole" in error
     with pytest.raises(ValueError, match="observation turn"):
         agent._images.project([{"role": "user", "content": token}])
     with pytest.raises(FileExistsError):
@@ -323,3 +345,38 @@ def test_pixel_limit_and_forged_token(tmp_path):
         registry.register(png())
     with pytest.raises(ValueError, match="Missing"):
         registry.project([{"role": "user", "content": "[[gym-image:" + "a" * 32 + "]]"}])
+
+
+def test_decompression_bomb_is_model_input_error(tmp_path, monkeypatch):
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_images_nemo_gym import ImageToolInputError
+
+    def oversized(*args, **kwargs):
+        raise Image.DecompressionBombError("oversized model-generated image")
+
+    monkeypatch.setattr(Image, "open", oversized)
+    with pytest.raises(ImageToolInputError, match="Invalid image"):
+        ImageRegistry(tmp_path / "bomb").register(b"bounded encoded bytes")
+
+
+@pytest.mark.asyncio
+async def test_missing_configured_root_is_terminal_before_model(tmp_path):
+    from types import SimpleNamespace
+
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_images_nemo_gym import Terminus2ImagesNemoGym
+
+    agent = Terminus2ImagesNemoGym(
+        logs_dir=tmp_path / "logs",
+        model_name="fixture",
+        api_base="http://localhost:1/ng-rollout/0-0/v1",
+        gym_provider_dispatch_guard=True,
+        enable_summarize=False,
+        image_root="/workspace/missing",
+    )
+
+    class Environment:
+        async def exec(self, command, timeout_sec):
+            return SimpleNamespace(return_code=1, stdout="")
+
+    with pytest.raises(RuntimeError, match="Configured image root"):
+        await agent.run("original", Environment(), None)
+    assert not (tmp_path / "logs/gym-call-state.json").exists()
