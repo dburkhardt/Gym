@@ -10,6 +10,11 @@ from omegaconf import OmegaConf
 from nemo_gym.cli.admission_evidence import resolved_admission_evidence
 
 
+@pytest.fixture(autouse=True)
+def offline_cost_map(monkeypatch):
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+
 def model(**overrides):
     return dict(
         host="localhost",
@@ -208,3 +213,187 @@ def test_retry_behavior_is_distinguished_in_evidence():
     assert row["terminal_http_status_codes"] == [429, 504]
     assert row["pre_request_jitter_seconds"] == (1, 2)
     assert (row["backoff_initial_seconds"], row["backoff_multiplier"], row["backoff_jitter_fraction"]) == (3, 4, 0.5)
+
+
+TEXT = "responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym"
+IMAGE = "responses_api_agents.harbor_agent.custom_agents.terminus_2_images_nemo_gym:Terminus2ImagesNemoGym"
+
+
+def transport_config(path=TEXT, **kwargs):
+    return OmegaConf.create(
+        {
+            "provider_dispatch_guard": True,
+            "solver": {
+                "responses_api_models": {
+                    "openai_model": model(
+                        upstream_max_num_tries=1,
+                        max_http_attempts=1,
+                        upstream_rate_limit_cooldown_seconds=60,
+                        upstream_request_timeout_seconds=600,
+                        upstream_admission_timeout_seconds=120,
+                    )
+                }
+            },
+            "task": {
+                "responses_api_agents": {
+                    "harbor_agent": {
+                        "harbor_agent_import_path": path,
+                        "model_server": {"type": "responses_api_models", "name": "solver"},
+                        "harbor_agent_kwargs": kwargs,
+                    }
+                }
+            },
+        }
+    )
+
+
+@pytest.mark.parametrize("path", [TEXT, IMAGE])
+@pytest.mark.parametrize(
+    "timeout,expected,margin",
+    [(None, "client_shorter_than_server_window", -600), (750, "covers_declared_queue_plus_provider_only", 30)],
+)
+def test_actual_harbor_constructor_timeout_and_explicit_override(path, timeout, expected, margin):
+    config = transport_config(path, **({} if timeout is None else {"nemo_model_server_timeout_sec": timeout}))
+    before = OmegaConf.to_container(config)
+    result = resolved_admission_evidence(config)
+    link = result["harbor_transport_links"][0]
+    assert link["status"] == expected
+    assert link["client_timeout_seconds"] == (120 if timeout is None else timeout)
+    assert link["server_window_seconds"] == 720
+    assert link["margin_seconds"] == margin
+    assert all(len(digest) == 64 for digest in link["runtime_source_sha256"].values())
+    assert OmegaConf.to_container(config) == before
+    assert "SECRET" not in json.dumps(result)
+
+
+def test_exact_binding_does_not_fall_back_to_policy_model():
+    config = transport_config()
+    config.task.responses_api_agents.harbor_agent.model_server.name = "missing"
+    config.policy_model = config.solver
+    link = resolved_admission_evidence(config)["harbor_transport_links"][0]
+    assert link["reason"] == "unsupported_or_missing_model_policy"
+
+
+def test_independent_harbor_links_and_digest():
+    config = transport_config()
+    config.judge = config.solver
+    config.judge.responses_api_models.openai_model.upstream_request_timeout_seconds = 10
+    config.review = config.task
+    config.review.responses_api_agents.harbor_agent.model_server.name = "judge"
+    links = {r["agent"]: r for r in resolved_admission_evidence(config)["harbor_transport_links"]}
+    assert links["review"]["server_window_seconds"] == 130
+    assert links["task"]["server_window_seconds"] == 720
+    before = resolved_admission_evidence(config)["sha256"]
+    config.task.responses_api_agents.harbor_agent.harbor_agent_kwargs.nemo_model_server_timeout_sec = 750
+    assert resolved_admission_evidence(config)["sha256"] != before
+
+
+@pytest.mark.parametrize(
+    "change,reason",
+    [
+        ("unguarded", "unguarded_agent_retry_schedule"),
+        ("multiple", "multiple_or_unknown_attempt_schedule"),
+        ("unbounded", "unbounded_or_unknown_server_window"),
+        ("invalid", "invalid_client_timeout"),
+        ("llm", "custom_llm_override"),
+    ],
+)
+def test_unknown_schedules_are_not_coverage_claims(change, reason):
+    config = transport_config()
+    if change == "unguarded":
+        config.provider_dispatch_guard = False
+    elif change == "multiple":
+        config.solver.responses_api_models.openai_model.upstream_retry_policy = {"max_attempts": 3}
+    elif change == "unbounded":
+        config.solver.responses_api_models.openai_model.upstream_admission_timeout_seconds = None
+    elif change == "invalid":
+        config.task.responses_api_agents.harbor_agent.harbor_agent_kwargs.nemo_model_server_timeout_sec = True
+    else:
+        config.task.responses_api_agents.harbor_agent.harbor_agent_kwargs.llm = "SECRET"
+    link = resolved_admission_evidence(config)["harbor_transport_links"][0]
+    assert link["status"] == "unknown"
+    assert link["reason"] == reason
+    assert "margin_seconds" not in link
+
+
+def test_unsupported_harness_never_imported_and_runtime_unavailable_redacted(monkeypatch):
+    from nemo_gym.cli import admission_evidence
+
+    def unavailable(path):
+        raise RuntimeError("SECRET")
+
+    monkeypatch.setattr(admission_evidence, "_harbor_timeout_contract", unavailable)
+    assert (
+        resolved_admission_evidence(transport_config("arbitrary.module:Class"))["harbor_transport_links"][0]["status"]
+        == "unsupported"
+    )
+    result = resolved_admission_evidence(transport_config())
+    assert (
+        result["harbor_transport_links"][0]["reason"]
+        == "harbor_runtime_contract_unavailable_or_offline_import_not_enabled"
+    )
+    assert "SECRET" not in json.dumps(result)
+
+
+def test_schema_v2_hash_binds_roles_and_links():
+    import hashlib
+
+    result = resolved_admission_evidence(transport_config(nemo_model_server_timeout_sec=750))
+    assert result["version"] == 2
+    payload = {key: value for key, value in result.items() if key != "sha256"}
+    assert (
+        result["sha256"]
+        == hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    )
+    link = result["harbor_transport_links"][0]
+    assert "pre_request_jitter" in link["excluded_overhead"]
+    assert "not_end_to_end_deadline" in link["scope"]
+
+
+def test_cold_runtime_without_offline_flag_refuses_import(monkeypatch):
+    from nemo_gym.cli import admission_evidence
+
+    monkeypatch.delenv("LITELLM_LOCAL_MODEL_COST_MAP", raising=False)
+    monkeypatch.delitem(sys.modules, "litellm", raising=False)
+    before = dict(os.environ)
+    with pytest.raises(RuntimeError, match="local cost map"):
+        admission_evidence._harbor_timeout_contract(TEXT)
+    assert dict(os.environ) == before
+
+
+def test_fresh_process_without_flag_never_imports_optional_agents():
+    script = r"""
+import builtins
+import os
+import socket
+import sys
+from nemo_gym.cli.admission_evidence import _harbor_timeout_contract
+assert "litellm" not in sys.modules
+assert "LITELLM_LOCAL_MODEL_COST_MAP" not in os.environ
+attempts = []
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name.startswith("responses_api_agents") or name.startswith("litellm"):
+        attempts.append(name)
+        raise AssertionError("optional import attempted")
+    return original(name, *args, **kwargs)
+def blocked(*args, **kwargs):
+    attempts.append("network")
+    raise AssertionError("network attempted")
+builtins.__import__ = guarded
+socket.create_connection = blocked
+socket.socket.connect = blocked
+before = dict(os.environ)
+try:
+    _harbor_timeout_contract("responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym:Terminus2NemoGym")
+except RuntimeError as exc:
+    assert "local cost map" in str(exc)
+else:
+    raise AssertionError("cold contract must be unavailable")
+assert attempts == []
+assert dict(os.environ) == before
+"""
+    env = dict(os.environ)
+    env.pop("LITELLM_LOCAL_MODEL_COST_MAP", None)
+    result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
