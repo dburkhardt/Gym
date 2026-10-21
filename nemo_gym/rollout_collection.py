@@ -47,6 +47,7 @@ from tqdm.asyncio import tqdm
 from nemo_gym import _resolve_under_cwd_or_install
 from nemo_gym.base_resources_server import AggregateMetrics, AggregateMetricsRequest
 from nemo_gym.base_responses_api_model import (
+    assert_guarded_rollout_dispatch_safe,
     await_model_call_capture_quiescence,
     clear_model_call_captures_for_rollouts,
     merge_model_call_capture_into_record,
@@ -3291,11 +3292,14 @@ class RolloutCollectionHelper(BaseModel):
         if token_capture_config.enabled and token_capture_config.token_id_capture.rebuild_response:
             token_source = installed_token_source()
 
-        # Clear only rows about to be dispatched, after resume has assigned retry suffixes. This also
-        # removes a kill-shaped attempt's partial capture when its rollout-attempt id is reused.
+        # Guarded recovery must retain prior evidence; a fresh agent session cannot
+        # silently replace an interrupted attempt. Legacy unguarded reruns clear theirs.
         if capture_dirs:
-            print("Clearing existing model-call captures for rollouts being dispatched")
-            clear_model_call_captures_for_rollouts(input_rows, capture_dirs)
+            if global_config.get("provider_dispatch_guard", False):
+                assert_guarded_rollout_dispatch_safe(input_rows, capture_dirs)
+            else:
+                print("Clearing existing model-call captures for rollouts being dispatched")
+                clear_model_call_captures_for_rollouts(input_rows, capture_dirs)
         token_capture_rows = [
             row
             for row in input_rows

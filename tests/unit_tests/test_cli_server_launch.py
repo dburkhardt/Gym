@@ -58,7 +58,7 @@ class TestServerLaunchCommand:
         command = _server_launch_command(server_dir, global_config_dict, "my_server", Path("app.py"))
 
         *setup_lines, launch_line = command.splitlines()
-        assert shlex.split(launch_line) == ["&&", str(expected_venv / "bin" / "python"), "app.py"]
+        assert shlex.split(launch_line) == ["&&", "exec", str(expected_venv / "bin" / "python"), "app.py"]
         # The interpreter comes from the same venv that the setup step builds and activates.
         assert f"source {shlex.quote(str(expected_venv / 'bin' / 'activate'))}" in setup_lines[0]
         assert NEMO_GYM_CONFIG_DICT_ENV_VAR_NAME not in command
@@ -76,7 +76,7 @@ class TestServerLaunchCommand:
 
         *_, stamp_line, launch_line = command.splitlines()
         assert f"export {STARTUP_SETUP_DONE_NS_ENV}=$({shlex.quote(venv_python)} -c " in stamp_line
-        assert shlex.split(launch_line)[:2] == ["&&", venv_python]
+        assert shlex.split(launch_line)[:3] == ["&&", "exec", venv_python]
 
     def test_the_stamp_is_a_wall_clock_nanosecond_integer_visible_to_the_server(self) -> None:
         """Runs the stamp fragment for real, with the interpreter standing in for the venv's."""
@@ -90,3 +90,47 @@ class TestServerLaunchCommand:
         result = subprocess.run(["bash", "-c", stamp_fragment], capture_output=True, text=True, check=True)
 
         assert before_ns <= int(result.stdout) <= time.time_ns()
+
+
+def test_server_launch_exec_preserves_owned_process_identity(tmp_path, monkeypatch):
+    import nemo_gym.cli.env as env
+
+    monkeypatch.setattr(env, "setup_env_command", lambda *args: "true")
+    monkeypatch.setattr(env, "get_venv_path", lambda *args: Path(sys.executable).parent.parent)
+    pid_file = tmp_path / "pid.txt"
+    entry = tmp_path / "app.py"
+    entry.write_text(
+        f"import os,time\nfrom pathlib import Path\nPath({str(pid_file)!r}).write_text(str(os.getpid()))\ntime.sleep(30)\n"
+    )
+    command = env._server_launch_command(tmp_path, {}, "fixture", entry)
+    process = subprocess.Popen(command, shell=True, executable="/bin/bash")
+    try:
+        deadline = time.monotonic() + 5
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert int(pid_file.read_text()) == process.pid
+        process.terminate()
+        assert process.wait(timeout=5) != 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_shutdown_does_not_signal_reused_exited_root(monkeypatch):
+    from unittest.mock import MagicMock
+
+    import nemo_gym.cli.env as env
+
+    stale = MagicMock()
+    stale._gym_owned_server_group = True
+    stale.poll.return_value = 0
+    active = MagicMock()
+    runner = env.RunHelper()
+    runner._processes = {"exited": stale, "other": active}
+    runner._head_server = None
+    monkeypatch.setattr(env.os, "killpg", lambda *args: pytest.fail("stale root must not signal a group"))
+    runner.shutdown()
+    stale._gym_owned_root_identity.is_running.assert_not_called()
+    stale.send_signal.assert_not_called()
+    active.send_signal.assert_called_once()

@@ -23,6 +23,7 @@ from subprocess import Popen
 from sys import stderr, stdout
 from typing import IO, Any, Mapping
 
+import psutil
 from omegaconf import DictConfig
 
 from nemo_gym import NEMO_GYM_EXTRA_ROOTS_ENV_VAR_NAME, PARENT_DIR
@@ -254,6 +255,7 @@ def run_command(
     stdout_target: IO[Any] | None = None,
     stderr_target: IO[Any] | None = None,
     extra_env: Mapping[str, str] | None = None,
+    owned_server_group: bool = False,
 ) -> Popen:
     if global_config_dict is None:
         global_config_dict = get_global_config_dict()
@@ -297,11 +299,19 @@ def run_command(
 
     redirect_stdout = stdout if stdout_target is None else stdout_target
     redirect_stderr = stderr if stderr_target is None else stderr_target
-    return Popen(
+    process = Popen(
         command,
         executable="/bin/bash",
         shell=True,
         env=custom_env,
         stdout=redirect_stdout,
         stderr=redirect_stderr,
+        start_new_session=owned_server_group and os.name == "posix",
     )
+    process._gym_owned_server_group = owned_server_group and os.name == "posix"
+    if process._gym_owned_server_group:
+        try:
+            process._gym_owned_root_identity = psutil.Process(process.pid)
+        except psutil.NoSuchProcess:
+            process._gym_owned_root_identity = None
+    return process

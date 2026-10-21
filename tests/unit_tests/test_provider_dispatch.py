@@ -663,3 +663,55 @@ def test_completed_call_clears_while_sibling_is_unresolved(tmp_path):
     assert not store.has_pending("episode")
     with pytest.raises(ControlError, match="saved-response replay"):
         store.assert_restore_safe(["episode"])
+
+
+def test_collector_guard_preserves_unknown_and_completed_evidence(tmp_path):
+    from nemo_gym.base_responses_api_model import assert_guarded_rollout_dispatch_safe
+
+    store = store_at(tmp_path)
+    with pytest.raises(ControlError, match="lacks durable identity"):
+        assert_guarded_rollout_dispatch_safe([{"missing": "identity"}], [tmp_path])
+    row = {"_ng_task_index": 1, "_ng_rollout_index": 0}
+    assert_guarded_rollout_dispatch_safe([row], [tmp_path])
+    dispatch = dispatch_at(store, "1-0")
+    dispatch.before_send()
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()}
+    with pytest.raises(ControlError, match="unresolved provider"):
+        assert_guarded_rollout_dispatch_safe([row], [tmp_path])
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file()} == before
+    # A fresh retry suffix cannot launder an unknown original attempt.
+    with pytest.raises(ControlError, match="unresolved provider"):
+        assert_guarded_rollout_dispatch_safe([{**row, "_ng_attempt_index": 1}], [tmp_path])
+    # Occupied successful capture without a collector result needs checkpoint recovery.
+    store.path_for("2-0").write_text("")
+    with pytest.raises(ControlError, match="prior provider evidence"):
+        assert_guarded_rollout_dispatch_safe([{"_ng_task_index": 2, "_ng_rollout_index": 0}], [tmp_path])
+    assert store.path_for("2-0").exists()
+
+
+def test_collector_retry_suffix_cannot_duplicate_completed_capture(tmp_path):
+    from nemo_gym.base_responses_api_model import assert_guarded_rollout_dispatch_safe
+
+    store = store_at(tmp_path)
+    path = store.path_for("1-0")
+    path.write_text(
+        '{"model_call_id":"saved","provider_attempts":[{"outcome":"captured"}],"provider_binding":{},"replay_response":{}}\n'
+    )
+    original = path.read_bytes()
+    with pytest.raises(ControlError, match="prior provider evidence"):
+        assert_guarded_rollout_dispatch_safe(
+            [{"_ng_task_index": 1, "_ng_rollout_index": 0, "_ng_attempt_index": 1}], [tmp_path]
+        )
+    assert path.read_bytes() == original
+
+
+def test_collector_retry_suffix_cannot_ignore_incomplete_only_capture(tmp_path):
+    from nemo_gym.base_responses_api_model import assert_guarded_rollout_dispatch_safe
+
+    store = store_at(tmp_path)
+    store.mark_incomplete("1-0")
+    with pytest.raises(ControlError, match="prior provider evidence"):
+        assert_guarded_rollout_dispatch_safe(
+            [{"_ng_task_index": 1, "_ng_rollout_index": 0, "_ng_attempt_index": 1}], [tmp_path]
+        )
+    assert store.is_incomplete("1-0")

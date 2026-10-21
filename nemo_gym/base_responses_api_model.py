@@ -2567,6 +2567,37 @@ async def await_model_call_capture_quiescence(
         await asyncio.sleep(poll_s)
 
 
+def assert_guarded_rollout_dispatch_safe(records: list[Any], capture_dirs: list[Path]) -> None:
+    """Keep crash evidence intact before a collector creates new agent sessions.
+
+    Completed output rows are already removed by native resume. Remaining rows
+    cannot reuse an occupied capture identity without explicit checkpoint state.
+    A new attempt suffix does not resolve a prior unknown provider outcome.
+    """
+    from nemo_gym._checkpoint.control import ControlError
+    from nemo_gym.episode_types import EpisodeId
+
+    keys = [maybe_rollout_id_from_run_body(row) for row in records]
+    if any(key is None for key in keys):
+        raise ControlError("guarded rollout lacks durable identity; refusing dispatch")
+    logical = {EpisodeId.from_capture_key(key).rollout_id for key in keys}
+    for directory in capture_dirs:
+        store = CaptureStore(directory, provider_dispatch_guard=True)
+        store.assert_dispatch_reconciled(keys)
+        prior_keys = set(keys)
+        for suffix in (".capture.jsonl", ".capture.incomplete"):
+            for path in directory.glob(f"*{suffix}"):
+                prior = path.name.removesuffix(suffix)
+                if EpisodeId.from_capture_key(prior).rollout_id in logical:
+                    prior_keys.add(prior)
+        for key in prior_keys:
+            if store.path_for(key).exists() or store.is_incomplete(key) or store.has_pending(key):
+                raise ControlError(
+                    f"guarded rollout {key} has prior provider evidence but no completed output; "
+                    "restore its native checkpoint or reconcile explicitly before dispatch; evidence preserved"
+                )
+
+
 def clear_model_call_captures_for_rollouts(records: list[Any], capture_dirs: list[Path]) -> None:
     """Remove stale per-rollout capture files for these records before dispatch.
 

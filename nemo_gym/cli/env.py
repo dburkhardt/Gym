@@ -28,6 +28,7 @@ from threading import Thread
 from time import monotonic, sleep, time
 from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple
 
+import psutil
 import requests
 import rich
 import uvicorn
@@ -443,7 +444,7 @@ def _server_launch_command(
     venv_python_fpath = get_venv_path(dir_path, global_config_dict) / "bin" / "python"
     return f"""{setup_env_command(dir_path, global_config_dict, server_name)} \\
     && export {STARTUP_SETUP_DONE_NS_ENV}=$({shlex.quote(str(venv_python_fpath))} -c 'import time; print(time.time_ns())') \\
-    && {shlex.quote(str(venv_python_fpath))} {shlex.quote(str(entrypoint_fpath))}"""
+    && exec {shlex.quote(str(venv_python_fpath))} {shlex.quote(str(entrypoint_fpath))}"""
 
 
 class RunConfig(BaseNeMoGymCLIConfig):
@@ -628,6 +629,7 @@ class RunHelper:  # pragma: no cover
                 dir_path,
                 server_name=top_level_path,
                 extra_env=extra_env,
+                owned_server_group=True,
                 project_root=PARENT_DIR if (PARENT_DIR / "pyproject.toml").is_file() else None,
             )
             self._processes[top_level_path] = process
@@ -845,8 +847,26 @@ Process `{process_name}` stderr:
         shutdown_telemetry()
 
         print("Sending interrupt signals to servers...")
+        owned_descendants = []
         for process in self._processes.values():
-            process.send_signal(SIGINT)
+            if getattr(process, "_gym_owned_server_group", False) is True:
+                try:
+                    identity = getattr(process, "_gym_owned_root_identity", None)
+                    if process.poll() is not None or identity is None or not identity.is_running():
+                        continue
+                    owned_descendants.extend(identity.children(recursive=True))
+                    if os.getpgid(process.pid) == process.pid:
+                        os.killpg(process.pid, SIGINT)
+                    else:
+                        # Do not signal a group whose ownership changed, or skip
+                        # cleanup of other services because one root changed.
+                        identity.send_signal(SIGINT)
+                except ProcessLookupError:
+                    pass
+                except psutil.NoSuchProcess:
+                    pass
+            else:
+                process.send_signal(SIGINT)
 
         print("Waiting for processes to finish...")
         killed_process_names: List[str] = []
@@ -862,6 +882,19 @@ Process `{process_name}` stderr:
                     process.wait(timeout=_FORCE_KILL_REAP_TIMEOUT_SEC)
                 except TimeoutExpired:
                     unreaped_process_names.append(process_name)
+
+        # Logged launchers contain a tee and a server beneath the shell. Reaping
+        # only that shell does not settle the owned servers. psutil objects retain
+        # creation identity, so escalation cannot kill an unrelated reused PID.
+        _, alive = psutil.wait_procs(owned_descendants, timeout=_FORCE_KILL_REAP_TIMEOUT_SEC)
+        for descendant in alive:
+            try:
+                descendant.kill()
+            except psutil.NoSuchProcess:
+                pass
+        _, alive = psutil.wait_procs(alive, timeout=_FORCE_KILL_REAP_TIMEOUT_SEC)
+        if alive:
+            unreaped_process_names.extend(f"owned-descendant-{p.pid}" for p in alive)
 
         if killed_process_names:
             print(
