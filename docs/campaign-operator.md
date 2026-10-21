@@ -36,7 +36,7 @@ gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.json
 
 Inspect the emitted `*_dispatch_plan.json` and `*_planned_inputs.jsonl`: exact task IDs, draw IDs, input hashes, role settings, and expected counts must match the frozen selection. `--limit` selects source tasks before repetition; omitting `--num-repeats` preserves dataset defaults. Planning starts no model services but can invoke preparation. Do not combine `--plan-only` with `--no-serve`.
 
-For managed serving, configure the input dataset in the run configuration. The CLI rejects `--input` in that mode; it is for externally served `--no-serve` runs. Check the planned task IDs before dispatch rather than assuming a command copied from another mode selects the same sample.
+For managed serving, configure the input dataset in the run configuration and set `split: benchmark` when its dataset type is `benchmark` (or pass `--split benchmark`). The CLI rejects `--input` in that mode; it is for externally served `--no-serve` runs. Check the planned task IDs before dispatch rather than assuming a command copied from another mode selects the same sample.
 
 ## Run and inspect
 
