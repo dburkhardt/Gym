@@ -75,6 +75,8 @@ from nemo_gym.config_types import ROLLOUT_PATH_PREFIX, TOKEN_CAPTURE_PATH_SEGMEN
 from nemo_gym.openai_utils import (
     NeMoGymChatCompletion,
     NeMoGymChatCompletionCreateParamsNonStreaming,
+    NeMoGymCompletion,
+    NeMoGymCompletionCreateParamsNonStreaming,
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
 )
@@ -380,6 +382,12 @@ class SimpleResponsesAPIModel(BaseResponsesAPIModel, SimpleServer):
             )
         )
 
+        app.post("/v1/completions")(
+            traced_endpoint(
+                GymSpanGroup.MODEL_CALL, "gym.model.completions", self.completions_dispatch, model_attributes
+            )
+        )
+
         app.post("/v1/responses")(
             traced_endpoint(GymSpanGroup.MODEL_CALL, "gym.model.responses", self.responses_dispatch, model_attributes)
         )
@@ -489,6 +497,21 @@ class SimpleResponsesAPIModel(BaseResponsesAPIModel, SimpleServer):
     @abstractmethod
     async def responses(self, body: NeMoGymResponseCreateParamsNonStreaming = Body()) -> NeMoGymResponse:
         pass
+
+    async def completions(self, body: NeMoGymCompletionCreateParamsNonStreaming) -> NeMoGymCompletion:
+        raise HTTPException(status_code=501, detail="This model adapter does not support literal text completions")
+
+    async def completions_dispatch(self, request: Request, body: dict = Body()):
+        try:
+            params = NeMoGymCompletionCreateParamsNonStreaming.model_validate(body)
+        except ValidationError as exc:
+            raise RequestValidationError([{**error, "loc": ("body", *error["loc"])} for error in exc.errors()])
+        if current_capture_context() is not None:
+            raise HTTPException(status_code=501, detail="Raw completion training-token capture is not supported")
+        response = await self.completions(params)
+        dispatched = _orjson_dispatch_response(response)
+        await self._finalize_served_response(response)
+        return dispatched
 
     async def responses_dispatch(self, request: Request, body: dict = Body()):
         """Default ``/v1/responses`` entrypoint shared by every Gym model server.
@@ -1456,6 +1479,7 @@ def aggregate_model_call_metrics(store: CaptureStore, rollout_id: str) -> dict[s
 
 
 _OBSERVED_PATHS = {
+    "/v1/completions": "completion",
     "/v1/responses": "responses",
     "/v1/chat/completions": "chat",
     "/v1/messages": "messages",

@@ -1437,6 +1437,41 @@ CHAT_REQUEST_PROVIDER_EXTENSION_FIELDS = frozenset(
 CHAT_REQUEST_IGNORED_CLIENT_FIELDS = frozenset({"aws_region_name"})
 
 
+class NeMoGymCompletionCreateParamsNonStreaming(BaseModel):
+    """Literal-text generation only; not a tokenizer or likelihood interface."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    model: str
+    prompt: str
+    max_tokens: int = Field(gt=0)
+    temperature: float = Field(default=1.0, ge=0, le=2)
+    top_p: float = Field(default=1.0, gt=0, le=1)
+    frequency_penalty: float = Field(default=0.0, ge=-2, le=2)
+    presence_penalty: float = Field(default=0.0, ge=-2, le=2)
+    stop: str | list[str] | None = None
+    stream: Literal[False] = False
+    n: Literal[1] = 1
+
+
+class NeMoGymCompletionChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    index: Literal[0]
+    text: str
+    finish_reason: Literal["stop", "length", "content_filter"]
+    logprobs: None = None
+
+
+class NeMoGymCompletion(BaseModel):
+    # Provider metadata can be preserved without inventing missing usage.
+    model_config = ConfigDict(extra="allow", strict=True)
+    id: str
+    object: Literal["text_completion"]
+    created: int
+    model: str
+    choices: list[NeMoGymCompletionChoice] = Field(min_length=1, max_length=1)
+    usage: dict[str, Any] | None = None
+
+
 class NeMoGymChatCompletionCreateParamsNonStreaming(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

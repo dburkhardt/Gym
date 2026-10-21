@@ -22,6 +22,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Awaitable, Callable, Dict, Literal, Optional, TypeVar
 
 from aiohttp import ClientResponseError
+from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
 
 from nemo_gym.base_responses_api_model import (
@@ -34,6 +35,8 @@ from nemo_gym.openai_utils import (
     NeMoGymAsyncOpenAI,
     NeMoGymChatCompletion,
     NeMoGymChatCompletionCreateParamsNonStreaming,
+    NeMoGymCompletion,
+    NeMoGymCompletionCreateParamsNonStreaming,
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
     PermanentEndpointError,
@@ -107,6 +110,16 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
     openai_model: str
 
     extra_body: Dict[str, Any] = Field(default_factory=dict)
+    raw_completions_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_raw_completion_capability(self):
+        if self.raw_completions_enabled:
+            NeMoGymCompletionCreateParamsNonStreaming.model_validate(
+                {"model": self.openai_model, "prompt": "", "max_tokens": 1} | self.extra_body
+            )
+        return self
+
     openai_default_headers: Dict[str, str] = Field(default_factory=dict)
     max_http_attempts: int = Field(default=MAX_NUM_TRIES, ge=1)
     upstream_rate_limit_cooldown_seconds: Optional[float] = Field(
@@ -402,6 +415,22 @@ class SimpleModelServer(SimpleResponsesAPIModel):
                     "effort": self.config.reasoning_effort_none_replacement,
                 }
             return NeMoGymResponse.model_validate(response_dict)
+
+        return await self._call_upstream(create_and_validate)
+
+    async def completions(self, body: NeMoGymCompletionCreateParamsNonStreaming) -> NeMoGymCompletion:
+        if not self.config.raw_completions_enabled:
+            raise HTTPException(status_code=501, detail="Enable raw_completions_enabled after provider qualification")
+        body_dict = self.config.extra_body | body.model_dump(exclude_unset=True)
+        body_dict["model"] = self.config.openai_model
+        # Configured extras must obey the same strict capability contract.
+        body_dict = NeMoGymCompletionCreateParamsNonStreaming.model_validate(body_dict).model_dump(exclude_unset=True)
+
+        async def create_and_validate() -> NeMoGymCompletion:
+            response = NeMoGymCompletion.model_validate(await self._client.create_completion(**body_dict))
+            if response.model != self.config.openai_model:
+                raise ValueError("Raw completion response model does not match configured model")
+            return response
 
         return await self._call_upstream(create_and_validate)
 
