@@ -42,3 +42,11 @@ scientific correctness. The four unreadable creator-selected TIFF references mak
 process coverage unresolved. Raw scores remain unchanged; the existing shared hook
 conservatively masks the whole scalar row when process evidence is incomplete.
 Separately reviewed outcome reporting must use its explicit per-metric disposition.
+
+A separately qualified reconstruction may set `BIABENCH_SOLVER_IMAGE` to a full
+lowercase `sha256:` image ID; the historical image remains the default. The
+operator must qualify exact public inputs, dependency versions, reference
+isolation, and runtime behavior before using an override. Preparation records
+the image and published file hashes. Changed images, sources, or prepared bytes
+refuse reuse: use a fresh versioned source/preparation directory and retain the
+old artifacts. An image ID alone is not scientific equivalence evidence.
