@@ -110,6 +110,35 @@ async def test_actual_model_handler_capture_and_two_call_identity(tmp_path, fail
     assert [x["messages"][0]["content"] for x in requests] == ["original A", "original B"]
     assert all(x["max_tokens"] == 1 and x["prompt_logprobs"] == 0 for x in requests)
     assert json.loads(result.output_text)["mean_nll"] == [1, 2]
+    # Saved native results contain earlier computed fields and must be regradable.
+    from resources_servers.brainbench_likelihood.app import Config as ResourceConfig
+    from resources_servers.brainbench_likelihood.app import Server
+
+    resource = Server(
+        config=ResourceConfig(host="127.0.0.1", port=3, name="scorer", entrypoint="app.py"),
+        server_client=MagicMock(spec=ServerClient, global_config_dict={}),
+    )
+    with TestClient(resource.setup_webserver()) as web:
+        saved = {
+            "uuid": "task-1",
+            "responses_create_params": body.model_dump(mode="json"),
+            "task_id": "task-1",
+            "_ng_task_index": 9,
+            "verifier_metadata": {"target": 0},
+            "response": result.model_dump(mode="json"),
+            "reward": 0,
+            "scoring_details": {"stale": True},
+            "mask_sample": True,
+            "failure_kind": "verifier_error",
+            "failure_reason": "old verifier failure",
+        }
+        verified = web.post("/verify", json=saved)
+        assert verified.status_code == 200, verified.text
+        assert verified.json()["reward"] == 1 and verified.json()["scoring_details"]["predicted"] == 0
+        assert verified.json()["_ng_task_index"] == 9
+        assert not verified.json()["mask_sample"] and verified.json()["failure_kind"] is None
+        again = web.post("/verify", json=verified.json())
+        assert again.status_code == 200 and again.json() == verified.json()
     assert [x["response_id"] for x in result.ng_trajectory["invocations"][0]["model_calls"]] == ["chat-1", "chat-2"]
     assert len(result.ng_trajectory["turns"]) == 2
     if failure:

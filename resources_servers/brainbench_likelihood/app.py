@@ -36,7 +36,11 @@ class Server(SimpleResourcesServer):
         values = [mean_nll(r["response"]) for r in data["receipts"]]
         assert values == data["mean_nll"]
         details = score_pair(values, body.verifier_metadata["target"])
-        return VerifyResponse(**body.model_dump(), reward=details["reward"], scoring_details=details)
+        payload = body.model_dump()
+        if payload.get("failure_kind") == "verifier_error":
+            payload.update(mask_sample=False, failure_kind=None, failure_reason=None)
+        payload.update(reward=details["reward"], scoring_details=details)
+        return VerifyResponse.model_validate(payload)
 
 
 if __name__ == "__main__":
