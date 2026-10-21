@@ -44,3 +44,22 @@ Unknown implementations or changed inputs require review and remain refused.
 A future digest schema should bind the selected generated recipe and probes plus
 a versioned qualification engine, avoiding repeated mappings for unrelated
 capsule allowlist additions. That redesign is not part of this exception.
+
+`auxiliary_controls.observe_auxiliaries` provides optional, source-bound diagnostic
+observations for scientific executables beyond the R/Python package inventory,
+for example PhantomJS or TeX. Each selection specifies an executable name or
+absolute path, `--version`/`-V`, and the exact frozen source-file hashes explaining
+the selection. It reuses the existing no-network owned image probe (120-second
+execution timeout, 180-second sandbox TTL), preserving the creator PATH and
+recording executable hashes, version exit status and `ldd` output. Its separate
+`auxiliary-observation.json` binds the selections, full source manifest, published
+image, observed image identity and both probe implementation hashes. Missing tools
+and failed version queries are diagnostic outcomes, not successful qualification.
+No package installation, workflow execution, default probe change or automatic
+upgrade of historical qualification receipts occurs. A reviewed environment
+variant or readiness decision remains separate.
+
+The source-file hashes identify the reviewed frozen instructions used to select
+tools; this diagnostic does not inspect those files inside the creator image.
+Actual image contents remain subject to the separate maintained source-image
+qualification boundary. Image identity alone is not source-file verification.
