@@ -22,7 +22,19 @@ def summarize_dispositions(
     execution. Only explicit measurement reviews certify individual metrics.
     Attempt and provider-call totals require their own ledgers and remain unknown.
     """
-    counts = Counter()
+    counts = Counter(
+        {
+            name: 0
+            for name in (
+                "completed_result_records",
+                "failure_records",
+                "raw_scored_records",
+                "quality_selected_records",
+                "masked_result_records",
+                "explicitly_not_dispatched_records",
+            )
+        }
+    )
     metrics = {}
     lineage = []
     observed_identities = set()

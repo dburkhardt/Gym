@@ -125,3 +125,17 @@ def test_optional_identity_and_attempt_fields_do_not_inflate_lower_bound():
     assert report["observed_logical_rollout_lower_bound"] == 1
     assert len(report["records"]) == 2
     assert report["attempted_total"] is None
+
+
+def test_empty_stream_has_stable_zero_count_schema():
+    summary = summarize_dispositions([])
+    assert summary["counts"] == {
+        "completed_result_records": 0,
+        "failure_records": 0,
+        "raw_scored_records": 0,
+        "quality_selected_records": 0,
+        "masked_result_records": 0,
+        "explicitly_not_dispatched_records": 0,
+    }
+    assert summary["attempted_total"] is None
+    assert summary["provider_dispatch_unresolved_total"] is None
