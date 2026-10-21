@@ -16,6 +16,7 @@ brainbench_agent:
   responses_api_agents:
     brainbench_likelihood:
       entrypoint: app.py
+      output_root: ${oc.env:BRAINBENCH_OUTPUT_ROOT}
       resources_server:
         type: resources_servers
         name: brainbench_resources

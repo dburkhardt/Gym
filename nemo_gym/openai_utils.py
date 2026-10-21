@@ -1427,7 +1427,9 @@ NeMoGymChatCompletionToolChoiceOptionParam: TypeAlias = Union[
 # Provider extensions accepted by the strict chat request model beyond the
 # OpenAI SDK's own field set. Tests pin the model's fields to SDK ∪ this set so
 # unknown keys keep failing validation while these documented contracts pass.
-CHAT_REQUEST_PROVIDER_EXTENSION_FIELDS = frozenset({"chat_template_kwargs", "thinking", "output_config"})
+CHAT_REQUEST_PROVIDER_EXTENSION_FIELDS = frozenset(
+    {"chat_template_kwargs", "thinking", "output_config", "prompt_logprobs"}
+)
 
 # Client-only fields sent by harnesses such as OpenHands. The strict chat request model
 # accepts them so the request is not rejected with a 422, but never serializes them, so
@@ -1464,6 +1466,8 @@ class NeMoGymChatCompletionCreateParamsNonStreaming(BaseModel):
     audio: Optional[ChatCompletionAudioParam] = None
     frequency_penalty: Optional[float] = None
     logit_bias: Optional[Dict[str, int]] = None
+    # Provider prompt-token likelihoods; generated-token logprobs are distinct.
+    prompt_logprobs: Optional[Literal[0]] = None
     logprobs: Optional[bool] = None
     max_completion_tokens: Optional[int] = None
     max_tokens: Optional[int] = None
