@@ -15,3 +15,7 @@ The maintained benchmark config selects `policy_model` through Gym. Enable `obse
 For the automatically graded Disease gene location category, budget-limited output is scored with the creator parser and remains in the denominator. Other categories remain manually graded; infrastructure failures remain masked. Historical attempts are unchanged.
 
 Header reuse now requires matching pinned creator source, header content and captured NCBI tool-byte provenance. Tool redirects are checked before following them. Each model turn writes a durable intent before dispatch. Cancellation prevents later turns and waits for the current bounded HTTP/thread operation to settle before releasing the per-agent lock; it does not claim to restore an interrupted loop. The shared chat request retains the legacy 600-second bound.
+
+## Native CLI deterministic control
+
+`responses_api_agents.genehop_native.qualify_cli` runs the supported CLI against a local deterministic provider using the preserved five terminal answers and provenance-checked cached creator header. It checks request/result task and rollout indices, five captured physical calls, manual-only masking, and completed-output resume without additional calls. This does not exercise fresh NCBI retrieval, measure model quality, or establish interrupted-loop recovery. Current native trajectory health remains unobserved because per-turn native receipts are not yet mapped to Gym invocation/turn telemetry.
