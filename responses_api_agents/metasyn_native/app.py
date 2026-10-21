@@ -54,6 +54,7 @@ class Config(BaseResponsesAPIAgentConfig):
     output_root: Path
     reference_file: Path
     creator_source_root: Path = Path("/unqualified-metasyn-source")
+    scientific_threads: int = Field(default=1, ge=1)
     inference_enabled: bool = False
     model_server: ModelServerRef = Field(default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model"))
 
@@ -95,6 +96,8 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                     "reference_sha256": hashlib.sha256(self.config.reference_file.read_bytes()).hexdigest(),
                     "sources": {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
                     "timeout_s": 3600, "native_python": self.config.native_python}
+        threads = getattr(self.config, "scientific_threads", 1)
+        identity["scientific_threads"] = threads
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         _publish(out / "identity.json", identity)
         provider = LocalProvider(concurrency=1)
@@ -110,6 +113,8 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                 ], out, timeout_s=3600, env={
                     "PYTHONPATH": str(source) + ":" + str(self.config.creator_source_root.parent), "NEMO_GYM_EXTRA_ROOTS": str(source),
                     "METASYN_DATA": str(self.config.materialized_root),
+                    "OMP_NUM_THREADS": str(threads), "OPENBLAS_NUM_THREADS": str(threads),
+                    "TOKENIZERS_PARALLELISM": "false", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
                     "METASYN_BRIDGE_SOCKET": str(socket), "METASYN_BRIDGE_TOKEN": token,
                     "METASYN_BRIDGE_LINEAGE": lineage, "METASYN_BRIDGE_DIGEST": digest,
                 })

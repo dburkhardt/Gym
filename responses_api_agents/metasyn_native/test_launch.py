@@ -33,6 +33,8 @@ async def test_parent_passes_scoped_bridge_and_preserves_native_result(tmp_path,
     async def creator(argv, out, *, timeout_s, env):
         assert env['METASYN_BRIDGE_LINEAGE']=='rollout'
         assert env['METASYN_DATA']==str(data)
+        assert env['OMP_NUM_THREADS']=='1'
+        assert env['HF_HUB_OFFLINE']=='1'
         assert timeout_s==3600
         assert argv[0]==sys.executable
         identity=json.loads((out/'identity.json').read_text())
