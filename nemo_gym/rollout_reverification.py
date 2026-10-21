@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import copy
 import fcntl
 import hashlib
 import json
@@ -109,7 +110,11 @@ class RolloutReverificationConfig(UploadRolloutsConfigMixin, BaseNeMoGymCLIConfi
         ),
     )
     materialized_inputs_jsonl_fpath: str = Field(
-        description="The file path of the materialized inputs as output by `gym eval run`."
+        description=(
+            "The file path of the materialized inputs as output by `gym eval run`. Task/reference fields come "
+            "from these inputs; saved responses_create_params, when present, preserve the executed generation "
+            "request. Reverification records compact request provenance without attesting reconstructed inputs."
+        )
     )
     rollouts_jsonl_fpath: Optional[str] = Field(
         default=None, description="The file path of the rollouts to re-verify, as output by `gym eval run`."
@@ -643,6 +648,38 @@ def _build_verify_payload(pair: InputRolloutPair) -> Dict:
             if fields[key] != task_data[key]:
                 raise ConfigError(f"reverify: conflicting task field {key!r} inside and outside task_data")
         payload = row_keys | task_data | fields | {"response": response}
+    if "responses_create_params" in pair.rollout:
+        executed = pair.rollout["responses_create_params"]
+        if not isinstance(executed, dict) or any(not isinstance(key, str) for key in executed):
+            raise ConfigError("reverify: saved responses_create_params must be an object")
+        supplied = payload.get("responses_create_params")
+
+        def digest(value: Any) -> str:
+            try:
+                encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+            except (TypeError, ValueError) as exc:
+                raise ConfigError("reverify: request provenance must contain JSON values") from exc
+            return hashlib.sha256(encoded).hexdigest()
+
+        # Generation did not run again. A reconstructed historical input may
+        # omit CLI overrides; it must not replace the executed request. Keep
+        # task/reference fields from the supplied input, not an old verdict.
+        payload["responses_create_params"] = copy.deepcopy(executed)
+        payload["_ng_reverify_request_provenance"] = {
+            "version": 1,
+            "source": "saved_rollout.responses_create_params",
+            "supplied_input_origin": "caller_supplied_not_independently_attested",
+            "executed_sha256": digest(executed),
+            "supplied_sha256": digest(supplied),
+            "changed_top_level_fields": sorted(
+                key
+                for key in executed.keys() | (supplied.keys() if isinstance(supplied, dict) else set())
+                if not isinstance(supplied, dict)
+                or key not in supplied
+                or key not in executed
+                or supplied[key] != executed[key]
+            ),
+        }
     # File-backed verifiers need the artifact path produced by the rollout, and
     # adaptive comparison needs the exact reference subset used for that row.
     # Preserve only verifier inputs, not rewards or failure bookkeeping.
@@ -663,6 +700,11 @@ def _build_verify_payload(pair: InputRolloutPair) -> Dict:
 
 
 def _retain_generation_failure(row: Dict, result: Dict) -> Dict:
+    provenance = row.get("_ng_reverify_request_provenance")
+    if provenance is not None:
+        result = dict(result)
+        result["responses_create_params"] = copy.deepcopy(row["responses_create_params"])
+        result["reverification_request_provenance"] = copy.deepcopy(provenance)
     failure = row.get("_ng_generation_failure")
     if not failure:
         return result
