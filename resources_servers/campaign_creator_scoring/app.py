@@ -10,12 +10,16 @@ import sys
 from pathlib import Path
 from typing import ClassVar
 
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import ConfigDict, Field
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
+    BaseSeedSessionRequest,
     BaseVerifyRequest,
     BaseVerifyResponse,
+    ResourcesSeedSessionRequest,
     ReverifyMode,
     SimpleResourcesServer,
 )
@@ -31,6 +35,10 @@ class Config(BaseResourcesServerConfig):
     scoring_timeout_s: float = Field(default=600, gt=0, allow_inf_nan=False)
 
 
+class SeedRequest(BaseSeedSessionRequest):
+    model_config = ConfigDict(extra="allow")
+
+
 class VerifyRequest(BaseVerifyRequest):
     model_config = ConfigDict(extra="allow")
     uuid: str
@@ -43,7 +51,9 @@ class VerifyResponse(BaseVerifyResponse, VerifyRequest):
     metadata: dict = Field(default_factory=dict)
 
 
-async def run_score(*, benchmark: str, upstream_repo: Path, task: dict, answer: str, timeout_s: float) -> dict:
+async def run_score(
+    *, benchmark: str, upstream_repo: Path, task: dict, answer: str, timeout_s: float, preflight: bool = False
+) -> dict:
     """Run trusted creator code in a cancellable process group, not an executor pool.
 
     This is host execution, not a security sandbox. LocalProvider kills ordinary
@@ -56,7 +66,15 @@ async def run_score(*, benchmark: str, upstream_repo: Path, task: dict, answer: 
         request_path = workspace / "request.json"
         result_path = workspace / "result.json"
         request_path.write_text(
-            json.dumps({"benchmark": benchmark, "repo": str(upstream_repo.resolve()), "task": task, "answer": answer})
+            json.dumps(
+                {
+                    "benchmark": benchmark,
+                    "repo": str(upstream_repo.resolve()),
+                    "task": task,
+                    "answer": answer,
+                    "preflight": preflight,
+                }
+            )
         )
         source_root = Path(__file__).resolve().parents[2]
         worker = Path(__file__).with_name("score_worker.py").resolve()
@@ -96,6 +114,39 @@ class CreatorResourcesServer(SimpleResourcesServer):
             {"benchmark": self.config.benchmark, "upstream_repo": self.config.upstream_repo},
         )
         return "stateless"
+
+    async def seed_session(self, body: ResourcesSeedSessionRequest | SeedRequest) -> JSONResponse:
+        status = "not_covered"
+        if self.config.benchmark == "chemiq":
+            payload = body.task_data if isinstance(body, ResourcesSeedSessionRequest) else body.model_dump()
+            task = {"uuid": payload.get("uuid"), "verifier_metadata": payload.get("verifier_metadata")}
+            try:
+                evidence = await run_score(
+                    benchmark=self.config.benchmark,
+                    upstream_repo=Path(self.config.upstream_repo),
+                    task=task,
+                    answer="",
+                    timeout_s=min(60, self.config.scoring_timeout_s),
+                    preflight=True,
+                )
+                if evidence.get("status") != "ready" or evidence.get("uuid") != task["uuid"]:
+                    raise ValueError("Scorer dependency preflight identity mismatch")
+            except (RuntimeError, TimeoutError, ValueError, TypeError, OSError) as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail={
+                        "failure_kind": "campaign_creator_scoring:dependency_preflight_failed",
+                        "task_id": body.task_id.model_dump(mode="json")
+                        if isinstance(body, ResourcesSeedSessionRequest)
+                        else payload.get("task_id", task["uuid"]),
+                        "uuid": task["uuid"],
+                        "dispatch_status": "not_sent",
+                        "error_type": type(error).__name__,
+                    },
+                ) from error
+            status = "chemiq_initialization_ready"
+        seeded = await super().seed_session(body)
+        return JSONResponse(seeded.model_dump(mode="json"), headers={"x-nemo-gym-scorer-preflight": status})
 
     async def verify(self, body: VerifyRequest) -> VerifyResponse:
         task = {"uuid": body.uuid, "verifier_metadata": body.verifier_metadata}

@@ -22,7 +22,19 @@ def main() -> None:
             ).hexdigest(),
             "source_revision": deterministic.PINS["qcbench"],
         }
-    result = deterministic.score(request["benchmark"], Path(request["repo"]), request["task"], request["answer"])
+    if request.get("preflight"):
+        if request["benchmark"] != "chemiq":
+            raise ValueError("Dependency preflight is not implemented for this creator branch")
+        _, creator, _ = deterministic.initialize_chemiq(Path(request["repo"]), request["task"])
+        result = {
+            "status": "ready",
+            "scope": "chemiq_initialization_only",
+            "interpreter": sys.executable,
+            "creator_path": str(Path(creator.__file__).resolve()),
+            "uuid": request["task"]["uuid"],
+        }
+    else:
+        result = deterministic.score(request["benchmark"], Path(request["repo"]), request["task"], request["answer"])
     if evidence is not None:
         if hashlib.sha256(scorer_path.read_bytes()).hexdigest() != evidence["creator_scorer_sha256"]:
             raise RuntimeError("QCBench creator scorer changed during scoring")

@@ -459,6 +459,18 @@ def prepare(kind: str, repo: Path, output: Path) -> dict:
     return record
 
 
+def initialize_chemiq(repo: Path, task: dict):
+    """Load actual pinned scorer dependencies/data without scoring or network IO."""
+    validate_repo("chemiq", repo)
+    parser = module(repo / "utils/parser.py").AnswerParser(repo / "questions/chemiq.jsonl")
+    creator = module(repo / "utils/answer_verifier.py")
+    verifier = creator.AnswerVerifier(repo / "questions/chemiq.jsonl")
+    uuid = task.get("uuid")
+    if not isinstance(uuid, str) or uuid not in parser.question_dict or uuid not in verifier.question_dict:
+        raise ValueError("Selected ChemIQ UUID is absent from creator questions")
+    return parser, creator, verifier
+
+
 def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
     """Execute on grader host; ChemIQ SIGALRM requires main thread/subprocess."""
     if kind == "molbench":
@@ -710,9 +722,7 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
             "reward": sum(a in parsed for a in meta["answer"]) / len(meta["answer"]),
             "metric": "creator_reference_recall",
         }
-    parser = module(repo / "utils/parser.py").AnswerParser(repo / "questions/chemiq.jsonl")
-    creator = module(repo / "utils/answer_verifier.py")
-    verifier = creator.AnswerVerifier(repo / "questions/chemiq.jsonl")
+    parser, creator, verifier = initialize_chemiq(repo, task)
     parsed = parser.parse(task["uuid"], answer)
     from benchmarks.chemiq.observation import check
 
