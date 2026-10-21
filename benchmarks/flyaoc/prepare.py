@@ -10,7 +10,14 @@ from tempfile import TemporaryDirectory
 from nemo_gym.dataset_staging import stage_file
 
 
-def prepare(source: Path, destination: Path, sample_size: int = 5) -> Path:
+def prepare(source: Path | None = None, destination: Path | None = None, sample_size: int | None = None) -> Path:
+    source = Path(source) if source is not None else Path(os.environ["FLYAOC_FROZEN_INPUTS"])
+    destination = (
+        Path(destination)
+        if destination is not None
+        else Path(os.environ.get("FLYAOC_DATA", str(Path(__file__).parent / "data")))
+    )
+    sample_size = sample_size if sample_size is not None else int(os.environ.get("FLYAOC_SAMPLE_SIZE", "5"))
     if sample_size not in (5, 20, 50):
         raise ValueError("Use frozen sample sizes 5, 20 or 50")
     manifest = json.loads(Path(__file__).with_name("frozen_sources.json").read_text())
