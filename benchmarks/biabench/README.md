@@ -22,3 +22,23 @@ Set `BIABENCH_SOURCE`, `BIABENCH_TASK`, and `BIABENCH_DATA` to the preserved inp
 The hook returns outcome and, when numeric, process as separate metrics. Native unknown process results remain null in retained reports; aggregate calculation is disabled. Failed transport, incomplete checklist, truncated judge output or partial capture refuses an accepted score. A new process-scoring attempt needs a new output directory and lineage; arbitrary interrupted-session recovery is not implemented.
 
 Local deterministic creator qualification processed all 49 checklist items in 25 mocked provider calls, preserving outcome 0.79 while all-unknown judgments produced process null. A second control injected a disconnect: only one physical request occurred and no process score was accepted. These are correctness controls, not Nemotron performance. Four creator-selected TIFF reference images remain unreadable by the unchanged encoder (100 skipped encodings across 25 chunks); their omission is retained explicitly and limits visual evidence. No conversion or scorer repair was applied. The historical unresolved provider attempt remains untouched.
+
+Resource admission reserves 22 GiB through native `harbor_ray_task_memory_bytes`:
+8 GiB solver, 8 GiB separate verifier and 4 GiB managed process scorer can overlap.
+The additional 2 GiB is an unqualified host-services/headroom assumption, not a
+hard host memory bound. Ray cannot place the trial on a node without that logical
+capacity; it may queue rather than immediately fail. Actual Docker and sidecar
+bounds still require runtime qualification.
+
+The runtime must explicitly declare `component_capabilities.policy_model.vision: true`.
+This is required for the process judge's reference images; merely selecting a
+model name does not establish compatibility. Currently all model roles share the
+same authorized vision model. Independent future judge configurations must retain
+that requirement.
+
+The measurement-review hook binds raw metric values to the retained pinned-source
+result. Outcome validity here means faithful execution of that scorer, not universal
+scientific correctness. The four unreadable creator-selected TIFF references make
+process coverage unresolved. Raw scores remain unchanged; the existing shared hook
+conservatively masks the whole scalar row when process evidence is incomplete.
+Separately reviewed outcome reporting must use its explicit per-metric disposition.

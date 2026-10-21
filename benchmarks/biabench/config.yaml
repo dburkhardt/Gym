@@ -8,6 +8,9 @@ harbor_agent:
       domain: agent
       description: BIABench frozen wound-healing CPU task with separate creator outcome and process verification.
       concurrency: 1
+      # Agent8GiB + separate verifier8GiB + managed scorer4GiB overlap.
+      # Additional2GiB is admission headroom, not a qualified hard host bound.
+      harbor_ray_task_memory_bytes: 23622320128
       harbor_datasets:
         biabench:
           local_dataset_path: benchmarks/biabench/data/tasks
@@ -35,6 +38,7 @@ harbor_agent:
       harbor_environment_type: docker
       harbor_environment_import_path: null
       harbor_environment_kwargs: null
+      harbor_measurement_review_import_path: benchmarks.biabench.measurement_review:review
       harbor_required_artifact_sources: ["/workspace"]
       harbor_verifier_import_path: benchmarks.biabench.verifier:BIAVerifier
       harbor_verifier_kwargs:

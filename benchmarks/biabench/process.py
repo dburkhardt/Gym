@@ -188,8 +188,23 @@ def run_process(
         if prediction_hashes(submission) != before:
             raise ValueError("Creator process evaluator changed immutable submission")
         imports = imported_creator_hashes(source, manifest["creator_files"])
+        skipped_images = sum(r.get("n_images_skipped", 0) for r in raw)
         record = {
             "status": "completed",
+            "measurement_validity": {
+                "outcome": {
+                    "status": "valid",
+                    "reason": "Pinned native outcome scorer completed independently of VLM image encoding; execution fidelity is not universal scientific correctness.",
+                },
+                "process": {
+                    "status": "unresolved" if skipped_images else "valid",
+                    "reason": "Creator-selected reference images could not be encoded; process evidence coverage is incomplete."
+                    if skipped_images
+                    else "No creator-selected image encodings were omitted.",
+                    "skipped_image_encodings": skipped_images,
+                    "coverage_scope": "Image encoding completeness only, not a general judge accuracy claim.",
+                },
+            },
             "native_scores": scores,
             "creator_import_sha256": imports,
             "total_candidates": verdict["total_candidates"],
