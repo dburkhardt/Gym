@@ -71,3 +71,38 @@ async def test_ambiguous_or_error_response_cannot_be_retried(tmp_path, failure):
         with pytest.raises(RuntimeError, match="no automatic resend"):
             await client.post("http://local/v1/chat/completions", json={"model": "model"})
     assert calls == 1
+
+
+def test_sync_creator_transport_preserves_loop_and_durable_calls(tmp_path):
+    import asyncio
+    from nemo_gym.sandbox.guarded_chat_transport import GuardedSyncChatTransport
+    loops = []
+    async def provider(request):
+        loops.append(asyncio.get_running_loop())
+        return httpx.Response(200, json={'model': 'model', 'choices': [{'finish_reason': 'stop'}]})
+    transport = GuardedSyncChatTransport(socket_path='unused', token='local', lineage='sync',
+        digest='config', namespace='creator', model='model', output=tmp_path/'calls',
+        transport=httpx.MockTransport(provider))
+    with httpx.Client(transport=transport) as client:
+        for _ in range(2):
+            assert client.post('http://local/v1/chat/completions', json={'model':'model'}).status_code == 200
+    assert len(loops) == 2 and loops[0] is loops[1] and loops[0].is_closed()
+    assert (tmp_path/'calls/000001.response.json').exists()
+    transport.close()
+
+
+def test_sync_sdk_retry_cannot_forward_after_ambiguous_call(tmp_path):
+    from nemo_gym.sandbox.guarded_chat_transport import GuardedSyncChatTransport
+    calls = []
+    async def provider(request):
+        calls.append(request)
+        raise httpx.ReadTimeout('unknown outcome')
+    transport = GuardedSyncChatTransport(socket_path='unused', token='local', lineage='sync',
+        digest='config', namespace='creator', model='model', output=tmp_path/'calls',
+        transport=httpx.MockTransport(provider))
+    with httpx.Client(transport=transport) as client:
+        with pytest.raises(httpx.ReadTimeout):
+            client.post('http://local/v1/chat/completions', json={'model':'model'})
+        with pytest.raises(RuntimeError, match='Unresolved'):
+            client.post('http://local/v1/chat/completions', json={'model':'model'})
+    assert len(calls) == 1

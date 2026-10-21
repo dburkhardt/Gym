@@ -103,3 +103,35 @@ class GuardedChatTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self):
         await self.inner.aclose()
+
+
+class GuardedSyncChatTransport(httpx.BaseTransport):
+    """Expose the same durable guard to synchronous creator SDKs.
+
+    One private event loop owns the async transport for its whole lifetime;
+    serialization prevents concurrent threads from driving that loop together.
+    Use only from synchronous code, outside a running event loop.
+    """
+
+    def __init__(self, **kwargs):
+        import threading
+        self._lock = threading.Lock()
+        self._runner = asyncio.Runner()
+        self._transport = GuardedChatTransport(**kwargs)
+        self._closed = False
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Guarded synchronous transport is closed")
+            return self._runner.run(self._transport.handle_async_request(request))
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            try:
+                self._runner.run(self._transport.aclose())
+            finally:
+                self._closed = True
+                self._runner.close()
