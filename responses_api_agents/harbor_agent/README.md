@@ -564,3 +564,17 @@ This does not retroactively certify historical campaign scores.
 When the Gym run has a rollout capture ID, the Harbor bridge forwards a rollout-qualified model URL and binds calls to a persisted UUID plus the native Chat turn index. The binding, exact request/configuration hashes and completion state live in `agent/gym-call-state.json`. An exclusive file lock prevents two clients owning that state; overlapping calls on one client are rejected. Retrying the same call uses its original binding so the Gym capture store can replay a completed response or reject unresolved dispatch. Different trials receive different identities even for identical prompts.
 
 This is not automatic Harbor environment recovery. Native Terminus2 resets its shell/chat setup on `run()`. Reopening existing dispatch state therefore fails by default. The low-level `dispatch_resume_preserved_state` option is only for a caller that has independently preserved the environment and exact native Chat checkpoint; the built-in Harbor agent does not enable it. Restoring model state alone does not justify restarting an agent against a fresh shell. Summarized or altered turn histories that cannot satisfy the exact saved call binding fail closed.
+
+### Restricted continuation development controls
+
+`continuation_compat.py` exposes optional awaited completed-turn hooks on a dedicated subclass of the exact pinned Terminus2 source. `continuation_state.py` validates a JSON cursor against the task, native protocol, effective model kwargs, Chat/parser source, turn budget and original absolute deadline. It preserves native history and cumulative usage; downtime consumes the original deadline. These modules are **not enabled by the production Harbor agent**.
+
+The local qualification control uses the actual pinned loop and Gym checkpoint participant/controller: commit, terminate the original process, restore in a fresh process, and compare complete requests and usage with uninterrupted execution. Its synchronous file-tool fixture records each effect once. It also tests two-session staging rollback, source/state mismatch and deadline expiry. Run with the pinned Harbor dependencies:
+
+```bash
+LITELLM_LOCAL_MODEL_COST_MAP=True PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="$PWD" \
+  python -m pytest -q -p pytest_asyncio.plugin \
+  responses_api_agents/harbor_agent/tests/test_continuation_compat.py
+```
+
+This qualifies the restricted cursor and file-session control, not arbitrary shell or scientific-container restoration. Native tmux uses nonblocking commands and cannot attest completed foreground work, background jobs, cwd/environment or terminal state through this interface. It remains unsupported and restart-only. Summarization/delegation, parser-error boundaries, exhausted turns and unknown tool/provider outcomes are not resumable checkpoint boundaries. A production integration must supply an audited tool-state attestor and atomic workspace/session restoration through existing Gym hooks before enabling continuation; captured model responses or copied files alone are insufficient.
