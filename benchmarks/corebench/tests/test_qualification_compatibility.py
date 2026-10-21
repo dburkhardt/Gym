@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -23,6 +24,7 @@ def test_exact_review_preserves_original_receipt():
     original = copy.deepcopy(receipt)
     result = reviewed_compatibility(row, receipt)
     assert result["original_qualification_sha256"] == PRIOR_QUALIFICATION
+    assert result["reviewed_implementation_sha256"] == hashlib.sha256(Path(controls.__file__).read_bytes()).hexdigest()
     assert receipt == original
 
 

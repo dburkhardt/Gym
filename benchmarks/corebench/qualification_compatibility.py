@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""One reviewed source transition; never rewrite or upgrade historical receipts.
+"""Exact reviewed source transitions; never rewrite historical receipts.
 
 188bc960c -> b395eb6de changes only dockerfile()'s explicit bionic allowlist
 for capsule1906954. Capsule8197429's default recipe and all probes are identical.
 The full current implementation hash must match this review before using it.
+907059fd2 adds only the capsule1683542 and capsule3137115 allowlist branches
+relative to b395eb6de. The full819 payload still matches its original digest.
 """
 
 import hashlib
@@ -14,6 +16,12 @@ from pathlib import Path
 PRIOR_IMPLEMENTATION = "c6e4ce4f173d80780107693cb272307b16952b2492720744b64a358ba57c016d"
 REVIEWED_IMPLEMENTATION = "3dd5667fcd8de0d360df04d85d074ff6856dd92c8a41b2fb248432c77c87a403"
 PRIOR_QUALIFICATION = "950b338f7d7210f3b40636524c2c0a57ce6059c890ccbe1831fc97a30fe3bb3b"
+REVIEWED_819_IMPLEMENTATIONS = frozenset(
+    {
+        REVIEWED_IMPLEMENTATION,
+        "e756392591a45a0cf3afb685b40ee5f552dcd9908b59ed24a5e56352d16b8417",
+    }
+)
 
 
 def reviewed_compatibility(row, receipt):
@@ -23,11 +31,12 @@ def reviewed_compatibility(row, receipt):
     transition = reviewed_313_addition(row, receipt)
     if transition is not None:
         return transition
+    implementation = hashlib.sha256(Path(controls.__file__).read_bytes()).hexdigest()
     if (
         row["id"] != "capsule-8197429"
         or row.get("harness_install_variant") is not None
         or receipt.get("qualification_sha256") != PRIOR_QUALIFICATION
-        or hashlib.sha256(Path(controls.__file__).read_bytes()).hexdigest() != REVIEWED_IMPLEMENTATION
+        or implementation not in REVIEWED_819_IMPLEMENTATIONS
     ):
         return None
     payload = {
@@ -48,7 +57,7 @@ def reviewed_compatibility(row, receipt):
         "review": "core819-default-bionic-allowlist-only-v1",
         "original_qualification_sha256": PRIOR_QUALIFICATION,
         "original_implementation_sha256": PRIOR_IMPLEMENTATION,
-        "reviewed_implementation_sha256": REVIEWED_IMPLEMENTATION,
+        "reviewed_implementation_sha256": implementation,
     }
 
 
