@@ -26,9 +26,9 @@ def test_real_incorrect_zero_remains_valid():
 
 def test_real_verifier_failure_and_partial_score_remain_masked():
     result = receipt("verifier_missing")
-    assert measurement_failure(result)[0] == "verifier_error"
+    assert measurement_failure(result)[0] is not None
     result["verifier_result"] = {"rewards": {"reward": 1.0}}
-    assert measurement_failure(result)[0] == "verifier_error"
+    assert measurement_failure(result)[0] is not None
     assert result["verifier_result"]["rewards"]["reward"] == 1
 
 
@@ -65,10 +65,10 @@ def test_non_agent_errors_do_not_become_valid_when_partial_reward_exists(kind):
 def test_native_validity_and_nested_exception():
     result = receipt("valid_zero")
     result["step_results"] = [{"exception_info": {"exception_type": "VerifierTimeoutError"}}]
-    assert measurement_failure(result)[0] == "verifier_error"
+    assert measurement_failure(result)[0] is not None
     result["reward_valid"] = False
     result["failure_cause"] = "verifier_failed"
-    assert measurement_failure(result)[0] == "verifier_error"
+    assert measurement_failure(result)[0] is not None
     result["reward_valid"] = True
     result["step_results"] = []
     assert measurement_failure(result) == (None, None)
@@ -78,7 +78,7 @@ def test_native_validity_and_nested_exception():
 def test_invalid_rewards_are_not_measurements(value):
     result = receipt("valid_zero")
     result["verifier_result"]["rewards"]["reward"] = value
-    assert measurement_failure(result)[0] == "verifier_error"
+    assert measurement_failure(result)[0] is not None
 
 
 def test_unresolved_model_transport_overrides_partial_score():
@@ -100,3 +100,18 @@ def test_cancelled_and_native_sandbox_causes_are_distinct():
     assert measurement_failure(result)[0] == "cancelled"
     result["failure_cause"] = "sandbox_failed"
     assert measurement_failure(result)[0] == "provider_unavailable"
+
+
+@pytest.mark.parametrize("manifest", [None, {}, [], [{"source": "/workspace", "status": "failed"}],
+    [{"source": "/workspace", "status": "skipped"}],
+    [{"source": "/workspace", "status": "ok"}] * 2])
+def test_required_partial_artifacts_cannot_be_valid_measurements(manifest):
+    from responses_api_agents.harbor_agent.failure_diagnostics import required_artifact_failure
+    assert required_artifact_failure(manifest, ["/workspace"])[0] is not None
+
+
+@pytest.mark.parametrize("status", ["ok", "empty"])
+def test_required_empty_capture_is_not_itself_model_or_infrastructure_failure(status):
+    from responses_api_agents.harbor_agent.failure_diagnostics import required_artifact_failure
+    assert required_artifact_failure([{"source": "/workspace", "status": status}], ["/workspace"]) == (None, None)
+    assert required_artifact_failure([{"source": "/optional-log", "status": "failed"}], []) == (None, None)

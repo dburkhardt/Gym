@@ -120,3 +120,16 @@ def measurement_failure(
     if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in rewards.values()):
         return VERIFIER_ERROR, "Harbor returned invalid verifier rewards"
     return None, None
+
+
+def required_artifact_failure(manifest: object, sources: list[str]) -> tuple[str | None, str | None]:
+    """Qualify explicitly required single-step captures, not optional debug artifacts."""
+    if not sources:
+        return None, None
+    if not isinstance(manifest, list):
+        return VERIFIER_ERROR, "Required artifact capture manifest is unavailable or malformed"
+    for source in sources:
+        entries = [entry for entry in manifest if isinstance(entry, Mapping) and entry.get("source") == source]
+        if len(entries) != 1 or entries[0].get("status") not in {"ok", "empty"}:
+            return VERIFIER_ERROR, f"Required artifact capture incomplete: {source}"
+    return None, None

@@ -26,7 +26,7 @@ from uuid import uuid4
 
 import ray
 from fastapi import Body, FastAPI
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_gym.base_resources_server import (
     BaseRunRequest,
@@ -46,7 +46,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponse,
     NeMoGymResponseCreateParamsNonStreaming,
 )
-from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure
+from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure, required_artifact_failure
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
 
@@ -99,6 +99,8 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     # Native Harbor custom verifier hook. Model route is injected for guarded judges.
     harbor_verifier_import_path: Optional[str] = None
     harbor_verifier_kwargs: Optional[dict[str, Any]] = None
+    # Required single-step captures; optional diagnostic artifacts remain best-effort.
+    harbor_required_artifact_sources: list[str] = Field(default_factory=list)
 
     # --- Timeouts ---
     # Override agent timeout (seconds). Replaces the task's own timeout entirely.
@@ -331,6 +333,20 @@ class HarborAgent(SimpleResponsesAPIAgent):
                     HarborAgentUtils.with_native_validity(trial_result),
                     llm_failure=agent_error_flags.get("llm_call_failure"),
                 )
+                if self.config.harbor_required_artifact_sources:
+                    manifest_path = trial_dir / "artifacts" / "manifest.json"
+                    try:
+                        manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else None
+                    except (OSError, ValueError):
+                        manifest = None
+                    capture_kind, capture_reason = required_artifact_failure(
+                        manifest, self.config.harbor_required_artifact_sources
+                    )
+                    trial_result = {**trial_result, "artifact_capture_manifest": manifest}
+                    if capture_reason:
+                        trial_result["artifact_capture_failure"] = capture_reason
+                        if failure_reason is None:
+                            failure_kind, failure_reason = capture_kind, capture_reason
                 # Keep native rewards in metadata even when the Gym numeric field
                 # needs a finite placeholder for an invalid measurement.
                 try:

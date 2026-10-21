@@ -275,6 +275,7 @@ def _harbor_run_mocks(
     trajectory: Optional[Dict[str, Any]] = None,
     side_effect: Optional[Exception] = None,
     agent_error_flags: Optional[Dict[str, Any]] = None,
+    artifact_manifest: Optional[str] = None,
 ):
     """Patch external deps and wire up mocks for HarborAgent.run()."""
     with (
@@ -305,6 +306,10 @@ def _harbor_run_mocks(
             agent_dir = Path(trial_dir) / "agent"
             agent_dir.mkdir(parents=True, exist_ok=True)
             (agent_dir / "agent_error_flags.json").write_text(json.dumps(agent_error_flags))
+        if trial_dir and artifact_manifest is not None:
+            artifacts = Path(trial_dir) / "artifacts"
+            artifacts.mkdir()
+            (artifacts / "manifest.json").write_text(artifact_manifest)
         mock_ray.remote.side_effect = lambda *a, **k: _resolve_future()
         mock_ray.options.return_value.remote.side_effect = lambda *a, **k: _resolve_future()
 
@@ -494,6 +499,25 @@ class TestApp:
         assert {k: v for k, v in response.metadata.items() if k != "usage_provenance"} == trial_result
         assert response.metadata["usage_provenance"]["source"] == "trajectory.final_metrics"
         assert response.response.usage.total_tokens > 0
+
+    @pytest.mark.parametrize("manifest, required, masked", [
+        ('[{"source":"/workspace","status":"failed"}]', True, True),
+        ('[{"source":"/workspace","status":"failed"}]', False, False),
+        ('[{"source":"/workspace","status":"empty"}]', True, False),
+        ('[{"source":"/workspace","status":"ok"}]', True, False),
+        ('{broken', True, True),
+        (None, True, True),
+    ])
+    async def test_required_artifact_capture_preserves_raw_reward(self, manifest, required, masked):
+        server = _make_server(harbor_required_artifact_sources=["/workspace"] if required else [])
+        with _harbor_run_mocks(artifact_manifest=manifest):
+            response = await server.run(_make_run_request())
+        assert response.mask_sample is masked
+        assert response.reward == 1.0
+        assert response.metadata["verifier_result"]["rewards"]["reward"] == 1.0
+        if masked:
+            assert response.failure_kind == "verifier_error"
+            assert response.metadata["artifact_capture_failure"]
 
     async def test_unknown_usage_preserves_native_partial_provenance(self):
         server = _make_server()
