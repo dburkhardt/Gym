@@ -4,6 +4,8 @@
 
 from typing import ClassVar
 
+from pydantic import ConfigDict
+
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
     BaseVerifyRequest,
@@ -11,6 +13,7 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
+from nemo_gym.completion_outcome import with_completion_outcome
 from resources_servers.moleculeqa.grading import grade
 
 
@@ -19,6 +22,7 @@ class Config(BaseResourcesServerConfig):
 
 
 class Request(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
     verifier_metadata: dict
 
 
@@ -31,7 +35,7 @@ class Verifier:
         import asyncio
 
         result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
-        return Response(**body.model_dump(), **result)
+        return Response(**with_completion_outcome({**body.model_dump(), **result}, response=body.response))
 
 
 class Server(Verifier, SimpleResourcesServer):
