@@ -191,12 +191,27 @@ async def main(args):
             assert len(calls) == 5, results
         rows = [json.loads(line) for line in (out / "results.jsonl").read_text().splitlines()]
         assert len(rows) == 1
+        trajectory = rows[0]["ng_trajectory"]
+        assert len(trajectory["turns"]) == len(trajectory["model_calls"]) == 5
+        assert [turn["invocation_id"] for turn in trajectory["turns"]] == ["solver"] + ["judge"] * 4
+        quality = json.loads((out / "quality_summary.json").read_text())
+        assert quality["run"]["verdicts"] == {"healthy": 1, "unhealthy": 0, "unobserved": 0}
+        captures = [
+            json.loads(line)
+            for path in (out / "capture").glob("*.capture.jsonl")
+            for line in path.read_text().splitlines()
+        ]
+        attempts = [attempt for row in captures for attempt in row.get("provider_attempts", [])]
+        assert len(attempts) == 5 and all(attempt["outcome"] == "captured" for attempt in attempts)
         report = {
             "status": "passed",
             "collection": results,
             "provider_calls": calls,
             "results_rows": 1,
             "prepared_frozen_rows": 20,
+            "trajectory_turns": 5,
+            "captured_physical_attempts": 5,
+            "health_verdicts": quality["run"]["verdicts"],
             "scope": "Native Gym CLI preparation/collection, real agent run route, actual model capture and completed-output resume; deterministic provider only; no arbitrary interrupted-state recovery",
         }
     except BaseException as error:
