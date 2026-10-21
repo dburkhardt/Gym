@@ -125,3 +125,51 @@ def test_overlay_rejects_symlinked_ancestor_before_publication(tmp_path):
     with pytest.raises(ValueError, match="symlink"):
         validate_existing_overlay(alias / "not-created", {Path("task.toml")})
     assert not (outside / "not-created").exists()
+
+
+@pytest.mark.parametrize("extra", ["file", "symlink", "fifo"])
+def test_scorer_upload_tree_contains_only_manifest_assets(tmp_path, monkeypatch, extra):
+    import hashlib
+    import json
+
+    from benchmarks.airsbench import regrade
+
+    source = tmp_path / "source"
+    (source / "tests").mkdir(parents=True)
+    script = source / "tests/check.py"
+    script.write_text("pass")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    manifest = {
+        "tasks": [{"name": "control", "files": {"tests/check.py": hashlib.sha256(script.read_bytes()).hexdigest()}}]
+    }
+    (tmp_path / "frozen_sources.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(regrade, "__file__", str(tmp_path / "regrade.py"))
+    regrade.validate_inputs("control", source, workspace)
+    additional = source / "tests/extra.py"
+    if extra == "file":
+        additional.write_text("unrecorded")
+    elif extra == "symlink":
+        additional.symlink_to(script)
+    else:
+        os.mkfifo(additional)
+    with pytest.raises(ValueError, match="unrecorded|symlink or special"):
+        regrade.validate_inputs("control", source, workspace)
+
+
+def test_metric_direction_and_cross_target_aggregation_disabled():
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from benchmarks.airsbench.regrade import metric_metadata
+
+    config = yaml.safe_load(Path("benchmarks/airsbench/config.yaml").read_text())
+    assert config["disable_aggregation"] is True
+    manifest = json.loads(Path("benchmarks/airsbench/frozen_sources.json").read_text())
+    for task in manifest["tasks"]:
+        metric = metric_metadata(task["name"])
+        assert metric["direction"] == "minimize"
+        assert metric["cross_target_aggregation"] is False
+        assert metric["units"] and metric["normalization"] is None

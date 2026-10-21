@@ -22,6 +22,13 @@ def validate_inputs(task_id: str, source: Path, workspace: Path) -> dict:
     for p in workspace.rglob("*"):
         if not (stat.S_ISREG(p.lstat().st_mode) or stat.S_ISDIR(p.lstat().st_mode)):
             raise ValueError("AIRS saved workspace contains a symlink or special file")
+    expected_tests = {name for name in task["files"] if name.startswith("tests/")}
+    for p in (source / "tests").rglob("*"):
+        mode = p.lstat().st_mode
+        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            raise ValueError("AIRS scorer tree contains a symlink or special file")
+        if p.is_file() and str(p.relative_to(source)) not in expected_tests:
+            raise ValueError("AIRS scorer tree contains an unrecorded asset")
     for name, digest in task["files"].items():
         if not name.startswith("tests/"):
             continue
@@ -33,6 +40,27 @@ def validate_inputs(task_id: str, source: Path, workspace: Path) -> dict:
     return task
 
 
+def metric_metadata(name: str) -> dict:
+    """Creator target scales; no cross-property aggregate or invented normalization."""
+    targets = {
+        "GraphRegressionZincMae": ("y", "creator ZINC y scale", 1),
+        "CvMolecularPropertyPredictionQm9MeanAbsoluteError": ("c_v", "cal/(mol K)", 1),
+        "GMolecularPropertyPredictionQm9MeanAbsoluteError": ("G", "meV (creator description)", 1000),
+        "R2AbsMolecularPropertyPredictionQm9MeanAbsoluteError": ("R_2_Abs", "Bohr^2", 1),
+        "U0MolecularPropertyPredictionQm9MeanAbsoluteError": ("U_0", "meV (creator description)", 1000),
+    }
+    target, units, multiplier = targets[name]
+    return {
+        "name": "MAE",
+        "direction": "minimize",
+        "target": target,
+        "units": units,
+        "creator_label_multiplier": multiplier,
+        "cross_target_aggregation": False,
+        "normalization": None,
+    }
+
+
 def scorer_identity(task: dict) -> dict:
     """Version each regrade by its scientific assets and orchestration source."""
     manifest_path = Path(__file__).with_name("frozen_sources.json")
@@ -40,6 +68,7 @@ def scorer_identity(task: dict) -> dict:
     assets = {name: digest for name, digest in task["files"].items() if name.startswith("tests/")}
     return {
         "creator_revision": manifest["creator_revision"],
+        "metric": metric_metadata(task["name"]),
         "scorer_assets_sha256": assets,
         "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
         "regrade_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
