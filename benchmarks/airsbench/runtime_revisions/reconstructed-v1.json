@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "revision": "reconstructed-v1",
+  "frozen_manifest_sha256": "08d37539c7e493bf00a244f58098519cae15ff75b125fea4acfa3e4469cba39f",
+  "qualification": "model-free scientific controls; sidecar resource qualification separate; no live acceptance",
+  "evidence_archive_sha256": "84466c6ba347a6251f71c058267bf93105045a77a03229d53253bcbbeb951aaf",
+  "images": {
+    "GraphRegressionZincMae": {
+      "historical_image": "sha256:1f36795fa177a937a9abec3ee353e733732027d2e21e066195e3500fc4ab8450",
+      "runtime_image": "sha256:b1cde5907c4dc8b3b2cec511bf917646b787eef5e35e4dd33028bbf91c360b11",
+      "base_image": "sha256:976801feb00365ed0eb7237c96508e871f1ed277d9186fc834701dfdb545a24b",
+      "dockerfile_sha256": "02c45f4f4a623ca2aefa945d300875b9f15eadf839917aab1dd7e4f5d6d3682c"
+    },
+    "CvMolecularPropertyPredictionQm9MeanAbsoluteError": {
+      "historical_image": "sha256:e1960ee674af92b27798a03d7ac8c9fe81cd4869c52d029cd2c9de9c1a4a8ee0",
+      "runtime_image": "sha256:dadebf82117379eb9ce609d85c0b84173a325e4c165f8a8bf214eea045c7f5e3",
+      "base_image": "sha256:7b3f6b842fe8dc15c55babf7ccd15e6ce7131412550ece9c7da93bc0927a23f7",
+      "dockerfile_sha256": "61f4ba2bc3cc2e444d5fd4d5305de430aebb38f51ea281c69e601d5c021af4c1"
+    }
+  }
+}

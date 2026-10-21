@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Harbor overlay using qualified input-bearing images and separate scoring."""
 
+import hashlib
 import json
 import os
 import re
@@ -44,10 +45,52 @@ def validate_existing_overlay(target: Path, expected: set[Path]) -> None:
             raise ValueError(f"Unexpected prepared task file: {relative}")
 
 
+def runtime_images(manifest_path: Path, revision: str | None = None) -> tuple[dict, dict]:
+    """Explicit runtime revision; scientific source/history remains immutable."""
+    manifest = json.loads(manifest_path.read_text())
+    original = {task["name"]: task["image"] for task in manifest["tasks"]}
+    receipt = {
+        "revision": "historical",
+        "frozen_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "images": original.copy(),
+    }
+    if revision is None:
+        return original, receipt
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", revision):
+        raise ValueError("Invalid explicit AIRS runtime revision")
+    path = manifest_path.parent / "runtime_revisions" / (revision + ".json")
+    selected = json.loads(path.read_text())
+    if (
+        selected.get("schema_version") != 1
+        or selected.get("revision") != revision
+        or selected.get("frozen_manifest_sha256") != receipt["frozen_manifest_sha256"]
+    ):
+        raise ValueError("Runtime revision does not bind the frozen scientific manifest")
+    mappings = selected.get("images")
+    if not isinstance(mappings, dict) or not mappings:
+        raise ValueError("Runtime revision requires explicit image mappings")
+    for name, binding in mappings.items():
+        if name not in original or binding.get("historical_image") != original[name]:
+            raise ValueError("Runtime revision changed historical image binding")
+        image = binding.get("runtime_image", "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+            raise ValueError("Runtime revision must use immutable image identities")
+        original[name] = image
+    return original, {
+        **receipt,
+        "revision": revision,
+        "runtime_manifest_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "images": original.copy(),
+        "qualification": selected.get("qualification"),
+    }
+
+
 def prepare() -> Path:
     roots = json.loads(os.environ["AIRS_TASK_ROOTS_JSON"])
     destination = Path(__file__).parent / "data"
-    manifest = json.loads(Path(__file__).with_name("frozen_sources.json").read_text())
+    manifest_path = Path(__file__).with_name("frozen_sources.json")
+    manifest = json.loads(manifest_path.read_text())
+    images, runtime_receipt = runtime_images(manifest_path, os.environ.get("AIRS_RUNTIME_REVISION"))
     with TemporaryDirectory() as temporary:
         staged = Path(temporary) / "preserved"
         dataset = prepare_preserved(roots, staged)
@@ -71,10 +114,13 @@ def prepare() -> Path:
                 if not file.is_file() or relative.parts[0] == "environment" or file.name.endswith(".stage.lock"):
                     continue
                 if relative == Path("task.toml"):
-                    file.write_text(runtime_config(file.read_text(), task["image"]))
+                    file.write_text(runtime_config(file.read_text(), images[task["name"]]))
                 published = stage_file(file, target / relative)
                 if file.suffix == ".sh":
                     published.chmod(0o755)
+        receipt_path = Path(temporary) / "runtime-revision.json"
+        receipt_path.write_text(json.dumps(runtime_receipt, indent=2) + "\n")
+        stage_file(receipt_path, destination / "runtime-revision.json")
         return stage_file(dataset, destination / "benchmark.jsonl")
 
 
