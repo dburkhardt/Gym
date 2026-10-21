@@ -5,7 +5,6 @@
 import asyncio
 import json
 import math
-import subprocess
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -16,6 +15,9 @@ from pydantic import PrivateAttr
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
+
+
+from responses_api_agents.metasyn_native.execution import run_creator
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
@@ -61,26 +63,14 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
     ) -> NeMoGymResponse:
         raise NotImplementedError("Use /run with a prepared review identifier")
 
-    def _evaluate(self, review_id: int):
+    async def _evaluate(self, review_id: int):
         out = self.config.output_root / str(review_id)
         out.mkdir(parents=True, exist_ok=False)
-        with (out / "native-runtime.log").open("x") as log:
-            subprocess.run(
-                [
-                    self.config.native_python,
-                    str(self.config.runner_script),
-                    "--review-id",
-                    str(review_id),
-                    "--output-root",
-                    str(self.config.output_root),
-                    "--reference-file",
-                    str(self.config.reference_file),
-                ],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                check=True,
-                timeout=3600,
-            )
+        await run_creator([
+            self.config.native_python, str(self.config.runner_script),
+            "--review-id", str(review_id), "--output-root", str(self.config.output_root),
+            "--reference-file", str(self.config.reference_file),
+        ], out, timeout_s=3600)
         evaluation = json.loads((out / "evaluation.json").read_text())
         return out, evaluation
 
@@ -91,7 +81,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         if len(supplied) != 1 or supplied[0].get("role") != "user" or supplied[0].get("content") != expected:
             raise ValueError("Gym input differs from the preserved native prompt")
         async with self._semaphore:
-            out, evaluation = await asyncio.to_thread(self._evaluate, review_id)
+            out, evaluation = await self._evaluate(review_id)
         report = (out / "report.md").read_text()
         response = NeMoGymResponse.model_validate(
             {
