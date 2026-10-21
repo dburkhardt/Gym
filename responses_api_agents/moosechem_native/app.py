@@ -26,6 +26,7 @@ from nemo_gym.sandbox.model_bridge import bridge
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 from nemo_gym.server_utils import rollout_path_prefix
+from responses_api_agents.moosechem_native.artifacts import admit_attempt
 from responses_api_agents.moosechem_native.trajectory import observations
 
 
@@ -75,8 +76,8 @@ class Agent(SimpleResponsesAPIAgent):
             raise ValueError("Native execution must use the managed asynchronous path")
         return Agent.read_result(self, task_id)
 
-    def read_result(self, task_id):
-        out = self.config.output_root / f"task{task_id}"
+    def read_result(self, task_id, out=None):
+        out = out if out is not None else self.config.output_root / f"task{task_id}"
         result = json.loads((out / "result.json").read_text())
         screen = json.loads((out / "screening.json").read_text())
         ratios = list(screen[1].values())
@@ -88,26 +89,33 @@ class Agent(SimpleResponsesAPIAgent):
         assert all(t.get("response", {}).get("model") == MODEL for t in traces if "response" in t)
         return out, result, screen, reward, len(traces)
 
-    async def execute_native(self, task_id: int, body: RunRequest) -> None:
+    async def execute_native(self, task_id: int, body: RunRequest) -> Path:
         if task_id in self.config.blocked_task_ids:
             raise ValueError("Task has an unresolved historical attempt; reconcile before execution")
         global_config = get_global_config_dict()
         if not global_config.get("provider_dispatch_guard") or global_config.get("policy_model_name") != MODEL:
             raise ValueError("MOOSE-Chem requires guarded exact-model inference")
-        capture_id = current_rollout_id() or maybe_rollout_id_from_run_body(body)
+        context_id, body_id = current_rollout_id(), maybe_rollout_id_from_run_body(body)
+        if context_id is not None and body_id is not None and context_id != body_id:
+            raise ValueError("MOOSE transport and body episode identities disagree")
+        capture_id = context_id or body_id
         if capture_id is None:
             raise ValueError("Native MOOSE-Chem requires a rollout identity")
         server = get_first_server_config_dict(global_config, self.config.model_server.name)
         endpoint = f"http://{server['host']}:{server['port']}" + rollout_path_prefix(capture_id) + "/v1"
-        out = self.config.output_root / f"task{task_id}"
+        capture_root = global_config.get("model_call_capture_dir")
+        if not capture_root:
+            raise ValueError("MOOSE-Chem requires an existing durable capture store")
+        out, artifact_identity = admit_attempt(self.config.output_root, task_id, capture_id, Path(capture_root))
         out.mkdir(parents=True, exist_ok=False)
         source = Path(__file__).resolve().parents[2]
-        lineage = uuid4().hex
+        lineage = capture_id
         files = [source / "benchmarks/moosechem" / name for name in ("native.py", "guarded.py", "source-sha256.json")]
-        files.append(Path(__file__).resolve())
+        files.extend([Path(__file__).resolve(), Path(__file__).with_name("artifacts.py").resolve()])
         interpreter = self.config.native_python.resolve()
         identity = {
             "task": task_id,
+            **artifact_identity,
             "model": MODEL,
             "budget": self.config.output_token_budget,
             "timeout_seconds": self.config.native_timeout_seconds,
@@ -158,10 +166,15 @@ class Agent(SimpleResponsesAPIAgent):
                         "MOOSE_CONFIG_SHA256": digest,
                     },
                 )
+                append_durable(
+                    out / "native-execution.jsonl",
+                    {"return_code": result.return_code, "error_type": result.error_type},
+                )
                 (out / "stdout.log").write_text(result.stdout or "")
                 (out / "stderr.log").write_text(result.stderr or "")
                 if result.return_code != 0 or result.error_type:
                     raise RuntimeError("Native MOOSE-Chem failed; preserved failure is not a scientific zero")
+        return out
 
     async def run(self, request: Request, body: RunRequest) -> VerifyResponse:
         task_id = body.verifier_metadata["id"]
@@ -172,9 +185,11 @@ class Agent(SimpleResponsesAPIAgent):
         assert len(actual) == 1 and actual[0]["role"] == "user" and actual[0]["content"] == expected
         async with self._semaphore:
             if not self.config.import_existing:
-                await self.execute_native(task_id, body)
-            # Loading a completed managed attempt does not dispatch inference.
-            out, result, screen, reward, n = self.read_result(task_id)
+                native_out = await self.execute_native(task_id, body)
+                out, result, screen, reward, n = self.read_result(task_id, native_out)
+            else:
+                # Explicit historical import does not dispatch inference.
+                out, result, screen, reward, n = self.read_result(task_id)
         text = json.dumps({"scope": result["scope"], "native_evaluation": result["evaluation"]})
         response = NeMoGymResponse.model_validate(
             {
