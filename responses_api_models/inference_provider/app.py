@@ -22,7 +22,7 @@ For training workloads that require token IDs, use vllm_model instead.
 
 from asyncio import Semaphore
 from time import time
-from typing import Any, Dict
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import Request
 from pydantic import Field
@@ -33,6 +33,7 @@ from nemo_gym.base_responses_api_model import (
     SimpleResponsesAPIModel,
 )
 from nemo_gym.openai_utils import (
+    MAX_NUM_TRIES,
     NeMoGymAsyncOpenAI,
     NeMoGymChatCompletion,
     NeMoGymChatCompletionCreateParamsNonStreaming,
@@ -48,6 +49,12 @@ class InferenceProviderConfig(BaseResponsesAPIModelConfig):
     base_url: str
     api_key: str
     model: str
+
+    max_num_tries: Optional[Literal[1]] = None
+    """One disables transport and HTTP retries; None preserves existing defaults."""
+    max_http_attempts: int = Field(default=MAX_NUM_TRIES, ge=1)
+    request_timeout_seconds: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    """Total timeout per HTTP attempt; not a deadline across retries."""
 
     uses_reasoning_parser: bool = False
     num_concurrent_requests: int = 1000
@@ -68,6 +75,9 @@ class InferenceProvider(SimpleResponsesAPIModel):
         self._client = NeMoGymAsyncOpenAI(
             base_url=self.config.base_url,
             api_key=self.config.api_key,
+            max_num_tries=self.config.max_num_tries,
+            max_http_attempts=self.config.max_http_attempts,
+            request_timeout_seconds=self.config.request_timeout_seconds,
         )
         self._converter = ResponsesConverter(
             return_token_id_information=False,

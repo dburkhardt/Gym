@@ -754,3 +754,66 @@ class TestConcurrency:
     async def test_semaphore_limits_concurrency(self, monkeypatch: MonkeyPatch) -> None:
         server = _make_server(num_concurrent_requests=2)
         assert server._semaphore._value == 2
+
+
+def test_transport_bounds_preserve_defaults():
+    server = _make_server()
+    default = NeMoGymAsyncOpenAI(base_url="https://api.example.com/v1", api_key="fixture")
+    assert server._client.max_num_tries == default.max_num_tries
+    assert server._client.max_http_attempts == default.max_http_attempts
+    assert server._client.request_timeout_seconds == default.request_timeout_seconds
+
+
+def test_transport_bounds_forward_single_attempt_and_timeout():
+    server = _make_server(max_num_tries=1, max_http_attempts=1, request_timeout_seconds=600)
+    assert server._client.max_num_tries == 1
+    assert server._client.max_http_attempts == 1
+    assert server._client.request_timeout_seconds == 600
+
+
+def test_transport_bounds_reject_invalid_values():
+    import pytest
+    from pydantic import ValidationError
+
+    for values in (
+        {"max_num_tries": 2},
+        {"max_http_attempts": 0},
+        {"request_timeout_seconds": 0},
+        {"request_timeout_seconds": float("inf")},
+    ):
+        with pytest.raises(ValidationError):
+            _make_server(**values)
+
+
+async def test_single_attempt_bounds_reach_transport_on_failure(monkeypatch):
+    import asyncio
+
+    import pytest
+
+    from nemo_gym import openai_utils
+    from nemo_gym.openai_utils import NeMoGymChatCompletionCreateParamsNonStreaming
+
+    server = _make_server(max_num_tries=1, max_http_attempts=1, request_timeout_seconds=0.1)
+    seen = []
+
+    async def transport(**kwargs):
+        seen.append(kwargs)
+        raise asyncio.TimeoutError("fixture timeout after dispatch")
+
+    monkeypatch.setattr(openai_utils, "request", transport)
+    body = NeMoGymChatCompletionCreateParamsNonStreaming(messages=[{"role": "user", "content": "fixture"}])
+    with pytest.raises(asyncio.TimeoutError):
+        await server.chat_completions(None, body)
+    assert len(seen) == 1
+    assert seen[0]["_max_num_tries"] == 1
+    assert seen[0]["timeout"].total == 0.1
+
+
+def test_config_digest_binds_bounds_without_credentials():
+    from nemo_gym.provider_dispatch import configuration_digest
+
+    original = _make_server(max_num_tries=1, request_timeout_seconds=600).config.model_dump()
+    rotated = original | {"api_key": "other-fixture-credential"}
+    assert configuration_digest(original) == configuration_digest(rotated)
+    assert configuration_digest(original) != configuration_digest(original | {"request_timeout_seconds": 300})
+    assert configuration_digest(original) != configuration_digest(original | {"max_num_tries": None})
