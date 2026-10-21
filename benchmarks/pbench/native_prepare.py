@@ -38,12 +38,23 @@ def native_prepare(source: Path, destination: Path, size: int = 5) -> Path:
             lines = dockerfile.read_text().splitlines()
             if lines[0] != "FROM broad-pbench-runtime:20261020-f85315b":
                 raise ValueError("Unexpected preserved P-Bench runtime base")
-            dockerfile.write_text("\n".join([f"FROM {IMAGE}", *lines[1:]]) + "\n")
+            # Harbor's supported prebuilt-image path uploads environment/ to
+            # workdir when no Dockerfile exists. Local image IDs are not valid
+            # BuildKit FROM repository references.
+            old_destination = destination / dockerfile.relative_to(staged)
+            if old_destination.exists():
+                allowed = {dockerfile.read_text(), "\n".join([f"FROM {IMAGE}", *lines[1:]]) + "\n"}
+                if old_destination.read_text() not in allowed:
+                    raise ValueError("Refusing to replace unrecognized P-Bench build overlay")
+                old_destination.unlink()
+            dockerfile.unlink()
             config = task / "task.toml"
-            config.write_text('artifacts = ["/workspace"]\n' + config.read_text())
+            text = config.read_text().replace(
+                "[environment]\n", f'[environment]\ndocker_image = "{IMAGE}"\nworkdir = "/workspace"\n'
+            )
+            config.write_text('artifacts = ["/workspace"]\n' + text)
             receipt["runtime_overlay_hashes"][task.name] = {
-                name: hashlib.sha256((task / name).read_bytes()).hexdigest()
-                for name in ("task.toml", "environment/Dockerfile")
+                "task.toml": hashlib.sha256(config.read_bytes()).hexdigest()
             }
             for file in task.rglob("*"):
                 if file.is_file() and not file.name.endswith(".stage.lock"):

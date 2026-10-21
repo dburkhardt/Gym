@@ -26,7 +26,10 @@ def test_native_preparation_preserves_science_and_pins_runtime(tmp_path):
         for relative in task["files"]:
             if relative not in ("environment/Dockerfile", "task.toml"):
                 assert (staged / relative).read_bytes() == (original / relative).read_bytes()
-        assert (staged / "environment/Dockerfile").read_text().startswith(f"FROM {IMAGE}\n")
+        assert not (staged / "environment/Dockerfile").exists()
+        from harbor.environments.definition import should_upload_environment_dir
+
+        assert should_upload_environment_dir(staged / "environment", docker_image=IMAGE)
         assert TaskConfig.model_validate(
             __import__("tomllib").loads((staged / "task.toml").read_text())
         ).artifacts == ["/workspace"]
