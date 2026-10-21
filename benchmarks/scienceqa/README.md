@@ -39,9 +39,10 @@ reported separately. No old caption/chat results, masks or prompts are rewritten
 The initial offline preparation identified a missing raw-completion route. That
 historical gap is now addressed by the opt-in native `/v1/completions` interface
 and `simple_completion` harness below. Local CLI run/resume controls passed, and
-the original five tasks completed on Nemotron3.5SuperVL with five HTTP200 calls,
-strict5/5 and creator raw5/5, without fallback or masks. This small acceptance
-sample is separate from the preserved legacy caption/chat results. Matching the
+the original frozen50 completed on Nemotron3.5SuperVL with50 unique HTTP200 calls,
+strict47/50 and creator raw47/50. One duplicated-answer response triggers the
+creator fallback; all50 remain in the strict denominator, without row masks.
+This acceptance sample is separate from preserved legacy caption/chat results. Matching the
 recipe with another model does not reproduce text-davinci-002 performance.
 
 ## Separate native creator-recipe configuration
