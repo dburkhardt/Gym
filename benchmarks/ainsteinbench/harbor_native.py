@@ -16,6 +16,7 @@ from harbor.verifier.base import BaseVerifier
 
 from benchmarks.ainsteinbench.native import MODEL
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log, prompt
+from benchmarks.ainsteinbench.trajectory import publish as publish_trajectory
 from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox.lifecycle import _publish
@@ -40,14 +41,18 @@ async def execute_tool(environment, name, arguments):
     if name in ("exec_command", "read_file"):
         command = arguments["command"] if name == "exec_command" else f"cat {arguments['path']}"
         # Preserve Docker SDK's shlex interpretation of the creator command.
-        result = await environment.exec(shlex.join(shlex.split(f"bash -c '{command}'")))
+        try:
+            argv = shlex.split(f"bash -c '{command}'")
+        except ValueError as error:
+            return f"Error: {error}"
+        result = await environment.exec(shlex.join(argv))
         if name == "read_file":
             return (
                 result.stdout
                 if result.return_code == 0
-                else f"Error: File not found or cannot be read: {result.stderr}"
+                else f"Error: File not found or cannot be read: {result.stderr or ''}"
             )
-        return f"Exit code: {result.return_code}\nStdout:\n{result.stdout}\nStderr:\n{result.stderr}"
+        return f"Exit code: {result.return_code}\nStdout:\n{result.stdout or ''}\nStderr:\n{result.stderr or ''}"
     return f"Unknown tool: {name}"
 
 
@@ -159,7 +164,7 @@ class AInsteinAgent(BaseAgent):
                 "iterations": 30,
                 "adapter_sha256": {
                     name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                    for name in ("harbor_native.py", "source.py", "native.py")
+                    for name in ("harbor_native.py", "source.py", "native.py", "trajectory.py")
                 },
             }
         )
@@ -211,7 +216,10 @@ class AInsteinAgent(BaseAgent):
                 source=self.source,
                 environment=environment,
                 completion=completion,
-                save=lambda messages: _publish(output / "messages.json", messages),
+                save=lambda messages: (
+                    _publish(output / "messages.json", messages),
+                    publish_trajectory(output, messages, context),
+                ),
             )
         except NativeIterationLimitError:
             _publish(
@@ -284,7 +292,7 @@ class AInsteinVerifier(BaseVerifier):
         )
         if result.return_code < 0 or result.return_code >= 126:
             raise RuntimeError("Scientific process terminated by signal; no score fabricated")
-        parsed = parse_log(self.source, result.stdout + result.stderr)
+        parsed = parse_log(self.source, (result.stdout or "") + (result.stderr or ""))
         total = parsed["passed_count"] + parsed["failed_count"]
         score = parsed["passed_count"] / total * 100 if total else 0.0
         _publish(
