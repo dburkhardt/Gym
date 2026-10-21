@@ -21,8 +21,17 @@ _CHUNK_SIZE = 1024 * 1024
 
 
 def _hash(path: Path) -> str:
-    with path.open("rb") as stream:
+    with _source_stream(path) as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _source_stream(path: Path):
+    # Follow cache symlinks, but reject pipes/devices before reading or waiting.
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ValueError(f"Dataset source must resolve to a regular file: {path}")
+    return os.fdopen(fd, "rb")
 
 
 def _regular_fd(path: Path, flags: int) -> int:
@@ -77,7 +86,7 @@ def stage_file(source: Path, destination: Path, *, expected_sha256: str | None =
             # A prior publication may have failed after rename but before directory fsync.
             _sync_parent(destination)
             return destination
-        with source.open("rb") as incoming, os.fdopen(_regular_fd(partial, os.O_CREAT | os.O_RDWR), "rb+") as staged:
+        with _source_stream(source) as incoming, os.fdopen(_regular_fd(partial, os.O_CREAT | os.O_RDWR), "rb+") as staged:
             while block := staged.read(_CHUNK_SIZE):
                 if incoming.read(len(block)) != block:
                     staged.seek(0)

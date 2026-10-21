@@ -27,6 +27,26 @@ def test_fifo_destination_is_rejected_without_waiting_for_writer(tmp_path):
     assert destination.exists()
 
 
+@pytest.mark.parametrize("supplied_digest", [False, True])
+def test_fifo_source_is_rejected_before_hash_or_copy(tmp_path, supplied_digest):
+    source, destination = tmp_path / "cached", tmp_path / "final"
+    os.mkfifo(source)
+    destination.write_bytes(b"previous complete artifact")
+    code = (
+        "from nemo_gym.dataset_staging import stage_file; import sys; "
+        "stage_file(sys.argv[1], sys.argv[2], expected_sha256="
+        + (repr("0" * 64) if supplied_digest else "None")
+        + ")"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(source), str(destination)],
+        capture_output=True, text=True, timeout=5,
+    )
+    assert result.returncode != 0
+    assert "Dataset source must resolve to a regular file" in result.stderr
+    assert destination.read_bytes() == b"previous complete artifact"
+
+
 def test_interruption_preserves_final_and_resumes(tmp_path, monkeypatch):
     source, destination = tmp_path / "cached", tmp_path / "final"
     source.write_bytes(b"new dataset" * 1000)
