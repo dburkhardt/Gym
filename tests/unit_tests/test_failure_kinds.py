@@ -38,7 +38,7 @@ class TestNamingConvention:
 
     def test_every_name_states_the_layer_that_observed_the_failure(self) -> None:
         """`transport_timeout` and `agent_timeout` are different failures, not one."""
-        domains = ("transport_", "agent_", "judge_", "verifier_", "provider_", "session_", "cohort_", "persistence_")
+        domains = ("model_", "transport_", "agent_", "judge_", "verifier_", "provider_", "session_", "cohort_", "persistence_")
         lifecycle = {"cancelled", "kill_shaped", "shutdown"}
 
         undomained = {n for n in FAILURE_KINDS if not n.startswith(domains)} - lifecycle
@@ -67,6 +67,11 @@ class TestRegistryLookup:
 
 
 class TestValidation:
+    def test_model_budget_retains_label_without_unknown_warning(self, caplog) -> None:
+        with caplog.at_level(logging.WARNING):
+            assert validate_failure_kind("model_budget") == "model_budget"
+        assert caplog.records == []
+
     def test_a_registered_name_passes_silently(self, caplog) -> None:
         with caplog.at_level(logging.WARNING):
             assert validate_failure_kind("judge_failed") == "judge_failed"
