@@ -19,3 +19,27 @@ protocols. Preparation still uses unchanged frozen-sample staging: it adds stabl
 Gym identity/provenance, not replacement captions or output instructions. Review
 metadata is derived at scoring from actual submitted inputs and pinned assets,
 not trusted from caller-supplied annotations. No image-based performance is claimed.
+
+## Separate documented creator recipe (offline preparation)
+
+`creator_recipe.prepare(repo, ordered_test_ids)` builds the separately named
+`scienceqa-creator-qcm-ale-2shot-no-caption-completion-v1` protocol directly through
+the pinned creator's `build_prompt`. It uses training demonstrations6493 and16241
+(seed3),QCM-ALE and no captions. Solver requests contain only the raw completion
+prompt and creator generation parameters: temperature0,max512,top-p1,zero
+frequency/presence penalties and newline stop. References remain separate in
+`evaluator_references`; never send the enclosing packet to the model.
+
+`score_ordered` preserves the creator regex and random fallback stream after the
+same two-shot selection. For a selected subset this is a fresh, explicitly ordered
+experiment, not the fallback RNG state after all preceding full-test items.
+Fallback scores are retained but invalid as answer correctness; strict accuracy is
+reported separately. No old caption/chat results, masks or prompts are rewritten.
+
+This path is not runnable through current native Gym model APIs: they expose
+Responses and chat completions, not raw text completions. Chat wrapping would
+change the prompt semantics. Preparation therefore reports the missing
+`raw_text_completion` capability instead of publishing a misleading runnable
+benchmark config. A future guarded raw-completion route and actual provider
+capability evidence are required. Matching the recipe with another model would
+not reproduce the creator's text-davinci-002 performance.
