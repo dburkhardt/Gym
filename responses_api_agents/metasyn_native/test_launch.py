@@ -39,6 +39,7 @@ async def test_parent_passes_scoped_bridge_and_preserves_native_result(tmp_path,
         assert identity['review_id']==203 and identity['model']==app.MODEL
         assert events[0][1]['expected_model']==app.MODEL
         (out/'evaluation.json').write_text(json.dumps({'status':'succeeded','metrics':{'inclusion_f1':0.8}}))
+    monkeypatch.setattr(app,'scientific_assets',lambda root, review_id: {'review_id':review_id})
     monkeypatch.setattr(app,'creator_identity',lambda root: {'root':str(root),'files':{}})
     monkeypatch.setattr(app,'bridge',bridge)
     monkeypatch.setattr(app,'run_creator',creator)

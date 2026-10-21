@@ -29,7 +29,7 @@ from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNo
 
 
 from responses_api_agents.metasyn_native.execution import run_creator
-from responses_api_agents.metasyn_native.identity import creator_identity
+from responses_api_agents.metasyn_native.identity import creator_identity, scientific_assets
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
@@ -86,10 +86,12 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                  Path(__file__).with_name("execution.py"), Path(__file__).with_name("guarded_clients.py"),
                  Path(__file__).with_name("identity.py")]
         interpreter = Path(shutil.which(self.config.native_python) or self.config.native_python).resolve()
-        identity = {"creator": creator_identity(self.config.creator_source_root),
+        identity = {"scientific_assets": scientific_assets(self.config.materialized_root, review_id),
+                    "creator": creator_identity(self.config.creator_source_root),
                     "interpreter": {"path": str(interpreter), "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest()},
                     "review_id": review_id, "model": MODEL, "lineage": lineage,
                     "prompt_sha256": hashlib.sha256((self.config.materialized_root / "rag" / str(review_id) / "prompt.txt").read_bytes()).hexdigest(),
+                    "reference_path": str(self.config.reference_file.resolve()),
                     "reference_sha256": hashlib.sha256(self.config.reference_file.read_bytes()).hexdigest(),
                     "sources": {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
                     "timeout_s": 3600, "native_python": self.config.native_python}
