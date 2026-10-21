@@ -141,6 +141,7 @@ async def test_converted_strict_schema_survives_native_verifier():
     schema = json.loads((SOURCE / "LLM/data/schemas/magnetic.json").read_text())
     params = NeMoGymResponseCreateParamsNonStreaming(
         input="fixture",
+        model="fixture",
         max_output_tokens=10000,
         text={"format": {"type": "json_schema", "name": "magnetic", "schema": schema, "strict": True}},
     )
