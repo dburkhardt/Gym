@@ -103,9 +103,13 @@ def _harbor_transport_links(config, roles):
             if config.get("provider_dispatch_guard") is not True:
                 row["reason"] = "unguarded_agent_retry_schedule"
                 continue
-            if model["max_attempts"] != 1 or model["upstream_max_num_tries"] != 1 or model["max_http_attempts"] != 1:
+            if model["max_attempts"] != 1 or model["upstream_max_num_tries"] != 1:
                 row["reason"] = "multiple_or_unknown_attempt_schedule"
                 continue
+            # NeMoGymAsyncOpenAI.max_num_tries=1 overrides its max_http_attempts fallback
+            # and disables transport retries (openai_utils._request_with_retries).
+            row["effective_outbound_attempts"] = 1
+            row["configured_max_http_attempts_fallback"] = model["max_http_attempts"]
             queue, provider = model["admission_timeout_seconds"], model["provider_timeout_seconds"]
             if not _positive_seconds(queue) or not _positive_seconds(provider):
                 row["reason"] = "unbounded_or_unknown_server_window"

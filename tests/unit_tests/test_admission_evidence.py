@@ -397,3 +397,15 @@ assert dict(os.environ) == before
     env.pop("LITELLM_LOCAL_MODEL_COST_MAP", None)
     result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_authoritative_single_attempt_overrides_inert_default_http_attempts():
+    config = transport_config(nemo_model_server_timeout_sec=750)
+    del config.solver.responses_api_models.openai_model.max_http_attempts
+    result = resolved_admission_evidence(config)
+    assert result["roles"][0]["max_http_attempts"] == 3
+    link = result["harbor_transport_links"][0]
+    assert link["status"] == "covers_declared_queue_plus_provider_only"
+    assert link["effective_outbound_attempts"] == 1
+    assert link["configured_max_http_attempts_fallback"] == 3
+    assert link["margin_seconds"] == 30
