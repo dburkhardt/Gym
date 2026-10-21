@@ -12,6 +12,7 @@ from uuid import uuid4
 from pydantic import ConfigDict, PrivateAttr
 
 from benchmarks.flyaoc.managed import MODEL, run_scorer, run_solver
+from benchmarks.flyaoc.trajectory import build_trajectory
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
@@ -37,6 +38,7 @@ class RunRequest(BaseRunRequest):
 
 class VerifyResponse(BaseVerifyResponse):
     metrics: dict
+    ng_trajectory: dict
     artifact_dir: str
     reward_metric: str = "task1_semantic_recall_at_30_micro"
 
@@ -110,7 +112,17 @@ class FlyAOCAgent(SimpleResponsesAPIAgent):
             }
         )
         return VerifyResponse(
-            **body.model_dump(), response=response, reward=reward, metrics=metrics, artifact_dir=str(trial)
+            **body.model_dump(),
+            response=response,
+            reward=reward,
+            metrics=metrics,
+            artifact_dir=str(trial),
+            ng_trajectory=build_trajectory(
+                trial / "solver" / "model-calls",
+                task_id=payload["gene_id"],
+                rollout_id=rollout,
+                model_ref=self.config.model_server,
+            ).model_dump(mode="json"),
         )
 
 

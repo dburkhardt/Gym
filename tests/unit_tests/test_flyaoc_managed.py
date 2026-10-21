@@ -76,3 +76,49 @@ def test_native_run_retains_collection_identity():
         }
     )
     assert maybe_rollout_id_from_run_body(body) == "3-2-a1"
+
+
+def test_native_trajectory_uses_persisted_decisions_and_response_refs(tmp_path):
+    from benchmarks.flyaoc.trajectory import build_trajectory
+    from nemo_gym.config_types import ModelServerRef
+
+    for i, message in enumerate(
+        [
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "tool1", "function": {"name": "search_corpus", "arguments": "{}"}}],
+            },
+            {"role": "assistant", "content": "answer"},
+        ]
+    ):
+        (tmp_path / f"{i:06d}.request.json").write_text(
+            json.dumps({"messages": [{"role": "user", "content": "public input"}]})
+        )
+        (tmp_path / f"{i:06d}.response.json").write_text(
+            json.dumps(
+                {
+                    "status": 200,
+                    "started_at": 10 + i,
+                    "body": json.dumps({"id": f"response{i}", "choices": [{"message": message}]}),
+                }
+            )
+        )
+    trajectory = build_trajectory(
+        tmp_path,
+        task_id="gene",
+        rollout_id="0-0",
+        model_ref=ModelServerRef(type="responses_api_models", name="policy_model"),
+    )
+    assert len(trajectory.turns) == 2 and len(trajectory.invocations[0].model_calls) == 2
+    assert trajectory.turns[0].answer[0]["type"] == "function_call"
+    assert trajectory.turns[1].model_calls[0].response_id == "response1"
+    assert trajectory.turns[0].question[0]["content"] == "public input"
+    (tmp_path / "000001.response.json").unlink()
+    with pytest.raises(FileNotFoundError):
+        build_trajectory(
+            tmp_path,
+            task_id="gene",
+            rollout_id="0-0",
+            model_ref=ModelServerRef(type="responses_api_models", name="policy_model"),
+        )

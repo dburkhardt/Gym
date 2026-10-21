@@ -8,6 +8,7 @@ an unused artifact directory; uncertainty poisons the process until inspection.
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -74,10 +75,19 @@ class GuardedChatTransport(httpx.AsyncBaseTransport):
                 "POST", "http://gym-internal/chat/completions", headers=headers, content=json.dumps(payload).encode()
             )
             response = None
+            started_at = time.time()
             try:
                 response = await self.inner.handle_async_request(outgoing)
                 content = await response.aread()
-                publish(stem.with_suffix(".response.json"), {"status": response.status_code, "body": content.decode()})
+                publish(
+                    stem.with_suffix(".response.json"),
+                    {
+                        "status": response.status_code,
+                        "body": content.decode(),
+                        "started_at": started_at,
+                        "completed_at": time.time(),
+                    },
+                )
                 if response.status_code != 200:
                     raise RuntimeError(f"Native model endpoint returned HTTP {response.status_code}; no SDK retry")
                 body = json.loads(content)
