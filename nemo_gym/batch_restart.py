@@ -160,7 +160,24 @@ def bind_execution(
     ):
         global_science.pop(key, None)
     scientific_closure = None
-    if any(
+    resource_implementations = {
+        implementation
+        for value in config.values()
+        if isinstance(value, dict) and isinstance(value.get("resources_servers"), dict)
+        for implementation in value["resources_servers"]
+    }
+    if {"scicode", "campaign_creator_scoring"} <= resource_implementations:
+        from nemo_gym.mixed_scientific_restart import qualify_mixed_scientific_dependencies
+
+        try:
+            scientific_closure = qualify_mixed_scientific_dependencies(Path.cwd(), config, materialized_path)
+            qualified = True
+        except ConfigError as error:
+            if require_prior:
+                raise
+            scientific_closure = {"unsupported": str(error)}
+            qualified = False
+    elif any(
         "scicode" in value.get("resources_servers", {})
         for value in config.values()
         if isinstance(value, dict) and isinstance(value.get("resources_servers", {}), dict)
@@ -177,7 +194,7 @@ def bind_execution(
             # closure can never authorize a later explicit restart.
             scientific_closure = {"unsupported": str(error)}
             qualified = False
-    if any(
+    elif any(
         "campaign_creator_scoring" in value.get("resources_servers", {})
         for value in config.values()
         if isinstance(value, dict) and isinstance(value.get("resources_servers", {}), dict)
