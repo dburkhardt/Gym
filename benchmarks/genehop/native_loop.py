@@ -82,6 +82,7 @@ class NativeLoop:
         self.check_stop()
         self.pause(1)
         self.tool_count += 1
+        started_at = time.time()
         request = urllib.request.Request(url)
         with urllib.request.build_opener(AllowedRedirect()).open(request, timeout=120) as response:
             final_url = validate_url(response.url)
@@ -98,6 +99,7 @@ class NativeLoop:
                     "sha256": hashlib.sha256(body).hexdigest(),
                     "bytes": len(body),
                     "time": time.time(),
+                    "started_at": started_at,
                 },
                 indent=2,
             )
@@ -186,7 +188,13 @@ class NativeLoop:
                 }
                 (self.artifacts / f"model-{turn:02d}-http-error.json").write_text(json.dumps(receipt, indent=2))
                 raise
-            record = {"turn": turn, "request": payload, "response": raw, "elapsed_seconds": time.time() - started}
+            record = {
+                "turn": turn,
+                "request": payload,
+                "response": raw,
+                "started_at": started,
+                "elapsed_seconds": time.time() - started,
+            }
             (self.artifacts / f"model-{turn:02d}.json").write_text(json.dumps(record, indent=2))
             calls.append(record)
             self.check_stop()

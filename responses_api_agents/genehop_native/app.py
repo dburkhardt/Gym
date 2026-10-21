@@ -22,6 +22,7 @@ from nemo_gym.config_types import ModelServerRef
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.server_utils import raise_for_status, rollout_path_prefix
+from responses_api_agents.genehop_native.trajectory import observations
 
 
 class Config(BaseResponsesAPIAgentConfig):
@@ -45,6 +46,7 @@ class VerifyResponse(BaseVerifyResponse):
     verifier_metadata: dict
     uuid: str
     artifact_dir: str
+    ng_trajectory: dict | None = None
     native_status: str
     raw_creator_score: float | None = None
     reward_metric: str = "creator_disease_location_recall_only"
@@ -184,6 +186,14 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
                 "tools": [],
             }
         )
+        trajectory, usage = observations(
+            out,
+            task_id=str(body.model_dump().get("task_id", body.uuid)),
+            rollout_id=self.rollout_id_from_run(body) or body.uuid,
+            model_ref=self.config.model_server,
+            status=result["status"],
+        )
+        response.usage = usage
         return VerifyResponse(
             **body.model_dump(by_alias=True),
             response=response,
@@ -200,6 +210,7 @@ class GeneHopAgent(SimpleResponsesAPIAgent):
             else None,
             artifact_dir=str(out),
             native_status=result["status"],
+            ng_trajectory=trajectory.model_dump(mode="json"),
         )
 
 

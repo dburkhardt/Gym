@@ -184,7 +184,21 @@ async def main(args):
         ]
         physical = [item for row in captures for item in row.get("provider_attempts", [])]
         assert len(physical) == 5 and all(item["outcome"] == "captured" for item in physical)
-        report.update(status="passed", collection=progress, rows=5, manual_only_rows=3, captured_physical_calls=5)
+        quality = json.loads((out / "quality_summary.json").read_text())["run"]
+        assert quality["verdicts"] == {"healthy": 3, "unhealthy": 2, "unobserved": 0}
+        assert quality["issues"]["agent_turn_hollow"] == 2
+        assert quality["issues"]["trajectory_capture_mismatch"] == 0
+        assert quality["issues"]["rollout_token_count_mismatch"] == 0
+        assert all(len(row["ng_trajectory"]["turns"]) == len(row["ng_trajectory"]["model_calls"]) == 1 for row in rows)
+        report.update(
+            status="passed",
+            collection=progress,
+            rows=5,
+            manual_only_rows=3,
+            captured_physical_calls=5,
+            health_verdicts=quality["verdicts"],
+            hollow_historical_answers=2,
+        )
     except BaseException as exc:
         report["error"] = repr(exc)
         raise
