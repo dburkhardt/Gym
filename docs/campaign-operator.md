@@ -72,6 +72,9 @@ For supported Harbor jobs, set `harbor_admission_finalization_allowance_s` and a
 
 For each model role, `upstream_admission_timeout_seconds` optionally bounds cumulative queue waiting separately from `upstream_request_timeout_seconds`. See the [model-server queue policy](../responses_api_models/openai_model/README.md#optional-cumulative-queue-allowance). A solver followed by a judge needs allowance for both roles. Queue expiry is an infrastructure disposition, and a successful solver response followed by a rejected judge request is still unscored. Preserve that solver output; generic reverification can call the judge again and is not a zero-inference replay.
 
+The shared [peer-safe profile](../configs/eval/rate_limit_peer_safe.yaml) configures `policy_model`; it does not automatically configure a separate judge or helper. Check each role's resolved configuration. An expired cooldown means only that an observed wait has elapsed, not that provider capacity is available. With `max_attempts: 1`, a rejected call stays failed, but its cooldown still delays later distinct calls. A longer provider `Retry-After` can exhaust the cumulative queue allowance before the next send; retain that as a zero-send infrastructure failure. A 504 or interrupted response remains uncertain and is not a safe rejected retry. Host-local cooldown state does not establish shared quota scope across workers.
+
+
 Read a supervisor receipt's child `return_code`, not only the supervisor command's exit status. Successful cleanup can coexist with a failed child evaluation. Confirm scored, failed, unstarted and unresolved counts from the native records before calling the attempt successful.
 
 ## Harbor cancellation and retry ownership
