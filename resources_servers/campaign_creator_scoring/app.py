@@ -19,6 +19,7 @@ from nemo_gym.base_resources_server import (
     ReverifyMode,
     SimpleResourcesServer,
 )
+from nemo_gym.completion_outcome import with_completion_outcome
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
@@ -96,12 +97,6 @@ class CreatorResourcesServer(SimpleResourcesServer):
         if details.get("reward") is None:
             raise ValueError("This task has no upstream automatic score; do not convert to zero.")
         accounting = {}
-        if body.response.status == "incomplete":
-            reason = getattr(body.response.incomplete_details, "reason", None)
-            accounting = {
-                "failure_kind": "model_budget" if reason == "max_output_tokens" else "incomplete_response",
-                "failure_reason": "Model response incomplete: " + str(reason),
-            }
         metadata = {}
         if self.config.benchmark == "qcbench":
             evidence = details.get("measurement_evidence")
@@ -176,6 +171,15 @@ class CreatorResourcesServer(SimpleResourcesServer):
         payload = body.model_dump(by_alias=True)
         # Preserve native task/rollout lineage, but never retain a prior regrade's
         # reward, mask or measurement review as if it were this verification.
+        # Native reverify supplies original inputs + response, not stale judge
+        # bookkeeping. Direct callers can explicitly carry an independent incident.
+        prior_kind = payload.get("failure_kind")
+        owned_diagnoses = {"qcbench:invalid_reference_measurement", "scienceqa:invalid_measurement"}
+        prior_incident = (
+            {key: payload[key] for key in ("mask_sample", "failure_kind", "failure_reason") if key in payload}
+            if (prior_kind or payload.get("failure_reason")) and prior_kind not in owned_diagnoses
+            else {}
+        )
         previous_metadata = payload.get("metadata")
         merged_metadata = dict(previous_metadata) if isinstance(previous_metadata, dict) else {}
         for key in ("measurement_review", "verifier_result"):
@@ -189,8 +193,9 @@ class CreatorResourcesServer(SimpleResourcesServer):
             failure_kind=None,
             failure_reason=None,
         )
-        payload.update(accounting)
-        return VerifyResponse(**payload)
+        payload.update(prior_incident)
+        payload.update(accounting)  # A current scientific validity failure takes precedence.
+        return VerifyResponse(**with_completion_outcome(payload, response=body.response))
 
 
 if __name__ == "__main__":
