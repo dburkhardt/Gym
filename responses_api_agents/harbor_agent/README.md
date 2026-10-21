@@ -636,3 +636,24 @@ resource ownership and must not be enabled for an autoscaling pool unless
 placement is intentionally limited to its current nodes. Host available RAM
 alone does not establish Ray schedulability, because the object store has a
 separate reservation. Defaults and scientific task limits are unchanged.
+
+For qualified Linux Docker tasks whose required artifact trees contain readonly
+nested directories, opt into
+`harbor_environment_import_path: responses_api_agents.harbor_agent.artifact_environment:BundledArtifactDockerEnvironment`
+and set `harbor_environment_kwargs.bundle_artifact_sources` to the exact required
+absolute paths (for example `[/workspace]`). `bundle_python` defaults to `python`
+and must select a qualified Python 3.11+ interpreter in the image. This uses the
+existing Harbor environment extension point; other downloads keep their native
+behavior. Qualify the image and this implementation before using the option.
+
+Selected main-service directory captures use the shared hash-verified state
+bundle, with its explicit 1 GiB / 100,000-member limits. Links, special files,
+exclusions and non-main services are refused for these paths. The source is never
+chmodded; files are extracted into fresh host staging before their ordinary
+permission modes are restored. Archived ownership is not restored. Existing
+nonempty destinations, including prior partial captures, are never merged or
+erased. A sibling `*.bundle-receipt.json` retains the export manifest and module
+hash; Harbor's artifact manifest and failure classification remain authoritative.
+This option does not silently truncate oversized output or establish a scientific
+score when capture fails. Container transfers and finalization still consume the
+run's existing operational allowance.
