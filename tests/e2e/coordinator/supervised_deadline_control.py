@@ -25,6 +25,9 @@ async def child(mode, output):
     from nemo_gym.server_utils import ServerClient, global_aiohttp_client_exit_async
 
     deadline = collector_deadline_from_environment()
+    if mode == "preflight":
+        assert deadline is None
+        deadline = time.monotonic() + 4
     assert deadline is not None
     calls = []
     # A scaled operational control: the exact declared task timeout is passed
@@ -71,6 +74,10 @@ async def child(mode, output):
             }
         ),
     )
+
+    # Match native service launch: the shared HTTP client reads this injected
+    # configuration rather than parsing the fixture driver argv through Hydra.
+    os.environ["NEMO_GYM_CONFIG_DICT"] = OmegaConf.to_yaml(client.global_config_dict)
 
     class ConnectedCollector(RolloutCollectionHelper):
         def setup_server_client(self, *args, **kwargs):
@@ -120,7 +127,7 @@ async def child(mode, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--child", choices=["late", "timely"])
+    parser.add_argument("--child", choices=["late", "timely", "preflight"])
     args = parser.parse_args()
     if args.child:
         asyncio.run(child(args.child, args.output))
