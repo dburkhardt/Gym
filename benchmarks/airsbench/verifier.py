@@ -12,6 +12,10 @@ from harbor.verifier.base import BaseVerifier
 from benchmarks.airsbench.regrade import scorer_identity, validate_inputs
 
 
+class ModelMissingSubmissionError(ValueError):
+    """Complete solver output lacks the required scientific submission."""
+
+
 class AIRSVerifier(BaseVerifier):
     def __init__(self, *, source_roots_json: str, **kwargs):
         super().__init__(**kwargs)
@@ -47,7 +51,7 @@ class AIRSVerifier(BaseVerifier):
                     }
                 )
             )
-            raise ValueError("Model omitted submission.csv; no creator MAE exists")
+            raise ModelMissingSubmissionError("Model omitted submission.csv; no creator MAE exists")
         before = hashlib.sha256(prediction.read_bytes()).hexdigest()
         identity = scorer_identity(task) | {
             "task_id": name,

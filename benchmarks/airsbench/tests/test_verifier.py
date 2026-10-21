@@ -79,7 +79,7 @@ async def test_complete_missing_submission_is_model_failure(setup_verifier):
         destination.mkdir(parents=True)
 
     environment.download_dir_with_exclusions.side_effect = empty
-    with pytest.raises(ValueError, match="omitted submission"):
+    with pytest.raises(module.ModelMissingSubmissionError, match="omitted submission"):
         await instance.verify()
     assert json.loads((output / "native-score/failure.json").read_text())["kind"] == "model_missing_submission"
     environment.exec.assert_not_awaited()
