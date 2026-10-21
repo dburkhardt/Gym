@@ -27,3 +27,20 @@ The parent/child runtime waits up to the original 30 seconds for the relay's ato
 `python -m benchmarks.bioagentbench.qualify_native_cli --packet <qualified-packet.json> --output <fresh-directory> --head-port 24000` runs the supported Gym CLI plan and collection with the actual creator runtime and a deterministic loopback provider. It requires the qualified Docker image/assets, separate creator interpreter, and existing systemd service ownership. The default range 24000–24030 is outside the qualified worker's observed ephemeral range 32768–60999; shared Gym allocation and ownership still apply. Check the fixed head and sufficient component capacity, not every candidate port.
 
 The native control retains the original task, 8 GiB sandbox and phase budgets. Its three distinct response IDs bind the solver and judge calls to captured native trajectories. Creator-facing solver SSE is served by the Gym adapter from nonstream upstream responses; this does not qualify upstream provider SSE. The fixture deliberately omits token usage, so missing-token-count health findings remain visible. The successful control is runtime/capture qualification, not model performance or ten-task acceptance. Cystic-fibrosis already has a historical completed result; any future genuine native run must be labeled a new acceptance attempt, not an unstarted expansion.
+
+GIAB additionally requires `giab_scorer_manifest` pointing to the preserved
+`/home/ubuntu/projects/broad-eval-campaign/bioagent-giab-environment/transfer-manifest.json`.
+The maintained binding verifies that exact inventory and absolute environment
+prefix before constructing the same clean environment for creator validation and
+execution. It exposes only the qualified mamba lookup path and MAMBA_ROOT_PREFIX;
+it does not install packages or mount evaluator truth in the solver. This is an
+explicit GIAB-only setting, not an ambient PATH override. Actual worker validation
+is still required before admission.
+
+The creator's raw GIAB metrics are retained separately from interpreted reward.
+An explicit `hap.py_failed` result is marked
+`verifier_execution_failure_cause_unresolved`, retaining the raw native zero.
+That status alone does not distinguish malformed model output from an execution
+failure. Valid measured zero and the creator's missing-query outcome are unchanged.
+Historical positive, empty and malformed controls remain preserved; the binding
+does not imply a new scientific run or qualification of their unresolved semantics.

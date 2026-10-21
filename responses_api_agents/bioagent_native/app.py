@@ -44,6 +44,7 @@ def selected_interpreter(path: Path) -> tuple[Path, dict]:
 
 
 class Config(BaseResponsesAPIAgentConfig):
+    giab_scorer_manifest: Path | None = None
     native_python: Path
     creator_root: Path
     metadata_path: Path
@@ -155,7 +156,10 @@ class Agent(SimpleResponsesAPIAgent):
             },
             "timeout": {"setup": 3600, "rollout": 14400, "finalize": 3600, "scoring": 3600},
         }
+        from benchmarks.bioagentbench.scorer_environment import binding
+
         packet = {
+            "giab_scorer_binding": binding(task_id, self.config.giab_scorer_manifest),
             "task_id": task_id,
             "model": MODEL,
             "image": self.config.image,

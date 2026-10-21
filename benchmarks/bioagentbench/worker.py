@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.bioagentbench.execution import run_native
+from benchmarks.bioagentbench.scorer_environment import child_environment
 from nemo_gym.dataset_staging import stage_file
 from nemo_gym.sandbox.guarded_chat_transport import publish
 
@@ -157,11 +158,7 @@ def main() -> None:
             str(child_packet),
             "--validate-only",
         ],
-        env={
-            "PATH": "/usr/bin:/bin",
-            "HOME": str(args.packet.parent),
-            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        },
+        env=child_environment(packet, home=args.packet.parent, source=Path(__file__).resolve().parents[2]),
         capture_output=True,
         timeout=60,
     )

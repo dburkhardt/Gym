@@ -17,6 +17,7 @@ import httpx
 from aiohttp import web
 
 from benchmarks.bioagentbench.runtime import runtime_class
+from benchmarks.bioagentbench.scorer_environment import child_environment
 from benchmarks.bioagentbench.transport import NativeTransport
 from nemo_gym.sandbox.model_bridge import _settle
 from nemo_gym.server_utils import request
@@ -227,9 +228,12 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
                     [
                         "env",
                         "-i",
-                        "PATH=/usr/bin:/bin",
-                        "HOME=" + str(output.parent),
-                        "PYTHONPATH=" + str(Path(__file__).resolve().parents[2]),
+                        *[
+                            key + "=" + value
+                            for key, value in child_environment(
+                                packet, home=output.parent, source=Path(__file__).resolve().parents[2]
+                            ).items()
+                        ],
                         "BIOAGENT_LOCAL_KEY=task-local-placeholder",
                         packet["interpreter"]["path"],
                         "-m",

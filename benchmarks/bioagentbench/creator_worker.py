@@ -60,15 +60,17 @@ def identity(packet):
         or hashlib.sha256(Path(sys.executable).resolve().read_bytes()).hexdigest() != packet["interpreter"]["sha256"]
     ):
         raise ValueError("Creator interpreter changed")
-    from benchmarks.bioagentbench import child_runtime, creator_execution, runtime_channel
+    from benchmarks.bioagentbench import child_runtime, creator_execution, runtime_channel, scorer_environment
 
-    for module in (sys.modules[__name__], creator_execution, child_runtime, runtime_channel):
+    for module in (sys.modules[__name__], creator_execution, child_runtime, runtime_channel, scorer_environment):
         path = str(Path(module.__file__).resolve())
         if packet["selected_sources"].get(path) != hashlib.sha256(Path(path).read_bytes()).hexdigest():
             raise ValueError("Child adapter source changed")
     if any(n == "nemo_gym" or n.startswith("nemo_gym.") for n in sys.modules):
         raise ValueError("Gym imported into creator runtime")
     return {
+        "scorer_environment": scorer_environment.observed_environment(packet),
+        "giab_scorer_binding": packet.get("giab_scorer_binding"),
         "creator_lock_sha256": hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest(),
         "distributions": actual,
         "imports": {
