@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Collect a completed creator Verifiers rollout into Gym without repeated inference."""
 
+import hashlib
 import json
 import time
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
+from pydantic import ConfigDict
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -23,10 +25,14 @@ class Config(BaseResponsesAPIAgentConfig):
 
 
 class RunRequest(BaseRunRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
+
     native_metrics: dict
     imported_saved_execution: bool = True
     synthetic_summary_response: bool = True
@@ -41,7 +47,9 @@ class Agent(SimpleResponsesAPIAgent):
         raise NotImplementedError("Use /run to collect completed native rollout")
 
     async def run(self, request: Request, body: RunRequest) -> VerifyResponse:
-        rows = [json.loads(x) for x in self.config.trace_path.read_text().splitlines()]
+        trace_bytes = self.config.trace_path.read_bytes()
+        provider_bytes = self.config.provider_trace.read_bytes()
+        rows = [json.loads(x) for x in trace_bytes.splitlines()]
         selected = [r for r in rows if r["task"]["data"]["task_id"] == body.verifier_metadata["id"]]
         assert len(selected) == 1
         native = selected[0]
@@ -52,7 +60,7 @@ class Agent(SimpleResponsesAPIAgent):
             and inputs[0]["role"] == "user"
             and inputs[0]["content"] == native["task"]["data"]["prompt"]
         )
-        calls = [json.loads(x) for x in self.config.provider_trace.read_text().splitlines()]
+        calls = [json.loads(x) for x in provider_bytes.splitlines()]
         calls = [x for x in calls if native["timing"]["start"] <= x["time"] <= native["timing"]["scoring"]["end"]]
         assert calls and all(x["response"]["model"] == MODEL for x in calls)
         reward = native["rewards"]["results_match"]
@@ -86,7 +94,11 @@ class Agent(SimpleResponsesAPIAgent):
             native_metrics={
                 "metrics": native["metrics"],
                 "rewards": native["rewards"],
-                "actual_model_calls": len(calls),
+                "provider_records_in_time_window": len(calls),
+                "provider_attribution": "time_window_only_not_task_verified",
+                "source_trace_sha256": hashlib.sha256(trace_bytes).hexdigest(),
+                "source_provider_sha256": hashlib.sha256(provider_bytes).hexdigest(),
+                "source_trace_id": native.get("id", native.get("trace_id")),
                 "native_trace": str(self.config.trace_path),
                 "provider_trace": str(self.config.provider_trace),
                 "protocol": "creator_Verifiers_OpenCode_Nemotron_all_roles_buffered_SSE",
