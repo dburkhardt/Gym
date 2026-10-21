@@ -135,3 +135,5 @@ the bundled scorer; chemistry-dependent cases require the dependencies declared
 in `requirements.txt`. The complete prepared input is
 `benchmarks/chemeval/data/test.jsonl`. `verified: false` remains until baselining
 and maintainer review; smoke tests alone do not certify benchmark fidelity.
+
+With provider dispatch guarding enabled, judged tasks require the persisted native `verification_id`. The verifier binds each English V2 rubric call to that ID, the selected rubric and scale, effective judge generation parameters, and hashes of the verifier and English judge implementation. Missing lineage fails before a judge request. Deterministic task scoring and existing verdict parsing are unchanged. Offline binding tests do not establish live provider capture or scientific judge calibration.

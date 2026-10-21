@@ -275,3 +275,37 @@ async def test_workload_verifier_fixture():
         VERIFIER_FIXTURE, reward_range=(0.0, 1.0), higher_is_better=True, determinism="unknown"
     )
     assert {result.kind for result in results} >= {"full_reward", "zero_reward", "malformed"}
+
+
+async def test_guarded_judge_binds_verification_and_rubric(server):
+    from omegaconf import OmegaConf
+
+    server.server_client.global_config_dict = OmegaConf.create({"provider_dispatch_guard": True})
+    verdict = response(json.dumps({"legacy_score_1_to_5": 3, "outcome": {"score_0_to_1": 0.7}}))
+    http = MagicMock(status=200, ok=True)
+    http.read = AsyncMock(return_value=verdict.model_dump_json().encode())
+    http.content.read = http.read
+    server.server_client.post = AsyncMock(return_value=http)
+    body = judged_request("Full answer")
+    with pytest.raises(JudgeError, match="persisted verification_id"):
+        await server.verify(body)
+    server.server_client.post.assert_not_awaited()
+    headers = []
+    for identity in ["original", "original", "new-attempt"]:
+        result = await server.verify(body.model_copy(update={"verification_id": identity}))
+        assert result.reward == 0.5 and result.judge_parse_ok is True
+        headers.append(server.server_client.post.call_args.kwargs["headers"])
+    assert headers[0] == headers[1]
+    assert headers[0]["x-nemo-gym-logical-call-id"] != headers[2]["x-nemo-gym-logical-call-id"]
+    changed = body.model_copy(
+        update={
+            "verification_id": "new-attempt",
+            "verifier_metadata": body.verifier_metadata.model_copy(update={"judge_rubric": "calculation"}),
+        }
+    )
+    await server.verify(changed)
+    assert (
+        headers[2]["x-nemo-gym-call-config-sha256"]
+        != server.server_client.post.call_args.kwargs["headers"]["x-nemo-gym-call-config-sha256"]
+    )
+    assert server.server_client.post.call_args.kwargs["server_name"] == "judge_model"

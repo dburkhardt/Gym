@@ -6,6 +6,7 @@ import asyncio
 import math
 import re
 from collections import defaultdict
+from hashlib import sha256
 from pathlib import Path
 from types import ModuleType
 from typing import Any, ClassVar
@@ -134,6 +135,18 @@ class ChemEvalResourcesServer(SimpleResourcesServer):
                 url_path="/v1/responses",
                 json=params,
                 response_model=NeMoGymResponse,
+                verification_id=body.verification_id,
+                call_id="english-v2-rubric",
+                scorer_identity={
+                    "protocol": metadata.judge_protocol,
+                    "rubric": metadata.judge_rubric,
+                    "scale": metadata.judge_scale,
+                    "judge_source_sha256": sha256(
+                        Path(__file__).with_name("english_judge.py").read_bytes()
+                    ).hexdigest(),
+                    "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                    "generation": params.model_dump(mode="json", exclude={"input"}, exclude_unset=True),
+                },
             )
         verdict = final_text(judged.output_text)
         score, payload = parse_judge_verdict(verdict, scale=metadata.judge_scale)
