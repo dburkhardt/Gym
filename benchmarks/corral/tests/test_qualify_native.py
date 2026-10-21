@@ -73,3 +73,28 @@ def test_tool_error_or_wrong_task_cannot_pass_zero_score():
     submission["submission"] = "different answer"
     with pytest.raises(ValueError, match="Submission"):
         validate_transcript(calls, "exact native prompt", "Observation: ['azo']", submission)
+
+
+@pytest.mark.asyncio
+async def test_real_sandbox_download_facade_preserves_exact_file_destination(tmp_path):
+    from unittest.mock import AsyncMock
+
+    from nemo_gym.sandbox import AsyncSandbox
+
+    provider = AsyncMock()
+    handle = object()
+    sandbox = AsyncSandbox(provider)
+    sandbox._handle = handle
+    sandbox._stopped = False
+    destination = tmp_path / "export.tar"
+
+    async def copy(actual_handle, source, target):
+        assert actual_handle is handle
+        assert source == "/tmp/export.tar"
+        assert target == destination
+        target.write_bytes(b"exact downloaded bundle bytes")
+
+    provider.download_file.side_effect = copy
+    await sandbox.download("/tmp/export.tar", str(destination))
+    provider.download_file.assert_awaited_once_with(handle, "/tmp/export.tar", destination)
+    assert destination.read_bytes() == b"exact downloaded bundle bytes"

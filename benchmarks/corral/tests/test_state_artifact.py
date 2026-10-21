@@ -16,6 +16,7 @@ def test_nested_state_roundtrip_and_partial_archive_refusal(tmp_path):
     (nested / "commits.sqlite3").write_bytes(b"persistent native database")
     (nested / "snapshot.json").write_text('{"commit":"immutable"}')
     (nested / "empty").mkdir()
+    nested.chmod(0o2770)
     (nested / "snapshot.json").chmod(0o640)
     (source / "solver-result.json").write_text('{"status":"submitted"}')
     archive = tmp_path / "state.tar"
@@ -27,6 +28,7 @@ def test_nested_state_roundtrip_and_partial_archive_refusal(tmp_path):
         if entry["kind"] == "file"
     )
     assert (tmp_path / "result/state/executions/identity/empty").is_dir()
+    assert (tmp_path / "result/state/executions/identity").stat().st_mode & 0o7777 == 0o2770
     assert (tmp_path / "result/state/executions/identity/snapshot.json").stat().st_mode & 0o777 == 0o640
     # Reproduces the observed transfer defect: JSON survived, nested state did not.
     partial = tmp_path / "partial.tar"

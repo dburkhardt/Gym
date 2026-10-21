@@ -20,6 +20,7 @@ from benchmarks.corral.database import database_clone
 from benchmarks.corral.guarded_agent import MODEL
 from benchmarks.corral.outcomes import NativeAgentIterationLimitError, NativeAgentSurrenderError, outcome
 from benchmarks.corral.state_artifact import pack_state, unpack_state
+from nemo_gym import state_bundle
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
 from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
@@ -34,6 +35,19 @@ def copy_state(source: Path, destination: Path):
     if source.is_symlink() or any(p.is_symlink() for p in source.rglob("*")):
         raise ValueError("Corral saved state cannot contain symlinks")
     shutil.copytree(source, destination)
+
+
+async def export_state(sandbox: AsyncSandbox, output: Path) -> Path:
+    """Download before sandbox close; retain the original bind tree untouched."""
+    archive = output / "container-state.tar"
+    receipt = output / "container-state-manifest.json"
+    if archive.exists() or receipt.exists():
+        raise FileExistsError("Corral export artifacts already exist")
+    await sandbox.download("/tmp/native-state.tar", str(archive))
+    await sandbox.download("/tmp/native-state-manifest.json", str(receipt))
+    exported = output / "exported-native"
+    state_bundle.unpack_bundle(archive, json.loads(receipt.read_text()), exported, preserve_directory_setgid=True)
+    return exported
 
 
 async def run_phase(
@@ -69,6 +83,7 @@ async def run_phase(
     controller.mkdir()
     for name in ("container_phase.py", "native_phase.py", "guarded_agent.py", "frozen_sources.json"):
         shutil.copy2(Path(__file__).with_name(name), controller / name)
+    shutil.copy2(Path(state_bundle.__file__), controller / "state_bundle.py")
     lineage = uuid.uuid4().hex
     digest = configuration_digest(
         {
@@ -163,6 +178,7 @@ async def run_phase(
             (output / "stderr.log").write_text(result.stderr or "")
             if result.return_code != 0:
                 raise RuntimeError("Corral native phase failed; preserved artifacts are not a scientific zero")
+            state = await export_state(sandbox, output)
     result_path = state / (phase + "-result.json")
     if not result_path.is_file():
         raise RuntimeError("Native Corral phase result missing")

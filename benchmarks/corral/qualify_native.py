@@ -63,7 +63,7 @@ def compare_state(original, submitted, manifest):
             raise ValueError("Incomplete or unexpected creator state tree")
         for name, entry in entries.items():
             p = root / name
-            if p.is_symlink() or (p.stat().st_mode & 0o777) != entry["mode"]:
+            if p.is_symlink() or (p.stat().st_mode & 0o7777) != entry["mode"]:
                 raise ValueError("Creator state mode/type mismatch")
             if entry["kind"] == "file":
                 if not p.is_file() or p.stat().st_size != entry["size"] or sha(p) != entry["sha256"]:
@@ -121,13 +121,16 @@ def reconcile(out, calls, creator):
     manifest_path = manifests[0]
     trial = manifest_path.parent.parent
     manifest = json.loads(manifest_path.read_text())
-    hashes = compare_state(trial / "agent/native-solver/native", trial / "verifier/submitted", manifest)
-    submission = json.loads((trial / "agent/native-solver/native/solver-result.json").read_text())
+    container_manifest = json.loads((trial / "agent/native-solver/container-state-manifest.json").read_text())
+    if container_manifest != manifest:
+        raise ValueError("Container export and uploaded state manifests differ")
+    hashes = compare_state(trial / "agent/native-solver/exported-native", trial / "verifier/submitted", manifest)
+    submission = json.loads((trial / "agent/native-solver/exported-native/solver-result.json").read_text())
     row = json.loads((out / "single.jsonl").read_text())
     validate_transcript(
         calls, row["verifier_metadata"]["native_task"]["input"]["prompt"], expected_observation(creator), submission
     )
-    scorer = json.loads((trial / "verifier/native-scorer/native/scorer-result.json").read_text())
+    scorer = json.loads((trial / "verifier/native-scorer/exported-native/scorer-result.json").read_text())
     if scorer.get("commit_hash") != submission.get("commit_hash") or not submission.get("commit_hash"):
         raise ValueError("Scorer evaluated a different submission commit")
     if scorer.get("scorer_version") != "retrosynthesis.score:score_final":

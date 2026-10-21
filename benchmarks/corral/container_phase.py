@@ -64,6 +64,11 @@ async def run():
     else:
         raise ValueError("Unknown Corral native phase")
     (root / (request["phase"] + "-result.json")).write_text(json.dumps(result, indent=2) + "\n")
+    # Export while the container can still read creator-owned 2770/0640 state.
+    from state_bundle import pack_bundle
+
+    bundle = pack_bundle(root, Path("/tmp/native-state.tar"), preserve_directory_setgid=True)
+    Path("/tmp/native-state-manifest.json").write_text(json.dumps(bundle) + "\n")
 
 
 if __name__ == "__main__":

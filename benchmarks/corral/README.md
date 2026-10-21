@@ -67,3 +67,15 @@ virtual historical clock and seeds a new branch in a copy from saved evidence;
 it explicitly does not establish fresh capture admission or resume the original
 terminal execution. The fresh selected-tool control above uses a current,
 unchanged absolute deadline and newly recorded local fixture captures.
+
+Native state export occurs inside the scientific container before it closes, so
+creator-owned `2770` directories and `0640` files remain readable during packing.
+The shared verified bundle is downloaded into a fresh caller-owned tree; the
+original bind tree is retained without a host ownership change. Both export and
+solver-to-verifier transport explicitly opt into directory-setgid preservation.
+The manifest declares this policy, readers must opt in independently, and all
+other special bits are refused. Archived UID/GID values are never restored.
+Files retain their bytes and modes; directories retain setgid but inherit the
+receiver's local group, not the creator's numeric group. Unsupported filesystems
+that strip requested permission bits fail before publication. This transport
+repair does not establish a successful full native scientific run.

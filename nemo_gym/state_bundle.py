@@ -19,8 +19,20 @@ def _sha(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def pack_bundle(source: Path, destination: Path) -> dict:
-    """Preserve file bytes, ordinary permissions and empty directories."""
+DIRECTORY_SETGID_POLICY = "preserve-directory-setgid-v1"
+
+
+def _mode_allowed(mode: int, kind: str, preserve_directory_setgid: bool) -> bool:
+    allowed = 0o777 | (0o2000 if preserve_directory_setgid and kind == "directory" else 0)
+    return type(mode) is int and mode >= 0 and mode & ~allowed == 0
+
+
+def pack_bundle(source: Path, destination: Path, *, preserve_directory_setgid: bool = False) -> dict:
+    """Preserve bytes and ordinary modes; optionally preserve directory setgid only.
+
+    The opt-in policy rejects every other special bit. Default legacy bundles
+    continue stripping special bits. Ownership is never archived or restored.
+    """
     if source.is_symlink() or not source.is_dir():
         raise ValueError("State must be a real directory")
     entries = {}
@@ -29,6 +41,10 @@ def pack_bundle(source: Path, destination: Path) -> dict:
         if path.is_symlink() or not (path.is_dir() or path.is_file()):
             raise ValueError("State contains a link or special file")
         entry = {"kind": "directory" if path.is_dir() else "file", "mode": path.stat().st_mode & 0o777}
+        if preserve_directory_setgid:
+            entry["mode"] = path.stat().st_mode & 0o7777
+            if not _mode_allowed(entry["mode"], entry["kind"], True):
+                raise ValueError("Unsupported state special permission bits")
         if path.is_file():
             entry.update(size=path.stat().st_size, sha256=_sha(path))
             total += entry["size"]
@@ -51,6 +67,8 @@ def pack_bundle(source: Path, destination: Path) -> dict:
                     with (source / name).open("rb") as stream:
                         archive.addfile(info, stream)
         manifest = {"schema_version": 1, "entries": entries, "archive_sha256": _sha(staged)}
+        if preserve_directory_setgid:
+            manifest["permission_policy"] = DIRECTORY_SETGID_POLICY
         # Catch source mutation during publication before making the bundle visible.
         _validate(staged, manifest)
         os.replace(staged, destination)
@@ -62,6 +80,9 @@ def _validate(path: Path, manifest: dict) -> None:
         raise ValueError("Invalid state bundle version or size")
     if _sha(path) != manifest["archive_sha256"]:
         raise ValueError("State archive checksum mismatch")
+    policy = manifest.get("permission_policy")
+    if policy not in (None, DIRECTORY_SETGID_POLICY):
+        raise ValueError("Unsupported state permission policy")
     entries = manifest["entries"]
     if len(entries) > MAX_MEMBERS:
         raise ValueError("Too many state members")
@@ -86,7 +107,9 @@ def _validate(path: Path, manifest: dict) -> None:
                 if str(parent) != "."
             ):
                 raise ValueError("State parent collision or missing directory")
-            if member.mode != entry["mode"] or not 0 <= member.mode <= 0o777:
+            if member.mode != entry["mode"] or not _mode_allowed(
+                member.mode, entry["kind"], policy == DIRECTORY_SETGID_POLICY
+            ):
                 raise ValueError("State member mode mismatch")
             if member.isdir() and entry["kind"] == "directory":
                 continue
@@ -100,8 +123,12 @@ def _validate(path: Path, manifest: dict) -> None:
                 raise ValueError("State file checksum mismatch")
 
 
-def unpack_bundle(archive_path: Path, manifest: dict, destination: Path) -> None:
+def unpack_bundle(
+    archive_path: Path, manifest: dict, destination: Path, *, preserve_directory_setgid: bool = False
+) -> None:
     """Reject partial or unsafe state before atomically publishing a new tree."""
+    if manifest.get("permission_policy") == DIRECTORY_SETGID_POLICY and not preserve_directory_setgid:
+        raise ValueError("Directory setgid preservation requires caller opt-in")
     _validate(archive_path, manifest)
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(destination)
@@ -124,7 +151,12 @@ def unpack_bundle(archive_path: Path, manifest: dict, destination: Path) -> None
                 ):
                     raise ValueError("Unsafe changed state archive member")
                 entry = manifest["entries"].get(member.name)
-                if entry is None or (member.isfile() and member.size != entry.get("size")):
+                if (
+                    entry is None
+                    or member.mode != entry["mode"]
+                    or (member.isdir() != (entry["kind"] == "directory"))
+                    or (member.isfile() and member.size != entry.get("size"))
+                ):
                     raise ValueError("Changed state archive member")
                 target = staged / member.name
                 if member.isdir():
@@ -144,5 +176,8 @@ def unpack_bundle(archive_path: Path, manifest: dict, destination: Path) -> None
                 elif not path.is_file() or path.stat().st_size != entry["size"] or _sha(path) != entry["sha256"]:
                     raise ValueError("Extracted state checksum mismatch")
             for name, entry in sorted(manifest["entries"].items(), key=lambda item: len(item[0]), reverse=True):
-                (staged / name).chmod(entry["mode"])
+                target = staged / name
+                target.chmod(entry["mode"])
+                if target.stat().st_mode & 0o7777 != entry["mode"]:
+                    raise ValueError("Filesystem did not preserve state permissions")
         os.replace(staged, destination)

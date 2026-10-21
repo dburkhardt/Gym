@@ -113,3 +113,41 @@ async def test_deterministic_scorer_does_not_require_model_guard(tmp_path, monke
             output=tmp_path / "out",
             submitted=submitted,
         )
+
+
+@pytest.mark.asyncio
+async def test_verified_export_uses_real_download_facade_and_retains_bind_tree(tmp_path):
+    import hashlib
+    import json
+    import shutil
+    from unittest.mock import AsyncMock
+
+    from benchmarks.corral.harbor_native import export_state
+    from nemo_gym.sandbox import AsyncSandbox
+    from nemo_gym.state_bundle import pack_bundle
+
+    original = tmp_path / "native"
+    original.mkdir()
+    (original / "database").write_bytes(b"original database")
+    archive = tmp_path / "container.tar"
+    manifest = pack_bundle(original, archive, preserve_directory_setgid=True)
+    receipt = tmp_path / "container.json"
+    receipt.write_text(json.dumps(manifest))
+    before = hashlib.sha256((original / "database").read_bytes()).hexdigest()
+    sandbox = AsyncSandbox(AsyncMock())
+    sandbox._handle = object()
+    sandbox._stopped = False
+
+    async def download(handle, remote, local):
+        assert handle is sandbox._handle
+        shutil.copyfile({"/tmp/native-state.tar": archive, "/tmp/native-state-manifest.json": receipt}[remote], local)
+
+    sandbox._provider = AsyncMock()
+    sandbox._provider.download_file.side_effect = download
+    result = await export_state(sandbox, tmp_path)
+    assert (result / "database").read_bytes() == b"original database"
+    assert hashlib.sha256((original / "database").read_bytes()).hexdigest() == before
+    assert sandbox._provider.download_file.await_count == 2
+    with pytest.raises(FileExistsError):
+        await export_state(sandbox, tmp_path)
+    assert sandbox._provider.download_file.await_count == 2
