@@ -347,3 +347,39 @@ async def test_large_source_probe_staged_with_short_argv(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Image probe failed"):
         await controls.probe_image("sha256:" + "b" * 64, command, tmp_path / "fail", script=script)
     assert len(executed) == 2
+
+
+@pytest.mark.parametrize("override", [None, {"memory_mb": 8192}])
+def test_execution_memory_preserves_qualification(tmp_path, override):
+    import copy
+    import tomllib
+
+    medium, refs, row, q, manifest = fixture(tmp_path)
+    original = copy.deepcopy(q)
+    options = {} if override is None else {row["id"]: override}
+    stage(medium, refs, {row["id"]: q}, tmp_path / "out", manifest=manifest, execution_resources=options)
+    task = tomllib.loads((tmp_path / "out/tasks" / row["id"] / "task.toml").read_text())
+    assert task["environment"]["memory_mb"] == (4096 if override is None else 8192)
+    assert task["agent"]["timeout_sec"] == 3600
+    assert task["verifier"]["timeout_sec"] == 120
+    receipt = json.loads((tmp_path / "out/preparation.json").read_text())
+    assert receipt["qualification_receipts"][row["id"]] == original == q
+    assert receipt["execution_resources"][row["id"]]["memory_mb"] == task["environment"]["memory_mb"]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"unknown": {"memory_mb": 8192}},
+        {"capsule-test": {"memory_mb": 2048}},
+        {"capsule-test": {"memory_mb": True}},
+        {"capsule-test": {"memory_mb": "8192"}},
+        {"capsule-test": {"cpus": 4}},
+        {"capsule-test": None},
+    ],
+)
+def test_execution_resources_reject_invalid_before_publication(tmp_path, options):
+    medium, refs, row, q, manifest = fixture(tmp_path)
+    with pytest.raises(ValueError):
+        stage(medium, refs, {row["id"]: q}, tmp_path / "out", manifest=manifest, execution_resources=options)
+    assert not (tmp_path / "out").exists()

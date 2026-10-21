@@ -91,7 +91,7 @@ def validate_qualification(row, receipt):
     return limits
 
 
-def stage(medium_root, reference_root, qualifications, destination, *, manifest=MANIFEST):
+def stage(medium_root, reference_root, qualifications, destination, *, manifest=MANIFEST, execution_resources=None):
     rows = json.loads(manifest.read_text())["rows"]
     if len({r["id"] for r in rows}) != len(rows):
         raise ValueError("Duplicate capsules")
@@ -105,6 +105,21 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
             validate_qualification(r, qualifications[r["id"]])
     if not qualifications:
         raise ValueError("No qualified images; source inventory alone is not runnable")
+    execution_resources = {} if execution_resources is None else execution_resources
+    if not isinstance(execution_resources, dict) or set(execution_resources) - set(qualifications):
+        raise ValueError("Execution resources require a qualified capsule")
+    resolved_resources = {}
+    for cid, q in qualifications.items():
+        limits = dict(q["resources"])
+        override = execution_resources.get(cid, {})
+        if not isinstance(override, dict) or set(override) - {"memory_mb"}:
+            raise ValueError("Only execution memory increases are supported")
+        if "memory_mb" in override:
+            memory = override["memory_mb"]
+            if type(memory) is not int or memory < limits["memory_mb"]:
+                raise ValueError("Execution memory must be an integer no smaller than qualification memory")
+            limits["memory_mb"] = memory
+        resolved_resources[cid] = limits
     template = Path(__file__).parent / "templates"
     published = []
     with TemporaryDirectory() as temporary:
@@ -114,7 +129,7 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
             if cid not in qualifications:
                 continue
             q = qualifications[cid]
-            limits = validate_qualification(row, q)
+            limits = resolved_resources[cid]
             source, refs = sources[cid]
             task = destination / "tasks" / cid
             stage_file(
@@ -168,6 +183,8 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
                     "retained": len(rows),
                     "published": len(published),
                     "qualification_receipts": qualifications,
+                    "execution_resources": resolved_resources,
+                    "execution_resource_overrides": execution_resources,
                     "blocked": [{"id": r["id"], "status": r["status"]} for r in rows if r["id"] not in qualifications],
                 },
                 indent=2,
@@ -183,6 +200,7 @@ def prepare():
         Path(os.environ["COREBENCH20_REFERENCE_ROOT"]),
         json.loads(Path(os.environ["COREBENCH20_QUALIFICATIONS"]).read_text()),
         Path(__file__).parent / "data20",
+        execution_resources=json.loads(os.environ.get("COREBENCH20_EXECUTION_RESOURCES", "{}")),
     )
 
 

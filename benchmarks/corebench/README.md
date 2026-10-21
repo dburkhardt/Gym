@@ -23,3 +23,11 @@ New frozen20 image qualifications require `qualification_sha256 = image_controls
 Capsule6133093 explicitly selects `ubuntu-bionic-isolated-v1` for harness tmux installation. The historical recipe failed because its third-party CRAN repository has an expired signature. The variant uses only exact existing Ubuntu bionic archive/security source lines with private apt lists and signature validation enabled, leaving original source files and keys unchanged. Every previously installed dpkg package must retain its version; only tmux, libevent-2.1-6 and libutempter0 may be newly installed. The helper bytes are bound into the recipe digest. This is a harness installation variant, not a scientific dependency upgrade or a claim of a hermetic Ubuntu package archive.
 
 Image context publication stages verified files in a private cache outside the Docker COPY tree, then atomically publishes the clean context under the shared staging lock convention. Generated staging locks never enter capsule or harness trees. Legitimate creator filenames ending in `.stage.lock` remain intact; exact final-image source checking is unchanged.
+
+Scientific execution can explicitly increase a qualified capsule's memory through
+`COREBENCH20_EXECUTION_RESOURCES='{"capsule-8197429":{"memory_mb":8192}}'`.
+Preparation retains the original image qualification receipt and records the separate
+execution allocation. For capsule 8197429 the image control used 4 GiB, while the
+historical scientific workflow used 8 GiB. This option does not claim that the image
+probe ran with 8 GiB; CPU, storage and scientific deadlines remain unchanged.
+Only integer memory increases for already qualified capsules are supported.
