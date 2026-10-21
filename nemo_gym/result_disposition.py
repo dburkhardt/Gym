@@ -134,7 +134,11 @@ def summarize_dispositions(
                         ),
                         "review_evidence": review.get("evidence"),
                     }
-                    if not any(value is not None for value in scope.values()):
+                    if not (
+                        isinstance(scope["dataset"], str)
+                        and bool(scope["dataset"].strip())
+                        and scope["native_config_sha256"] is not None
+                    ):
                         scope["unscoped_record"] = {"stream": stream, "record_index": index}
                     scope_json = json.dumps(scope, sort_keys=True, separators=(",", ":"))
                     source = (review["version"], source_path, source_sha, scope_json)

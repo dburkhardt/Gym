@@ -221,3 +221,13 @@ def test_missing_dataset_scope_does_not_pool_across_records():
     metric = summarize_dispositions([_reviewed_mixed(), _reviewed_mixed()])["per_metric"]["outcome"]
     assert metric["reviewed_mean"] is None
     assert len(metric["reviewed_source_groups"]) == 2
+
+
+def test_shared_agent_or_empty_evidence_does_not_establish_dataset_scope():
+    first, second = _reviewed_mixed(), _reviewed_mixed()
+    for row in (first, second):
+        row["agent_ref"] = {"name": "shared"}
+        row["metadata"]["measurement_review"]["evidence"] = {}
+    metric = summarize_dispositions([first, second])["per_metric"]["outcome"]
+    assert metric["reviewed_mean"] is None
+    assert len(metric["reviewed_source_groups"]) == 2
