@@ -139,3 +139,85 @@ def test_empty_stream_has_stable_zero_count_schema():
     }
     assert summary["attempted_total"] is None
     assert summary["provider_dispatch_unresolved_total"] is None
+
+
+def _reviewed_mixed():
+    return {
+        "reward": 0.8,
+        "mask_sample": True,
+        "metadata": {
+            "verifier_result": {"rewards": {"outcome": 0.8, "process": 1.0}},
+            "measurement_review": {
+                "version": "review-v1",
+                "implementation": {"import_path": "bench.review:review", "sha256": "a" * 64},
+                "metrics": {
+                    "outcome": {"status": "valid", "reason": "native deterministic result inspected"},
+                    "process": {"status": "unresolved", "reason": "missing observed evidence"},
+                },
+            },
+        },
+    }
+
+
+def test_per_metric_review_preserves_valid_outcome_despite_whole_row_mask():
+    row = _reviewed_mixed()
+    before = copy.deepcopy(row)
+    aggregate = compute_aggregate_metrics([row])
+    metrics = aggregate.disposition_summary["per_metric"]
+    assert metrics["outcome"]["reviewed_mean"] == 0.8
+    assert metrics["outcome"]["reviewed_denominator"] == 1
+    assert metrics["process"]["reviewed_mean"] is None
+    assert metrics["process"]["unresolved"] == 1
+    assert not any(k.startswith("mean/") for k in aggregate.key_metrics)
+    assert row == before
+
+
+def test_unidentified_review_cannot_produce_reviewed_mean():
+    row = _reviewed_mixed()
+    del row["metadata"]["measurement_review"]["implementation"]
+    metric = summarize_dispositions([row])["per_metric"]["outcome"]
+    assert metric["valid"] == 1
+    assert metric["valid_but_ineligible_scores"] == 1
+    assert metric["reviewed_mean"] is None
+
+
+def test_review_cannot_certify_nonfinite_or_missing_numeric_source():
+    for value in [None, True, float("inf"), float("nan"), "0.8"]:
+        row = _reviewed_mixed()
+        row["metadata"]["verifier_result"]["rewards"]["outcome"] = value
+        metric = summarize_dispositions([row])["per_metric"]["outcome"]
+        assert metric["reviewed_denominator"] == 0
+        assert metric["reviewed_mean"] is None
+
+
+def test_distinct_review_sources_are_not_pooled():
+    first, second = _reviewed_mixed(), _reviewed_mixed()
+    second["metadata"]["measurement_review"]["implementation"]["sha256"] = "b" * 64
+    second["metadata"]["verifier_result"]["rewards"]["outcome"] = 0
+    metric = summarize_dispositions([first, second])["per_metric"]["outcome"]
+    assert metric["reviewed_mean"] is None
+    assert metric["reviewed_denominator"] == 2
+    assert [g["mean"] for g in metric["reviewed_source_groups"]] == [0.8, 0]
+
+
+def test_failure_stream_valid_metadata_is_not_completed_reviewed_score():
+    metric = summarize_dispositions([], failures=[_reviewed_mixed()])["per_metric"]["outcome"]
+    assert metric["reviewed_mean"] is None
+    assert metric["reviewed_denominator"] == 0
+
+
+def test_same_review_producer_cannot_pool_different_datasets_or_agents():
+    first, second = _reviewed_mixed(), _reviewed_mixed()
+    first["agent_ref"] = {"name": "a"}
+    second["agent_ref"] = {"name": "b"}
+    first["metadata"]["source"] = "dataset-one"
+    second["metadata"]["source"] = "dataset-two"
+    metric = summarize_dispositions([first, second])["per_metric"]["outcome"]
+    assert metric["reviewed_mean"] is None
+    assert len(metric["reviewed_source_groups"]) == 2
+
+
+def test_missing_dataset_scope_does_not_pool_across_records():
+    metric = summarize_dispositions([_reviewed_mixed(), _reviewed_mixed()])["per_metric"]["outcome"]
+    assert metric["reviewed_mean"] is None
+    assert len(metric["reviewed_source_groups"]) == 2

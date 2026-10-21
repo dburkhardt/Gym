@@ -5,6 +5,8 @@
 import hashlib
 import json
 import math
+import re
+import statistics
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
@@ -36,6 +38,7 @@ def summarize_dispositions(
         }
     )
     metrics = {}
+    reviewed_values = {}
     lineage = []
     observed_identities = set()
     for stream, records in (("results", results), ("failures", failures)):
@@ -74,13 +77,73 @@ def summarize_dispositions(
                 status = disposition.get("status")
                 if status not in {"valid", "invalid", "unresolved"}:
                     status = "unreviewed"
-                bucket = metrics.setdefault(name, Counter())
+                bucket = metrics.setdefault(
+                    name,
+                    Counter(
+                        {
+                            key: 0
+                            for key in (
+                                "valid",
+                                "invalid",
+                                "unresolved",
+                                "unreviewed",
+                                "raw_numeric_scores",
+                                "reviewed_eligible_scores",
+                                "valid_but_ineligible_scores",
+                            )
+                        }
+                    ),
+                )
                 bucket[status] += 1
                 bucket["raw_numeric_scores"] += _numeric(native.get(name))
+                implementation = review.get("implementation") or {}
+                implementation = implementation if isinstance(implementation, dict) else {}
+                source_sha = implementation.get("sha256")
+                source_path = implementation.get("import_path")
+                identified = (
+                    isinstance(review.get("version"), str)
+                    and bool(review["version"].strip())
+                    and isinstance(source_path, str)
+                    and ":" in source_path
+                    and isinstance(source_sha, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", source_sha) is not None
+                )
+                eligible = (
+                    stream == "results"
+                    and status == "valid"
+                    and identified
+                    and isinstance(disposition.get("reason"), str)
+                    and bool(disposition["reason"].strip())
+                    and _numeric(native.get(name))
+                )
+                bucket["reviewed_eligible_scores"] += bool(eligible)
+                bucket["valid_but_ineligible_scores"] += status == "valid" and not eligible
+                if eligible:
+                    # A review producer can serve unrelated benchmarks. Never pool
+                    # across declared datasets/agents or native scorer/config variants.
+                    scope = {
+                        "agent_ref": record.get("agent_ref"),
+                        "dataset": metadata.get("source"),
+                        "instance_id": record.get("instance_id"),
+                        "native_config_sha256": (
+                            hashlib.sha256(
+                                json.dumps(metadata["config"], sort_keys=True, separators=(",", ":")).encode()
+                            ).hexdigest()
+                            if metadata.get("config") is not None
+                            else None
+                        ),
+                        "review_evidence": review.get("evidence"),
+                    }
+                    if not any(value is not None for value in scope.values()):
+                        scope["unscoped_record"] = {"stream": stream, "record_index": index}
+                    scope_json = json.dumps(scope, sort_keys=True, separators=(",", ":"))
+                    source = (review["version"], source_path, source_sha, scope_json)
+                    reviewed_values.setdefault(name, {}).setdefault(source, []).append(native[name])
                 row_metrics[name] = {
                     "status": status,
                     "raw_score": native.get(name),
                     "reason": disposition.get("reason"),
+                    "reviewed_mean_eligible": bool(eligible),
                 }
             lineage.append(
                 {
@@ -99,8 +162,27 @@ def summarize_dispositions(
                     "metric_dispositions": row_metrics,
                 }
             )
+    per_metric = {}
+    for name, count in metrics.items():
+        groups = reviewed_values.get(name, {})
+        group_means = [
+            {
+                "review_version": key[0],
+                "implementation": {"import_path": key[1], "sha256": key[2]},
+                "scope": json.loads(key[3]),
+                "denominator": len(values),
+                "mean": statistics.fmean(values),
+            }
+            for key, values in sorted(groups.items())
+        ]
+        per_metric[name] = {
+            **dict(count),
+            "reviewed_denominator": sum(len(v) for v in groups.values()),
+            "reviewed_mean": group_means[0]["mean"] if len(group_means) == 1 else None,
+            "reviewed_source_groups": group_means,
+        }
     return {
-        "schema_version": "1",
+        "schema_version": "2",
         "expected_rollout_count": expected_count,
         "counts": dict(counts),
         "observed_logical_rollout_lower_bound": len(observed_identities),
@@ -112,7 +194,9 @@ def summarize_dispositions(
             "Logical rollout lower bound merges attempts and optional agent fields within this input run; it is not an attempt total.",
             "Quality selection follows native mask policy; absent metric review is not scientific acceptance.",
             "Provider dispatch state requires its durable ledger; no text-based inference is made.",
+            "Reviewed means require an explicit valid metric and identified review producer; this is not independent scientific certification.",
+            "Different producer/dataset/agent/native-config/evidence scopes are not pooled; absent scope is record-local.",
         ],
-        "per_metric": {name: dict(count) for name, count in metrics.items()},
+        "per_metric": per_metric,
         "records": lineage,
     }
