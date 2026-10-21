@@ -83,7 +83,14 @@ def publish(directory: Path, messages: list, context):
         "notes": "One agent step per saved provider response; unresolved intents are retained separately.",
     }
     usages = [r.get("usage") or {} for r in responses.values()]
-    if usages and all(all(u.get(k) is not None for k in ("prompt_tokens", "completion_tokens")) for u in usages):
+    intents = {int(p.name.split("-")[1].split(".")[0]) for p in directory.glob("call-*.intent.json")}
+    unresolved = sorted(intents - set(responses))
+    context.n_input_tokens = context.n_output_tokens = context.n_cache_tokens = None
+    if (
+        usages
+        and not unresolved
+        and all(all(u.get(k) is not None for k in ("prompt_tokens", "completion_tokens")) for u in usages)
+    ):
         context.n_input_tokens = sum(u["prompt_tokens"] for u in usages)
         context.n_output_tokens = sum(u["completion_tokens"] for u in usages)
         cached = [(u.get("prompt_tokens_details") or {}).get("cached_tokens") for u in usages]
@@ -97,8 +104,13 @@ def publish(directory: Path, messages: list, context):
     context.metadata = {
         "native_model_calls": ordinal,
         "provider_usage_complete": bool(usages)
+        and not unresolved
         and all(u.get("prompt_tokens") is not None and u.get("completion_tokens") is not None for u in usages),
     }
+    context.metadata["unresolved_call_ordinals"] = unresolved
+    trajectory.setdefault("final_metrics", {}).setdefault("extra", {})["provider_usage_complete"] = context.metadata[
+        "provider_usage_complete"
+    ]
     validated = Trajectory.model_validate(trajectory).model_dump(mode="json", exclude_none=True)
     _publish(directory.parent / "trajectory.json", validated)
     return validated

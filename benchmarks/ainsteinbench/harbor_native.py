@@ -192,6 +192,7 @@ class AInsteinAgent(BaseAgent):
                 "x-nemo-gym-call-config-sha256": digest,
             }
             _publish(output / f"call-{ordinal}.intent.json", {"headers": headers, "payload": payload})
+            publish_trajectory(output, messages, context)
             async with asyncio.timeout(600):
                 response = await request(
                     "POST",

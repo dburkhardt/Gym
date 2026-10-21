@@ -3,6 +3,7 @@
 import ast
 import copy
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +14,8 @@ from benchmarks.ainsteinbench.prepare import stage
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log
 
 
-SOURCE = Path(__file__).resolve().parents[4] / "ainsteinbench-pinned-source"
+SOURCE = Path(os.environ.get("AINSTEIN_SOURCE", Path(__file__).resolve().parents[4] / "ainsteinbench-pinned-source"))
+pytestmark = pytest.mark.skipif(not SOURCE.is_dir(), reason="Pinned public creator source required")
 
 
 def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
@@ -285,10 +287,17 @@ def test_native_trajectory_all_calls_and_usage(tmp_path):
     assert sum(o["type"] == "message" for o in outputs) == 2
     assert any(o["type"] == "function_call_output" and o["output"] == "result" for o in outputs)
     assert HarborAgentUtils.extract_usage({}, trajectory)["total_tokens"] == 27
+    (directory / "call-2.intent.json").write_text("{}")
+    pending = publish(directory, messages, context)
+    assert not context.metadata["provider_usage_complete"]
+    assert context.metadata["unresolved_call_ordinals"] == [2]
+    assert context.n_input_tokens is None
+    assert pending["final_metrics"]["extra"]["provider_usage_complete"] is False
+    (directory / "call-2.intent.json").unlink()
     (directory / "call-1.response.json").write_text("{}")
     unknown = AgentContext()
     new = publish(directory, messages, unknown)
-    assert unknown.n_input_tokens is None and "final_metrics" not in new
+    assert unknown.n_input_tokens is None and "total_prompt_tokens" not in new["final_metrics"]
     assert not unknown.metadata["provider_usage_complete"]
 
 
