@@ -731,9 +731,13 @@ def e2e_rollout_collection():  # pragma: no cover
             "input_sha256": hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest(),
         }
 
+    from nemo_gym.cli.admission_evidence import resolved_admission_evidence
+
+    admission_evidence = resolved_admission_evidence(global_config_dict)
     manifest_path = output_fpath.with_stem(output_fpath.stem + "_dispatch_plan").with_suffix(".json")
     manifest = {
         "version": 1,
+        "model_admission_policy": admission_evidence,
         "source_tasks": len(prepared_rows),
         "selected_tasks": len(distribution),
         "rollouts": len(planned_rows),
