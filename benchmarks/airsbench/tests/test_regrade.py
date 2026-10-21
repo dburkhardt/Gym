@@ -39,6 +39,7 @@ def test_missing_reference_cache_is_not_model_failure(tmp_path):
 
 def test_native_overlay_preserves_budgets_and_declares_separate_scoring():
     import tomllib
+
     from benchmarks.airsbench.native_prepare import runtime_config
 
     original = """version = "1.0"
@@ -68,6 +69,7 @@ def test_regrade_identity_records_scientific_and_controller_versions():
     import hashlib
     import json
     from pathlib import Path
+
     from benchmarks.airsbench import regrade
 
     manifest_path = Path(regrade.__file__).with_name("frozen_sources.json")
@@ -86,13 +88,20 @@ def test_regrade_identity_records_scientific_and_controller_versions():
 
 def test_interrupted_overlay_accepts_known_files_but_rejects_stale_inputs(tmp_path):
     from pathlib import Path
+
     from benchmarks.airsbench.native_prepare import validate_existing_overlay
 
     target = tmp_path / "task"
     (target / "tests").mkdir(parents=True)
-    (target / "tests/check.py").write_text("partial")
-    (target / "tests/check.py.stage.lock").touch()
+    from nemo_gym.dataset_staging import stage_file
+
+    source = tmp_path / "original.py"
+    source.write_text("partial")
+    stage_file(source, target / "tests/check.py")
+    assert (target / "tests/.check.py.stage.lock").exists()
     expected = {Path("tests/check.py"), Path("task.toml")}
+    validate_existing_overlay(target, expected)
+    stage_file(source, target / "tests/check.py")
     validate_existing_overlay(target, expected)
     (target / "old_answer.txt").write_text("stale")
     with pytest.raises(ValueError, match="Unexpected prepared task file"):
@@ -102,3 +111,17 @@ def test_interrupted_overlay_accepts_known_files_but_rejects_stale_inputs(tmp_pa
     (target / "tests/check.py").symlink_to(tmp_path / "external")
     with pytest.raises(ValueError, match="symlink"):
         validate_existing_overlay(target, expected)
+
+
+def test_overlay_rejects_symlinked_ancestor_before_publication(tmp_path):
+    from pathlib import Path
+
+    from benchmarks.airsbench.native_prepare import validate_existing_overlay
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink"):
+        validate_existing_overlay(alias / "not-created", {Path("task.toml")})
+    assert not (outside / "not-created").exists()
