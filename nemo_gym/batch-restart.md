@@ -73,3 +73,13 @@ Invalid receipt or binding fails before status publication and dispatch. Explici
 restart does not repair/truncate old JSONL tails. Fresh invocation against an
 existing bound batch is rejected before rewriting materialized inputs or clearing
 results. Existing outputs/captures are never deleted by this admission path.
+
+### Stateless creator-scoring closure
+
+The maintained `campaign_creator_scoring` resource can qualify explicit failed-attempt restart for its **GenomeQA and MolJSON** branches. These branches extract functions from pinned creator source and score materialized references using the standard library. This is an inspected execution closure, not blanket permission for every creator scorer.
+
+Qualification requires exactly the native OpenAI model → one-step, tool-free simple agent → creator resource graph and its legacy environment relay. It binds the creator Git revision and exact scorer bytes, the maintained adapter package, actual component imports and interpreter/package identities, resolved configuration, immutable materialized inputs, and original capture stores. Missing references, unknown settings, additional execution components, editable external dependencies, and source changes refuse restart. The scorer subprocess uses its resource service's `sys.executable`; it already verifies the imported maintained scoring module before returning a score.
+
+All existing failed-attempt rules still apply: an explicit scoped receipt, reconciled definitive provider rejection, a higher attempt identity, and preserved completed results are required. Ambiguous 503/timeout outcomes remain blocked. This does not restore a partially executed scorer, tools, an arbitrary shell, or an old unbound campaign run. Other creator branches remain unqualified until their scientific imports and assets have an equally explicit closure. Package versions and actual loaded maintained modules are attested; this is not a hermetic OS or transitive wheel-content reproducibility claim.
+
+The local control is `tests/e2e/coordinator/test_cli_crash.py::test_creator_resource_restart`, enabled by `NEMO_GYM_COORDINATOR_E2E=1` and `NEMO_GYM_CREATOR_RESTART_SOURCE=/absolute/path/to/pinned/genomeqa`. It uses benign fixture prompts, the actual creator resource/scorer and native CLI, and a deterministic loopback provider. It tests 200/429/200 followed by only the rejected task's new attempt, completed resume with no new calls, and ambiguous-503 refusal. It is transport/lifecycle acceptance, not a new scientific benchmark result.

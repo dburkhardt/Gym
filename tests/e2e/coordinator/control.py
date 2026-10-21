@@ -14,7 +14,19 @@ import yaml
 from aiohttp import web
 
 
-async def main(out, *, logged=False, completed=False, distribution_control=False, restart_control=False):
+async def main(
+    out,
+    *,
+    logged=False,
+    completed=False,
+    distribution_control=False,
+    restart_control=False,
+    creator_repo=None,
+    rejection_status=429,
+):
+    blocked_restart = restart_control and rejection_status != 429
+    if creator_repo is not None and not restart_control:
+        raise ValueError("Creator fixture requires restart control")
     if distribution_control and not completed:
         raise ValueError("Distribution control requires completed-run mode")
     if restart_control:
@@ -22,7 +34,7 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
     task_count = 4 if distribution_control else 3
     repeat_count = 2 if distribution_control else 1
     expected_calls = task_count * repeat_count if completed else 2
-    if restart_control:
+    if restart_control and not blocked_restart:
         expected_calls += 1
     out = out.absolute()
     out.mkdir(exist_ok=False)
@@ -38,7 +50,7 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         calls.append(body)
         (out / "provider-calls.json").write_text(json.dumps(calls))
         if restart_control and len(calls) == 2:
-            return web.json_response({"error": {"message": "controlled quota rejection"}}, status=429)
+            return web.json_response({"error": {"message": "controlled quota rejection"}}, status=rejection_status)
         if len(calls) > 1 and not completed:
             await asyncio.sleep(180)
         return web.json_response(
@@ -103,7 +115,9 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         for c in [
             "responses_api_models/openai_model",
             "responses_api_agents/simple_agent",
-            "resources_servers/mcqa" if restart_control else "resources_servers/proteinlmbench",
+            "resources_servers/campaign_creator_scoring"
+            if creator_repo
+            else ("resources_servers/mcqa" if restart_control else "resources_servers/proteinlmbench"),
             "environment_servers/legacy_agent",
         ]:
             p = out / "venvs" / c / ".venv"
@@ -166,6 +180,26 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
             config["mcqa_simple_agent"] = {"responses_api_agents": {"simple_agent": {"datasets": dataset}}}
             config["route_failures_to_sidecar"] = True
             config["require_complete"] = False
+        if creator_repo is not None:
+            config.pop("mcqa_simple_agent")
+            config["config_paths"] = ["benchmarks/genomeqa/config.yaml"]
+            for row in rows:
+                row.pop("expected_answer", None)
+                row.pop("grading_mode", None)
+                row["uuid"] = row["task_id"]
+                row["verifier_metadata"] = {"answer": "A", "options_keys": ["A", "B"]}
+            (out / "sample.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            config["genomeqa_resources"] = {
+                "resources_servers": {
+                    "campaign_creator_scoring": {
+                        "upstream_repo": str(creator_repo),
+                        "datasets": dataset,
+                    }
+                }
+            }
+            config["head_server"]["port"] = 30800
+            config["port_range_low"] = 30801
+            config["port_range_high"] = 30820
         if logged:
             config["nemo_gym_log_dir"] = str(out / "server-logs")
         (out / "runtime.yaml").write_text(yaml.safe_dump(config))
@@ -201,7 +235,7 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
         child = await asyncio.create_subprocess_exec(*command, env=env, stdout=log, stderr=asyncio.subprocess.STDOUT)
         children.append(child)
         for _ in range(1800):
-            if completed and child.returncode == 0:
+            if completed and (child.returncode == 0 or (blocked_restart and child.returncode is not None)):
                 break
             if (
                 not completed
@@ -263,7 +297,7 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
             if resume.returncode is not None or len(calls) > expected_calls:
                 break
             await asyncio.sleep(0.1)
-        if restart_control:
+        if restart_control and not blocked_restart:
             assert resume.returncode == 0
             completed_bytes = (out / "results.jsonl").read_bytes()
             calls_before_completed_resume = len(calls)
@@ -333,9 +367,14 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
             if restart_control
             else (out / "results.jsonl").read_bytes() == prior
         )
-        if restart_control:
+        if restart_control and not blocked_restart:
             final_rows = [json.loads(line) for line in (out / "results.jsonl").read_text().splitlines()]
             assert len(final_rows) == task_count
+            if creator_repo is not None:
+                assert all(
+                    row["reward"] == 1 and row["scoring_details"]["metric"] == "creator_option_accuracy"
+                    for row in final_rows
+                )
             assert sum(row.get("_ng_attempt_index", 0) == 1 for row in final_rows) == 1
             assert hashlib.sha256(failures_path.read_bytes()).hexdigest() == report["original_failure_sha256"]
             report["explicit_new_attempt"] = True
@@ -355,10 +394,18 @@ async def main(out, *, logged=False, completed=False, distribution_control=False
             report["distribution"] = observed
             report["plan_execution_equal"] = True
 
+        report["creator_resource"] = creator_repo is not None
+        report["rejection_status"] = rejection_status if restart_control else None
+        if blocked_restart:
+            assert resume.returncode not in (None, 0)
+            assert len(calls) == task_count
+            assert (out / "results.jsonl").read_bytes() == prior
+            assert "rejected" in (out / "resume.log").read_text() or "unresolved" in (out / "resume.log").read_text()
+            report["unknown_response_not_resent"] = True
         report["status"] = (
             "passed"
             if len(calls) == expected_calls
-            and (resume.returncode == 0 if completed else resume.returncode not in (None, 0))
+            and (resume.returncode == 0 if completed and not blocked_restart else resume.returncode not in (None, 0))
             and report["completed_result_preserved"]
             and report["capture_evidence_preserved"]
             and not report["initial_owned_children_alive"]

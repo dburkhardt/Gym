@@ -93,7 +93,18 @@ def scicode_dependency_binding(root: Path, agent: dict, resource: dict, *, image
     }
 
 
-def inspect_component_runtime(root: Path, component: Path, python: Path) -> dict:
+def inspect_component_runtime(
+    root: Path,
+    component: Path,
+    python: Path,
+    *,
+    config_class_names: tuple[str, ...] = (
+        "ScicodeAgentConfig",
+        "ScicodeResourcesServerConfig",
+        "LegacyAgentEnvironmentServerConfig",
+        "SimpleModelServerConfig",
+    ),
+) -> dict:
     """Import actual maintained component in its native interpreter; no server construction."""
     import os
 
@@ -118,7 +129,7 @@ for name, module in tuple(sys.modules.items()):
         path = pathlib.Path(filename).resolve()
         if path.is_file():
             modules[name] = {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
-print(json.dumps({'python': sys.version, 'packages': sorted((d.metadata['Name'], d.version) for d in importlib.metadata.distributions() if d.metadata['Name']), 'modules': modules, 'editable': editable, 'config_fields': sorted({field for name, value in vars(app).items() if name in {'ScicodeAgentConfig', 'ScicodeResourcesServerConfig', 'LegacyAgentEnvironmentServerConfig', 'SimpleModelServerConfig'} for field in value.model_fields}), 'h5_default': getattr(app, 'ScicodeResourcesServerConfig', None).model_fields['test_data_sha256'].default if hasattr(app, 'ScicodeResourcesServerConfig') else None}))
+print(json.dumps({'python': sys.version, 'packages': sorted((d.metadata['Name'], d.version) for d in importlib.metadata.distributions() if d.metadata['Name']), 'modules': modules, 'editable': editable, 'config_fields': sorted({field for name, value in vars(app).items() if name in json.loads(sys.argv[1]) for field in value.model_fields}), 'h5_default': getattr(app, 'ScicodeResourcesServerConfig', None).model_fields['test_data_sha256'].default if hasattr(app, 'ScicodeResourcesServerConfig') else None}))
 """
     env = dict(os.environ)
     # Match run_command: retain preexisting precedence instead of hiding shadows.
@@ -132,7 +143,13 @@ print(json.dumps({'python': sys.version, 'packages': sorted((d.metadata['Name'],
     env["NEMO_GYM_EXTRA_ROOTS"] = os.pathsep.join(roots)
     try:
         result = subprocess.run(
-            [str(python), "-c", script], cwd=component, env=env, capture_output=True, text=True, timeout=30, check=True
+            [str(python), "-c", script, json.dumps(config_class_names)],
+            cwd=component,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
         )
         receipt = json.loads(result.stdout)
         for editable in receipt["editable"]:
