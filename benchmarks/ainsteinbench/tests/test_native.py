@@ -385,7 +385,13 @@ async def test_tool_error_observation_preserved_but_cancellation_propagates():
             False,
             "unclassified_no_tests",
         ),
-        ({"passed_count": 0, "failed_count": 0}, "ERROR collecting tests\n", 2, False, "unclassified_no_tests"),
+        (
+            {"passed_count": 0, "failed_count": 0},
+            "ERROR collecting tests\n",
+            2,
+            False,
+            "unrecognized_test_execution_status",
+        ),
         ({"passed_count": 1, "failed_count": 0}, "PASSED a\n", 0, False, "incomplete_or_failed_test_collection"),
         ({"passed_count": 2, "failed_count": 2}, "PASSED a\nFAILED b\n", 1, True, "creator_tests_scored"),
     ],
@@ -397,3 +403,13 @@ def test_zero_and_partial_test_qualification(parsed, text, code, valid, kind):
     assert result["valid"] is valid and result["kind"] == kind
     assert result["expected_control_test_count"] == 4
     assert result["observed_test_count"] == parsed["passed_count"] + parsed["failed_count"]
+
+
+@pytest.mark.parametrize("code", [2, 3, 4, 5, 125])
+def test_complete_looking_counts_do_not_hide_invalid_exit(code):
+    from benchmarks.ainsteinbench.scoring import qualification
+
+    result = qualification("MSB_pyscf_pyscf_pr2373", {"passed_count": 4, "failed_count": 0}, "PASSED a\n", code)
+    assert result["valid"] is False
+    assert result["kind"] == "unrecognized_test_execution_status"
+    assert result["observed_test_count"] == 4

@@ -8,7 +8,7 @@ The two campaign pilots exhausted the creator's30-iteration limit without a subm
 
 Request and response receipts are retained in `model-traces.jsonl`; do not re-run an existing output directory or silently retry uncertain dispatches. Before another run, inspect the creator loop's transport-error handling as well as SDK retry configuration. The SDK uses zero retries, which alone does not prove absence of retries inside the creator loop.
 
-## Maintained native migration (runtime qualification pending)
+## Maintained native migration
 
 `config.yaml` and `prepare.py` register all four released IDs. Two PySCF tasks use the immutable creator images; both Einstein Toolkit IDs remain visible with explicit source/runtime blockers and fail before model dispatch. Their latest preserved correct-control build timed out, and the earlier cached-test perturbation blindspot remains unresolved.
 
@@ -16,7 +16,7 @@ Request and response receipts are retained in `model-traces.jsonl`; do not re-ru
 
 Before the first request, the adapter verifies the base checkout, removes evaluator patches/scripts and future Git history, then checks original tracked bytes and symlink targets are unchanged. The separate verifier restores only the submitted patch/status, runs the original immutable image's `fix-run.sh`, and retains creator test IDs, counts, raw percentage and success flag. A zero-test apply/setup outcome remains qualified; infrastructure exceptions and signal termination are not scientific zeroes. Genuine 30-iteration exhaustion, early empty output and infrastructure failure are distinct outcomes; attempted tasks remain visible even when no submitted patch can be scored.
 
-The explicit safety caps are 600 seconds per model request, 18,600 seconds for the agent phase and 3,500 seconds for the scientific command within a 3,600-second verifier phase. The creator's constructor timeout was unused in its loop; these are bounded campaign variants, not paper settings. The prior 16,384-token limit, four tools and 10,000-character tool-output truncation remain. Native container controls and fresh solver acceptance have not yet passed for this migration; no new inference is authorized by registration or unit tests.
+The explicit safety caps are 600 seconds per model request, 18,600 seconds for the agent phase and 3,500 seconds for the scientific command within a 3,600-second verifier phase. The creator's constructor timeout was unused in its loop; these are bounded campaign variants, not paper settings. The prior 16,384-token limit, four tools and 10,000-character tool-output truncation remain. Native container controls are documented below; fresh solver acceptance remains pending. No new inference is authorized by registration or unit tests.
 
 Native model-free controls now pass on both pinned PySCF images through Harbor-owned solver isolation, separate verification and source-job replay. Gold passes4/4 and9/9; a behavior-preserving no-fix patch passes2/4 and8/9. **The raw percentage is not a solved-task rate**: most tests can pass before the requested repair. Empty patches produce the creator's explicit `git apply` rejection, zero tests and raw0. All eight native scores and individual test IDs match preserved creator controls; originals remain unchanged and owned containers were removed. These used2GiB control containers and saved patches, not live model execution.
 

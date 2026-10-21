@@ -22,6 +22,14 @@ def qualification(task_id, parsed, text, return_code):
             "kind": "infrastructure_execution_failure",
             "reason": "signal termination or unavailable executable",
         }
+    # The pinned fix-run.sh ends with pytest and propagates its status.
+    if return_code not in (0, 1):
+        return {
+            **result,
+            "valid": False,
+            "kind": "unrecognized_test_execution_status",
+            "reason": "creator pytest wrapper did not finish with success or ordinary test failures",
+        }
     patch_rejection = (
         return_code == 1
         and "Error: git apply failed" in text
