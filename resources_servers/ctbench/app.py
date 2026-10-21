@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
+from hashlib import sha256
+from pathlib import Path
 from typing import ClassVar
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
@@ -16,7 +18,7 @@ from nemo_gym.base_resources_server import (
 from nemo_gym.config_types import ModelServerRef
 from nemo_gym.judge import call_judge
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
-from resources_servers.ctbench.grading import creator, parse_and_score
+from resources_servers.ctbench.grading import PIN, creator, parse_and_score
 
 
 class Config(BaseResourcesServerConfig):
@@ -27,6 +29,7 @@ class Config(BaseResourcesServerConfig):
 
 
 class Request(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
     verifier_metadata: dict
 
 
@@ -73,6 +76,18 @@ class Verifier:
             url_path="/v1/responses",
             json=params,
             response_model=NeMoGymResponse,
+            verification_id=body.verification_id,
+            call_id="feature-matching",
+            scorer_identity={
+                "protocol": "ctbench-zero-shot-nemotron-judge-v1",
+                "creator_revision": PIN,
+                "creator_source_sha256": functions["__creator_source_sha256"],
+                "scorer_sha256": sha256(Path(__file__).with_name("grading.py").read_bytes()).hexdigest(),
+                "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                "judge_model": params.model,
+                "temperature": params.temperature,
+                "max_output_tokens": params.max_output_tokens,
+            },
         )
         if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
             raise RuntimeError("Judge model is outside benchmark allowlist")

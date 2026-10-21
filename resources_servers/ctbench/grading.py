@@ -3,6 +3,7 @@
 """Execute exact pinned creator prompt/parser/scorer without importing its API client."""
 
 import ast
+import hashlib
 import json
 import re
 import subprocess
@@ -17,7 +18,8 @@ def creator(root):
     root = Path(root)
     if subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip() != PIN:
         raise ValueError("CTBench source pin mismatch")
-    tree = ast.parse((root / "module.py").read_text())
+    source = (root / "module.py").read_bytes()
+    tree = ast.parse(source)
     names = {
         "build_zeroshot_prompt",
         "get_question_from_row",
@@ -30,6 +32,7 @@ def creator(root):
     )
     namespace = {"re": re}
     exec(compile(module, str(root / "module.py"), "exec"), namespace)
+    namespace["__creator_source_sha256"] = hashlib.sha256(source).hexdigest()
     return namespace
 
 
