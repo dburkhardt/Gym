@@ -27,7 +27,7 @@ from importlib.metadata import version as distribution_version
 from os import environ, getenv
 from pathlib import Path
 from platform import python_version
-from random import randint
+from random import sample
 from socket import gethostbyname, gethostname, socket
 from typing import Any, ClassVar, Dict, Iterable, List, Mapping, Optional, Set, Tuple, Type
 
@@ -2171,25 +2171,22 @@ def _find_open_port_using_range(
     port_range_high: int,
     max_retries: int = 50,
 ) -> int:  # pragma: no cover
-    # Find an open port that doesn't conflict with disallowed ports.
-
-    with socket() as s:
-        for _ in range(max_retries):
-            # Pick a random port in our range that is not disallowed
-            port = None
-            while port is None or port in disallowed_ports:
-                port = randint(port_range_low, port_range_high)
-
+    # This is an availability probe, not a reservation through service startup.
+    if not 1 <= port_range_low <= port_range_high <= 65535 or max_retries < 1:
+        raise ValueError("Port range must be within 1..65535 and max_retries must be positive")
+    excluded = set(disallowed_ports)
+    candidates = [port for port in range(port_range_low, port_range_high + 1) if port not in excluded]
+    if not candidates:
+        raise RuntimeError("No candidate ports remain in the configured range")
+    attempts = min(max_retries, len(candidates))
+    for port in sample(candidates, attempts):
+        with socket() as s:
             try:
                 s.bind(("", port))
                 return port
             except OSError:
                 pass
-
-    raise RuntimeError(
-        f"Unable to find an open port that doesn't conflict with disallowed ports "
-        f"{disallowed_ports} after {max_retries} attempts"
-    )
+    raise RuntimeError(f"Unable to find an open port after probing {attempts} distinct candidate ports")
 
 
 def format_almost_server_warning(server_name: str, error: ValidationError) -> str:

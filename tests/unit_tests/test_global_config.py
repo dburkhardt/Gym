@@ -1385,13 +1385,13 @@ contested: second_inner
         assert {"my_key": "my_value"} == get_first_server_config_dict(global_config_dict, "a")
 
     def test_find_open_port_avoids_disallowed_ports(self, monkeypatch: MonkeyPatch) -> None:
-        """Test that find_open_port retries when the head server port is returned."""
-        randint_mock = MagicMock()
-        randint_mock.side_effect = [
-            DEFAULT_HEAD_SERVER_PORT,  # first attempt: 11000 (conflict)
-            12345,  # second attempt (safe)
-        ]
-        monkeypatch.setattr(nemo_gym.global_config, "randint", randint_mock)
+        """The head-server port is excluded before sampling candidates."""
+        def choose(candidates, count):
+            assert DEFAULT_HEAD_SERVER_PORT not in candidates
+            assert count == 50
+            return [12345]
+
+        monkeypatch.setattr(nemo_gym.global_config, "sample", choose)
 
         socket_mock = MagicMock()
         socket_instance = MagicMock()
@@ -1406,7 +1406,7 @@ contested: second_inner
         port = find_open_port(disallowed_ports=[DEFAULT_HEAD_SERVER_PORT])
 
         assert port == 12345
-        assert randint_mock.call_count == 2  # first: conflict, second: success
+        socket_instance.bind.assert_called_once_with(("", 12345))
 
     def test_find_open_port_raises_after_max_retries(self, monkeypatch: MonkeyPatch) -> None:
         """Test that find_open_port raises RuntimeError after exhausting retries."""
@@ -1425,7 +1425,7 @@ contested: second_inner
             find_open_port(disallowed_ports=[], max_retries=5)
 
         assert "Unable to find an open port" in str(exc_info.value)
-        assert "after 5 attempts" in str(exc_info.value)
+        assert "5 distinct candidate ports" in str(exc_info.value)
         assert socket_instance.bind.call_count == 5
 
     def test_get_global_config_dict_prevents_port_conflict_with_head_server(self, monkeypatch: MonkeyPatch) -> None:
