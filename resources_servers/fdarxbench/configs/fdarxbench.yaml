@@ -6,6 +6,10 @@ fdarxbench:
       entrypoint: app.py
       domain: knowledge
       verified: false
+      judge_model_server:
+        type: responses_api_models
+        name: judge_model
+      judge_prompt_file: ${oc.env:FDARX_JUDGE_PROMPT}
 fdarxbench_simple_agent:
   responses_api_agents:
     simple_agent:

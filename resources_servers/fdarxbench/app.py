@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
+from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar
+
+from pydantic import ConfigDict
 
 from nemo_gym.base_resources_server import (
     BaseResourcesServerConfig,
@@ -25,6 +28,8 @@ class Config(BaseResourcesServerConfig):
 
 
 class Request(BaseVerifyRequest):
+    model_config = ConfigDict(extra="allow")
+
     verifier_metadata: dict
 
 
@@ -52,8 +57,9 @@ class Verifier:
         if not self.config.judge_model_server or not self.config.judge_prompt_file:
             raise RuntimeError("FDARx requires Nemotron judge and pinned creator judge prompt")
         meta = body.verifier_metadata
+        prompt_bytes = Path(self.config.judge_prompt_file).read_bytes()
         query = judge_query(
-            Path(self.config.judge_prompt_file).read_text(),
+            prompt_bytes.decode("utf-8"),
             meta["question"],
             meta["answer"],
             body.response.output_text or "",
@@ -73,6 +79,17 @@ class Verifier:
             url_path="/v1/responses",
             json=params,
             response_model=NeMoGymResponse,
+            verification_id=body.verification_id,
+            call_id="fda-rubric",
+            scorer_identity={
+                "protocol": "fdarx-nemotron-judge-v1",
+                "prompt_sha256": sha256(prompt_bytes).hexdigest(),
+                "scorer_sha256": sha256(Path(__file__).with_name("grading.py").read_bytes()).hexdigest(),
+                "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                "model": params.model,
+                "temperature": params.temperature,
+                "max_output_tokens": params.max_output_tokens,
+            },
         )
         if judged.model != "nvidia/nvidia/nemotron-3.5-super-vl":
             raise RuntimeError("Judge model is outside benchmark allowlist")
