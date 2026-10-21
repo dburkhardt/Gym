@@ -40,11 +40,24 @@ def dockerfile(row):
     The provided python directory is the separately hash-verified recovered
     runtime. No scientific Python executable or global PATH is replaced.
     """
+    installer = "RUN command -v tmux >/dev/null 2>&1 || (apt-get update && apt-get install -y --no-upgrade --no-install-recommends tmux && rm -rf /var/lib/apt/lists/*)"
+    variant = row.get("harness_install_variant")
+    if variant is not None:
+        if variant != "ubuntu-bionic-isolated-v1" or row["id"] != "capsule-6133093":
+            raise ValueError("Unsupported capsule-specific harness variant")
+        from pathlib import Path
+
+        helper_sha = hashlib.sha256(Path(__file__).with_name("harness_install.py").read_bytes()).hexdigest()
+        installer = (
+            "# harness_install_sha256=" + helper_sha + "\n"
+            "COPY harness_install.py /opt/corebench-harness-install.py\n"
+            "RUN /opt/corebench-harness/bin/python3 /opt/corebench-harness-install.py"
+        )
     env = "\n".join("ENV " + k + "=" + json.dumps(v) for k, v in row["runtime_environment_variant"].items())
     return f"""FROM {row["published_image"]}
 COPY python /opt/corebench-harness
 RUN /opt/corebench-harness/bin/python3 -m pip install numpy==1.26.4 scipy==1.14.1 openai==1.109.1 backoff==2.2.1 tqdm==4.67.1 asciinema==2.4.0
-RUN command -v tmux >/dev/null 2>&1 || (apt-get update && apt-get install -y --no-upgrade --no-install-recommends tmux && rm -rf /var/lib/apt/lists/*)
+{installer}
 RUN if ! command -v asciinema >/dev/null 2>&1; then printf '#!/bin/sh\\nexec /opt/corebench-harness/bin/python3 -m asciinema "$@"\\n' > /usr/local/bin/asciinema && chmod 755 /usr/local/bin/asciinema; fi
 COPY capsule /workspace/{row["id"]}
 RUN mkdir -p /workspace/{row["id"]}/results
@@ -128,6 +141,9 @@ def stage_context(row, medium_root, reference_root, runtime_archive, destination
             elif src.is_file():
                 stage_file(src, dst, expected_sha256=digest(src))
                 dst.chmod(src.stat().st_mode & 0o777)
+        if row.get("harness_install_variant"):
+            helper = Path(__file__).with_name("harness_install.py")
+            stage_file(helper, destination / "harness_install.py", expected_sha256=digest(helper))
         recipe = temporary / "Dockerfile"
         recipe.write_text(dockerfile(row))
         stage_file(recipe, destination / "Dockerfile")

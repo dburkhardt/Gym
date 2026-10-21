@@ -2670,7 +2670,8 @@
         }
       ],
       "published_image": "registry.codeocean.com/published/e77d2e70-c9ca-4b18-947e-35c3d1cfee56@sha256:9f5e5decc5bb82aaf750e8006d16141728e899cc700d521bd405967b4e6095ad",
-      "runtime_environment_variant": {}
+      "runtime_environment_variant": {},
+      "harness_install_variant": "ubuntu-bionic-isolated-v1"
     },
     {
       "id": "capsule-5286757",
