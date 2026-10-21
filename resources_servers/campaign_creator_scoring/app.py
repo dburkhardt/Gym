@@ -83,10 +83,13 @@ class CreatorResourcesServer(SimpleResourcesServer):
     ray_enabled = False
 
     async def verify(self, body: VerifyRequest) -> VerifyResponse:
+        task = {"uuid": body.uuid, "verifier_metadata": body.verifier_metadata}
+        if self.config.benchmark == "scienceqa":
+            task["responses_create_params"] = body.responses_create_params.model_dump(mode="json")
         details = await run_score(
             benchmark=self.config.benchmark,
             upstream_repo=Path(self.config.upstream_repo),
-            task={"uuid": body.uuid, "verifier_metadata": body.verifier_metadata},
+            task=task,
             answer=body.response.output_text or "",
             timeout_s=self.config.scoring_timeout_s,
         )
@@ -134,6 +137,27 @@ class CreatorResourcesServer(SimpleResourcesServer):
                     },
                 },
             }
+        if self.config.benchmark == "scienceqa":
+            review = details["measurement_review"]
+            expected = hashlib.sha256(json.dumps(task, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if review["evidence"]["task_sha256"] != expected:
+                raise ValueError("ScienceQA review does not match scored input")
+            metadata = {
+                "source": "scienceqa",
+                "verifier_result": {
+                    "rewards": {
+                        "creator_seeded_fallback_accuracy": details["reward"],
+                        "strict_accuracy": details["strict_score"],
+                    }
+                },
+                "measurement_review": review,
+            }
+            if any(metric["status"] == "invalid" for metric in review["metrics"].values()):
+                accounting.update(
+                    mask_sample=True,
+                    failure_kind="scienceqa:invalid_measurement",
+                    failure_reason="See separate strict and seeded-fallback metric qualifications",
+                )
         payload = body.model_dump(by_alias=True)
         # Preserve native task/rollout lineage, but never retain a prior regrade's
         # reward, mask or measurement review as if it were this verification.

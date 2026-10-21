@@ -27,6 +27,10 @@ def main() -> None:
         if hashlib.sha256(scorer_path.read_bytes()).hexdigest() != evidence["creator_scorer_sha256"]:
             raise RuntimeError("QCBench creator scorer changed during scoring")
         result["measurement_evidence"] = evidence
+    if request["benchmark"] == "scienceqa":
+        from benchmarks.scienceqa.qualification import qualify
+
+        result["measurement_review"] = qualify(Path(request["repo"]), request["task"], result)
     source = Path(deterministic.__file__).resolve()
     Path(sys.argv[2]).write_text(
         json.dumps(
