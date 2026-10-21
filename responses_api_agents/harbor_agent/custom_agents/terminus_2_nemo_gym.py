@@ -97,6 +97,7 @@ class Terminus2NemoGym(Terminus2):
 
         # Current Harbor validates native options and no longer accepts an llm
         # kwarg. Inject through its supported backend-construction hook instead.
+        self._gym_provider_dispatch_guard = gym_provider_dispatch_guard is True
         self._nemo_gym_llm = llm
         super().__init__(
             logs_dir=logs_dir,
@@ -121,6 +122,15 @@ class Terminus2NemoGym(Terminus2):
             *args,
             **kwargs,
         )
+
+    async def _query_llm(self, *args: Any, **kwargs: Any):
+        # Harbor's outer decorator retries failed model submissions independently
+        # of the guarded model server's physical-attempt policy. Preserve its
+        # actual query body (including context/budget handling), but let only the
+        # model server decide whether a rejected provider attempt may repeat.
+        if self._gym_provider_dispatch_guard:
+            return await Terminus2._query_llm.__wrapped__(self, *args, **kwargs)
+        return await super()._query_llm(*args, **kwargs)
 
     def _init_llm(self, *args: Any, **kwargs: Any) -> BaseLLM:
         """Retain the configured Gym backend when Harbor initializes its agent."""

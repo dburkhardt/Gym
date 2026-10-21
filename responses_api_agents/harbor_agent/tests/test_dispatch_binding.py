@@ -297,3 +297,109 @@ async def test_guarded_outer_submission_preserves_configured_inner_policy(tmp_pa
         assert len(physical) == inner_attempts
     finally:
         await llm.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("image_variant", [False, True])
+@pytest.mark.parametrize("failure", ["quota", "disconnect"])
+async def test_guarded_terminus_query_does_not_repeat_model_submission(tmp_path, image_variant, failure):
+    from unittest.mock import MagicMock
+    from aiohttp import ClientResponseError
+    from harbor.llms.chat import Chat
+    from nemo_gym.server_utils import ServerClient
+    from responses_api_models.openai_model.app import SimpleModelServer, SimpleModelServerConfig
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym import Terminus2NemoGym
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_images_nemo_gym import Terminus2ImagesNemoGym
+
+    model = SimpleModelServer(
+        config=SimpleModelServerConfig(
+            host="127.0.0.1",
+            port=8081,
+            name="test",
+            entrypoint="",
+            openai_base_url="http://unused",
+            openai_api_key="unused",
+            openai_model="test",
+            max_concurrent_requests=1,
+            upstream_max_num_tries=1,
+            upstream_rate_limit_cooldown_seconds=0,
+            upstream_retry_policy={"max_attempts": 1, "backoff_initial_seconds": 0},
+        ),
+        server_client=MagicMock(spec=ServerClient, global_config_dict={}),
+    )
+    cls = Terminus2ImagesNemoGym if image_variant else Terminus2NemoGym
+    agent = cls(
+        logs_dir=tmp_path,
+        model_name="test",
+        api_base="http://localhost/ng-rollout/0-0/v1",
+        gym_provider_dispatch_guard=True,
+        enable_summarize=False,
+        model_info={
+            "max_input_tokens": 32000,
+            "max_output_tokens": 4000,
+            "input_cost_per_token": 0,
+            "output_cost_per_token": 0,
+        },
+        **({"image_root": "/workspace/capsule"} if image_variant else {}),
+    )
+    submissions, physical = [], []
+
+    async def operation():
+        physical.append("send")
+        if failure == "quota":
+            raise ClientResponseError(None, (), status=429, headers={"Retry-After": "0"})
+        raise TimeoutError("accepted request outcome unknown")
+
+    async def route(request):
+        submissions.append(request)
+        try:
+            await model._call_upstream(operation)
+        except ClientResponseError:
+            return httpx.Response(500, json={"error": "definitive provider rejection"})
+        except TimeoutError:
+            raise httpx.ReadTimeout("unknown", request=request)
+
+    llm = agent._nemo_gym_llm
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(route))
+    try:
+        with pytest.raises((httpx.HTTPStatusError, httpx.ReadTimeout)):
+            await agent._query_llm(Chat(llm), "original scientific instruction")
+        assert len(submissions) == len(physical) == 1
+        assert len(llm._dispatch_state["calls"]) == 1
+    finally:
+        await llm.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("guard, expected", [(True, 1), (False, 3)])
+async def test_terminus_guard_retains_legacy_outer_retry_only_when_disabled(tmp_path, guard, expected):
+    from harbor.llms.chat import Chat
+    from responses_api_agents.harbor_agent.custom_agents.terminus_2_nemo_gym import Terminus2NemoGym
+
+    agent = Terminus2NemoGym(
+        logs_dir=tmp_path,
+        model_name="test",
+        api_base="http://localhost/ng-rollout/0-0/v1",
+        gym_provider_dispatch_guard=guard,
+        enable_summarize=False,
+        model_info={
+            "max_input_tokens": 32000,
+            "max_output_tokens": 4000,
+            "input_cost_per_token": 0,
+            "output_cost_per_token": 0,
+        },
+    )
+    requests = []
+
+    def route(request):
+        requests.append(request)
+        return httpx.Response(500, json={"error": "failed"})
+
+    llm = agent._nemo_gym_llm
+    llm._http_client = httpx.AsyncClient(transport=httpx.MockTransport(route))
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            await agent._query_llm(Chat(llm), "original task")
+        assert len(requests) == expected
+    finally:
+        await llm.aclose()
