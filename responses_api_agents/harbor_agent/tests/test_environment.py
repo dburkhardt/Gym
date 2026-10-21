@@ -238,6 +238,29 @@ class TestStartStop:
 
 class TestExec:
     @pytest.mark.asyncio
+    async def test_actual_tmux_setup_checks_tools_as_root(self, tmp_path):
+        from harbor.agents.terminus_2.tmux_session import TmuxSession
+
+        environment = _make_environment(tmp_path)
+        await environment.start(force_build=False)
+        session = TmuxSession("control", environment, tmp_path, None, None)
+        await session._install_recording_tools()
+        assert _provider().exec_calls[-1]["command"] == "tmux -V"
+        assert _provider().exec_calls[-1]["user"] == "root"
+        await environment.stop(delete=True)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("user", [None, "root", 0, "1000:1000"])
+    async def test_exec_preserves_requested_user(self, tmp_path, user):
+        environment = _make_environment(tmp_path)
+        await environment.start(force_build=False)
+        result = await environment.exec("id -u", user=user, timeout_sec=9)
+        assert result.return_code == 0
+        assert _provider().exec_calls[-1]["user"] == user
+        assert _provider().exec_calls[-1]["timeout_s"] == 9
+        await environment.stop(delete=True)
+
+    @pytest.mark.asyncio
     async def test_exec_passthrough_and_result_mapping(self, tmp_path):
         env = _make_environment(tmp_path)
         await env.start(force_build=False)
