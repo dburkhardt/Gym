@@ -34,6 +34,10 @@ context = nullcontext()
 if os.environ.get("METASYN_BRIDGE_SOCKET"):
     import metasyn.rag as creator_rag
     import metasyn.llm_client as creator_llm_client
+    import metasyn.evaluator as creator_evaluator
+    import metasyn.judge as creator_judge
+    from responses_api_agents.metasyn_native.identity import verify_child
+    verify_child(args.output_root / str(args.review_id), [creator_rag, creator_llm_client, creator_evaluator, creator_judge])
     from responses_api_agents.metasyn_native.guarded_clients import guarded_clients
     context = guarded_clients(
         rag=creator_rag, llm_client=creator_llm_client,

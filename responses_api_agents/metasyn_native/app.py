@@ -5,6 +5,7 @@
 import asyncio
 import hashlib
 import secrets
+import shutil
 import json
 import math
 import time
@@ -28,6 +29,7 @@ from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNo
 
 
 from responses_api_agents.metasyn_native.execution import run_creator
+from responses_api_agents.metasyn_native.identity import creator_identity
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
@@ -51,6 +53,7 @@ class Config(BaseResponsesAPIAgentConfig):
     materialized_root: Path
     output_root: Path
     reference_file: Path
+    creator_source_root: Path = Path("/unqualified-metasyn-source")
     inference_enabled: bool = False
     model_server: ModelServerRef = Field(default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model"))
 
@@ -80,8 +83,12 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         out.mkdir(parents=True, exist_ok=False)
         source = Path(__file__).resolve().parents[2]
         files = [Path(__file__), self.config.runner_script,
-                 Path(__file__).with_name("execution.py"), Path(__file__).with_name("guarded_clients.py")]
-        identity = {"review_id": review_id, "model": MODEL, "lineage": lineage,
+                 Path(__file__).with_name("execution.py"), Path(__file__).with_name("guarded_clients.py"),
+                 Path(__file__).with_name("identity.py")]
+        interpreter = Path(shutil.which(self.config.native_python) or self.config.native_python).resolve()
+        identity = {"creator": creator_identity(self.config.creator_source_root),
+                    "interpreter": {"path": str(interpreter), "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest()},
+                    "review_id": review_id, "model": MODEL, "lineage": lineage,
                     "prompt_sha256": hashlib.sha256((self.config.materialized_root / "rag" / str(review_id) / "prompt.txt").read_bytes()).hexdigest(),
                     "reference_sha256": hashlib.sha256(self.config.reference_file.read_bytes()).hexdigest(),
                     "sources": {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
@@ -99,7 +106,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                     "--review-id", str(review_id), "--output-root", str(self.config.output_root),
                     "--reference-file", str(self.config.reference_file),
                 ], out, timeout_s=3600, env={
-                    "PYTHONPATH": str(source), "NEMO_GYM_EXTRA_ROOTS": str(source),
+                    "PYTHONPATH": str(source) + ":" + str(self.config.creator_source_root.parent), "NEMO_GYM_EXTRA_ROOTS": str(source),
                     "METASYN_DATA": str(self.config.materialized_root),
                     "METASYN_BRIDGE_SOCKET": str(socket), "METASYN_BRIDGE_TOKEN": token,
                     "METASYN_BRIDGE_LINEAGE": lineage, "METASYN_BRIDGE_DIGEST": digest,
