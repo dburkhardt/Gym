@@ -56,6 +56,16 @@ gym eval health-check /absolute/attempt --rollouts-file results.jsonl --json
 
 A dead coordinator or absent listener does not prove provider settlement or complete cleanup. Reconcile exact owned service identities; never kill processes by name or port. For quota handling, use the reviewed [shared overlays](../configs/eval/README.md): one-attempt peer settlement is distinct from explicitly versioned rejected-only retries. Cooldown does not extend scientific deadlines or establish provider capacity.
 
+## Harbor cancellation and retry ownership
+
+For guarded Harbor calls, the agent submits once; the model server owns the configured physical retry policy and shared cooldown. A one-attempt model policy must not be multiplied by an outer agent retry. Preserve rejected calls as unscored infrastructure outcomes and unknown calls as unresolved; neither becomes an automatic new attempt.
+
+Harbor defaults to a 60-second worker-finalizer settlement window and a 70-second service shutdown grace. The latter must exceed the former and also covers surviving descendants of a logging launcher. Other services keep their existing one-second default. These cleanup windows do not extend scientific solver or verifier timeouts. Keep them inside the overall execution budget.
+
+Inspect the job's `gym-cancellation-request.json` and `gym-cancellation-worker.json`, retained artifacts, and exact owned container/service state. A settled Ray result or worker receipt alone does not prove Docker cleanup. Missing receipts, artifact errors, or remaining containers require reconciliation before releasing resources. See the [Harbor integration guide](../responses_api_agents/harbor_agent/README.md) for the supported boundaries. Local regression tests cover this policy; each new execution environment still needs its native cleanup check.
+
+For visual tasks, verify the complete generated-file → image observation → model request path. A vision-capable model behind a text-only terminal harness does not establish visual-task support. Keep an image-capable harness variant explicit and preserve exact image bytes in model-call evidence.
+
 ## Resume or regrade deliberately
 
 For the same bound run, ordinary resume skips completed rows and admits only safe remaining work:
