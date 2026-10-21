@@ -47,6 +47,7 @@ from nemo_gym.openai_utils import (
     NeMoGymResponseCreateParamsNonStreaming,
 )
 from responses_api_agents.harbor_agent.failure_diagnostics import measurement_failure, required_artifact_failure
+from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
 
@@ -101,6 +102,7 @@ class HarborAgentConfig(BaseResponsesAPIAgentConfig):
     harbor_verifier_kwargs: Optional[dict[str, Any]] = None
     # Required single-step captures; optional diagnostic artifacts remain best-effort.
     harbor_required_artifact_sources: list[str] = Field(default_factory=list)
+    harbor_measurement_review_import_path: str | None = None
 
     # --- Timeouts ---
     # Override agent timeout (seconds). Replaces the task's own timeout entirely.
@@ -347,6 +349,14 @@ class HarborAgent(SimpleResponsesAPIAgent):
                         trial_result["artifact_capture_failure"] = capture_reason
                         if failure_reason is None:
                             failure_kind, failure_reason = capture_kind, capture_reason
+                trial_result, review_kind, review_reason = apply_measurement_review(
+                    trial_result,
+                    trial_dir=trial_dir,
+                    instance_id=instance_id,
+                    import_path=self.config.harbor_measurement_review_import_path,
+                )
+                if review_reason and failure_reason is None:
+                    failure_kind, failure_reason = review_kind, review_reason
                 # Keep native rewards in metadata even when the Gym numeric field
                 # needs a finite placeholder for an invalid measurement.
                 try:

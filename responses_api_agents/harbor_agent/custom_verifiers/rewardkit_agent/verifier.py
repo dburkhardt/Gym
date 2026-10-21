@@ -65,6 +65,11 @@ class RewardKitAgentVerifier(BaseVerifier):
             {
                 "lineage": lineage,
                 "configuration_sha256": digest,
+                "test_sources_sha256": {
+                    str(p.relative_to(tests)): hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in sorted(tests.rglob("*"))
+                    if p.is_file()
+                },
                 "recovery": "fail_closed_existing_verifier_directory",
                 "trusted_controller_exposure": ["host_network", "docker_socket"],
                 "tool_sandbox": "network_none_read_only_unprivileged",

@@ -31,6 +31,7 @@ harbor_agent:
           output_cost_per_token: 0.0
       harbor_environment_type: docker
       harbor_no_delete: false
+      harbor_measurement_review_import_path: benchmarks.mdarena.measurement_review:review
       harbor_verifier_import_path: responses_api_agents.harbor_agent.custom_verifiers.rewardkit_agent.verifier:RewardKitAgentVerifier
       harbor_verifier_kwargs:
         image_id: ${oc.env:MDARENA_IMAGE_ID}
