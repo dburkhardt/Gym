@@ -257,3 +257,27 @@ async def test_infrastructure_failure_settles_sibling_cleanup():
         with pytest.raises(RuntimeError, match="original infrastructure failure"):
             await _server(h5.name).verify(_request(solutions={"1.1": "a", "1.2": "b"}))
     assert cleaned.is_set()
+
+
+async def test_known_shape_conflict_is_masked_without_execution(tmp_path):
+    import json
+    from pathlib import Path
+
+    step = json.loads((Path(__file__).parent / "fixtures/step79_4.json").read_text())
+    body = _request({"79.1": "pass", "79.4": "pass"})
+    body.problem_id = "79"
+    body.sub_steps = [{"step_number": f"79.{i}", "test_cases": ["assert True"]} for i in range(1, 4)] + [step]
+    server = _server()
+    server.config.test_data_sha256 = "48b0272a88b17dbd29777c217e1b4fb2b019b92e11cc2add847409db9541b890"
+    with (
+        patch.object(app.ScicodeResourcesServer, "_resolve_test_data", return_value=str(tmp_path / "verified.h5")),
+        patch.object(app, "execute_substep", AsyncMock(return_value={"passed": True, "error": ""})) as execute,
+    ):
+        result = await server.verify(body)
+    assert execute.await_count == 1
+    assert result.step_results == [True, None]
+    assert result.mask_sample and result.failure_kind == "scicode:reference_shape_conflict"
+    assert result.problem_accuracy is None and result.subtask_accuracy is None
+    assert result.num_steps_total == 2 and result.num_steps_passed == 1
+    assert result.measurement_validity[0]["raw_score"] is None
+    assert not result.measurement_validity[0]["executed"]

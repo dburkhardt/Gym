@@ -1,0 +1,23 @@
+{
+  "version": "scicode-79.4-shape-review-v1",
+  "step_number": "79.4",
+  "step_sha256": "3cfe4c70479b43a52bcf65d44b2aadb8efa0e6ec6102fc86f45c614f639a0aac",
+  "h5_sha256": "48b0272a88b17dbd29777c217e1b4fb2b019b92e11cc2add847409db9541b890",
+  "declared_output_shape": "(nsteps, 1)",
+  "target_shapes": [
+    [
+      20000
+    ],
+    [
+      20000
+    ],
+    [
+      40000
+    ]
+  ],
+  "evidence": {
+    "outputs/broad-eval-campaign/foundation/scicode-managed/scicode-remaining15.jsonl": "ab6bb6e702c7018164abc8512fdaabe28d66e047e9f726a6eb1e7cd6ec89e7d4",
+    "outputs/broad-eval-campaign/foundation/scicode-managed/diagnostic79-d5330f7de5064f2191adb11bd18ddfde/receipt.json": "5db44ee8981e7035eb502d4b143dcb8478682a37c605e534e2bcae9d90488d93",
+    "outputs/broad-eval-campaign/foundation/scicode-managed/live-70a624c3c2084b0abcb4a11da4eb302a/execution/e8a8b7ab1c6e4e5d9a35b99b6d88b34d/program.py": "888ecab4ed9aa486f7bc58a33cb2031bdfa308d371c77ceba85a464e2017d39d"
+  }
+}

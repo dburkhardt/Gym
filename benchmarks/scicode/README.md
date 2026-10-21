@@ -122,3 +122,21 @@ AA-aligned problem set and prompt.
 
 Code: Apache 2.0
 Data (`SciCode1/SciCode`, `test_data.h5`): Apache 2.0
+
+### Known 79.4 measurement conflict
+
+The unchanged canonical 79.4 prompt requests `(nsteps, 1)` trajectories, while its
+HDF5 targets are flat. The creator comparator broadcasts these shapes into an
+NxN comparison. The maintained resource server now recognizes the exact reviewed
+step content and canonical HDF5 SHA256 before executing it. It returns an
+unresolved step (`null`), masks the full problem, and retains the other step
+results. Its required scalar reward is a masked placeholder, not a model zero;
+problem and subtask accuracy are null. Source/evidence hashes accompany the
+measurement metadata. Modified prompts or reference assets do not inherit this
+review automatically.
+
+No shape normalization is silently applied. Existing 125 captured calls and
+original signal/OOM evidence remain unchanged. A shape-only control shows the
+broadcast defect without allocating the large arrays; it does not establish
+that the saved model trajectories are numerically correct. A separately named
+normalization study requires the canonical HDF5 and unchanged saved programs.

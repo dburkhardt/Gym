@@ -40,6 +40,7 @@ from nemo_gym.base_resources_server import (
     SimpleResourcesServer,
 )
 from resources_servers.scicode.managed_execution import execute_substep
+from resources_servers.scicode.measurement_validity import review_substep
 
 
 # Agent sentinel for a sub-step it could not generate (ran out of context); always fails.
@@ -79,15 +80,16 @@ class ScicodeVerifyResponse(BaseVerifyResponse):
     # Declared so it survives into the rollout output (identifies the problem); the request's
     # sub_steps/solutions are intentionally not carried through to keep rollout rows small.
     problem_id: str = ""
-    step_results: List[bool] = []
+    step_results: List[Optional[bool]] = []
+    measurement_validity: List[dict] = []
     step_execution: List[dict] = []
     num_steps_passed: int = 0
     num_steps_total: int = 0
-    problem_accuracy: bool = False
+    problem_accuracy: Optional[bool] = False
     # Per-rollout sub-step pass fraction. As a numeric verify-response field it
     # gets the full generic statistics (mean/std/min/max/median) from the
     # RewardProfiler, which the aggregate-only pooled scalar cannot provide.
-    subtask_accuracy: float = 0.0
+    subtask_accuracy: Optional[float] = 0.0
 
 
 class ScicodeResourcesServer(SimpleResourcesServer):
@@ -147,8 +149,15 @@ class ScicodeResourcesServer(SimpleResourcesServer):
 
         execution_details = {}
 
-        async def _run_substep(i: int) -> bool:
+        validity = {}
+
+        async def _run_substep(i: int) -> Optional[bool]:
             sub_step = body.sub_steps[i]
+            review = review_substep(sub_step, data_sha256=self.config.test_data_sha256)
+            if review is not None:
+                validity[i] = {"step_number": sub_step["step_number"], **review}
+                execution_details[i] = validity[i]
+                return None
             code = solutions[f"{body.problem_id}.{i + 1}"]
             if not code or code == _OUT_OF_CONTEXT:
                 return False
@@ -181,18 +190,24 @@ class ScicodeResourcesServer(SimpleResourcesServer):
                 except asyncio.CancelledError:
                     continue
             raise
-        num_passed = sum(step_results)
+        num_passed = sum(value is True for value in step_results)
         all_passed = num_passed == len(scored)
 
         return ScicodeVerifyResponse(
             **body.model_dump(),
             reward=1.0 if all_passed else 0.0,
+            mask_sample=bool(validity),
+            failure_kind="scicode:reference_shape_conflict" if validity else None,
+            failure_reason="Known creator prompt/reference shape conflict; scalar placeholder is not a scientific zero."
+            if validity
+            else None,
+            measurement_validity=[validity[i] for i in sorted(validity)],
             step_results=step_results,
             step_execution=[execution_details[i] for i in scored if i in execution_details],
             num_steps_passed=num_passed,
             num_steps_total=len(scored),
-            problem_accuracy=all_passed,
-            subtask_accuracy=num_passed / len(scored),
+            problem_accuracy=None if validity else all_passed,
+            subtask_accuracy=None if validity else num_passed / len(scored),
         )
 
 
