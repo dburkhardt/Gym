@@ -22,6 +22,10 @@ Harbor and other external creator runtimes, skills and external prompt configura
 unsupported; their dependency/runtime qualification is not inferred from Python
 source alone. No historical run is retroactively made eligible.
 
+The qualified SciCode and stateless creator routes can also share one native
+batch, subject to the mixed closure below. This does not extend eligibility to
+uninspected runtimes.
+
 The standard guarded CLI creates an existing-schema batch manifest beside the
 output when none is explicitly supplied, including for one benchmark. Its
 component-recipe digest binds resolved server settings; the separate full execution
@@ -83,3 +87,29 @@ Qualification requires exactly the native OpenAI model → one-step, tool-free s
 All existing failed-attempt rules still apply: an explicit scoped receipt, reconciled definitive provider rejection, a higher attempt identity, and preserved completed results are required. Ambiguous 503/timeout outcomes remain blocked. This does not restore a partially executed scorer, tools, an arbitrary shell, or an old unbound campaign run. Other creator branches remain unqualified until their scientific imports and assets have an equally explicit closure. Package versions and actual loaded maintained modules are attested; this is not a hermetic OS or transitive wheel-content reproducibility claim.
 
 The local control is `tests/e2e/coordinator/test_cli_crash.py::test_creator_resource_restart`, enabled by `NEMO_GYM_COORDINATOR_E2E=1` and `NEMO_GYM_CREATOR_RESTART_SOURCE=/absolute/path/to/pinned/genomeqa`. It uses benign fixture prompts, the actual creator resource/scorer and native CLI, and a deterministic loopback provider. It tests 200/429/200 followed by only the rejected task's new attempt, completed resume with no new calls, and ambiguous-503 refusal. It is transport/lifecycle acceptance, not a new scientific benchmark result.
+
+### Mixed SciCode and creator routes
+
+[`mixed_scientific_restart.py`](mixed_scientific_restart.py) composes the existing
+dependency checks for exactly one SciCode chain and qualified creator chains
+sharing one `openai_model` instance. Every materialized row, including completed
+rows, must identify its agent and task source consistently. An optional relay
+declaration must agree with that route. Unknown components, unused configured
+chains, cross-wiring and unsupported dependencies fail before dispatch.
+
+Use the same receipt-selected restart procedure above. The full ordered input
+bytes and per-route dependency bindings remain part of the execution identity.
+Do not split or rewrite the input file to bypass a failed binding. A completed
+prefix stays in place; only explicitly selected eligible failures receive a new
+attempt. Existing uncertainty and scientific-budget rules are unchanged.
+
+The maintained acceptance driver is
+[`mixed_scientific_restart_control.py`](../tests/e2e/coordinator/mixed_scientific_restart_control.py).
+Its Linux native control preserved a completed MolJSON result, recorded a
+definitive SciCode429 rejection, and ran the selected new attempt through two real
+isolated SciCode verification steps. Four loopback requests occurred across all
+phases; completed resume made none. The driver checks preservation of the old
+result prefix, failure sidecar and capture bytes before accepting cleanup.
+Its saved responses and short control timeouts establish bounded operational
+recovery, not model performance, live-provider throughput, or restoration of a
+running scientific container.
