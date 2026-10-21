@@ -167,6 +167,47 @@ class CreatorResourcesServer(SimpleResourcesServer):
                     failure_kind="scienceqa:invalid_measurement",
                     failure_reason="See separate strict and seeded-fallback metric qualifications",
                 )
+        if self.config.benchmark == "chemiq":
+            from benchmarks.chemiq.observation import digest
+
+            evidence = details["dependency_observation"]
+            if evidence["task_sha256"] != digest(task):
+                raise ValueError("ChemIQ observation does not match scored task/reference")
+            invalid = any(
+                event["dependency_failure"] or event.get("verifier_failure", False) for event in evidence["events"]
+            )
+            metadata = {
+                "source": "chemiq",
+                "verifier_result": {"rewards": {"creator_check_answer": details["reward"]}},
+                "measurement_review": {
+                    "version": "chemiq-dependency-observation-v1",
+                    "implementation": {
+                        "import_path": "benchmarks.chemiq.observation:check",
+                        "sha256": evidence["observer_sha256"],
+                    },
+                    "evidence": evidence,
+                    "metrics": {
+                        "creator_check_answer": {
+                            "status": "invalid" if invalid else "unresolved",
+                            "reason": "Observed creator verification failure"
+                            if invalid
+                            else "No observed dependency failure; scientific correctness not independently certified",
+                        }
+                    },
+                },
+            }
+            if not invalid and not (
+                evidence.get("cache_hit") or any(event["kind"] == "http_error" for event in evidence["events"])
+            ):
+                metadata.pop("measurement_review")  # No new scientific certification or exclusion.
+            if invalid:
+                accounting = {
+                    "mask_sample": True,
+                    "failure_kind": "chemiq:verifier_timeout"
+                    if any(event.get("verifier_failure") for event in evidence["events"])
+                    else "chemiq:dependency_failure",
+                    "failure_reason": "Creator swallowed an observed verification failure; raw score retained",
+                }
         if self.config.benchmark == "fgbench":
             from benchmarks.fgbench.projection import project
 
@@ -188,7 +229,12 @@ class CreatorResourcesServer(SimpleResourcesServer):
         # Native reverify supplies original inputs + response, not stale judge
         # bookkeeping. Direct callers can explicitly carry an independent incident.
         prior_kind = payload.get("failure_kind")
-        owned_diagnoses = {"qcbench:invalid_reference_measurement", "scienceqa:invalid_measurement"}
+        owned_diagnoses = {
+            "qcbench:invalid_reference_measurement",
+            "scienceqa:invalid_measurement",
+            "chemiq:dependency_failure",
+            "chemiq:verifier_timeout",
+        }
         prior_incident = (
             {key: payload[key] for key in ("mask_sample", "failure_kind", "failure_reason") if key in payload}
             if (prior_kind or payload.get("failure_reason")) and prior_kind not in owned_diagnoses
@@ -208,7 +254,14 @@ class CreatorResourcesServer(SimpleResourcesServer):
             failure_reason=None,
         )
         payload.update(prior_incident)
+        generation = (
+            with_completion_outcome(dict(payload), response=body.response) if self.config.benchmark == "chemiq" else {}
+        )
         payload.update(accounting)  # A current scientific validity failure takes precedence.
+        if generation.get("failure_kind"):
+            payload.update({key: generation[key] for key in ("failure_kind", "failure_reason") if key in generation})
+        if self.config.benchmark == "chemiq" and prior_incident:
+            payload.update({key: value for key, value in prior_incident.items() if key != "mask_sample"})
         return VerifyResponse(**with_completion_outcome(payload, response=body.response))
 
 

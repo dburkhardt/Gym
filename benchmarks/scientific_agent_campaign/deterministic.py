@@ -711,10 +711,19 @@ def score(kind: str, repo: Path, task: dict, answer: str) -> dict:
             "metric": "creator_reference_recall",
         }
     parser = module(repo / "utils/parser.py").AnswerParser(repo / "questions/chemiq.jsonl")
-    verifier = module(repo / "utils/answer_verifier.py").AnswerVerifier(repo / "questions/chemiq.jsonl")
+    creator = module(repo / "utils/answer_verifier.py")
+    verifier = creator.AnswerVerifier(repo / "questions/chemiq.jsonl")
     parsed = parser.parse(task["uuid"], answer)
-    result = verifier.check_answer(task["uuid"], parsed)
-    return {"reward": float(result["is_correct"]), "parsed": parsed, "metric": "creator_check_answer"}
+    from benchmarks.chemiq.observation import check
+
+    result, evidence = check(creator, verifier, task, parsed, source_pin=PINS["chemiq"])
+    return {
+        "reward": float(result["is_correct"]),
+        "parsed": parsed,
+        "metric": "creator_check_answer",
+        "creator_result": result,
+        "dependency_observation": evidence,
+    }
 
 
 if __name__ == "__main__":
