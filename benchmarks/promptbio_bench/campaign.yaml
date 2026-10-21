@@ -1,17 +1,22 @@
+provider_dispatch_guard: true
 promptbio_agent:
   responses_api_agents:
     promptbio_bench:
       entrypoint: app.py
       domain: agent
       description: Containerized PromptBio tasks with pinned upstream artifact grading.
-      model_name: ${oc.env:PROMPTBIO_MODEL_NAME,null}
+      model_server:
+        type: responses_api_models
+        name: policy_model
+      model_name: nvidia/nvidia/nemotron-3.5-super-vl
       model_base_url: ${oc.env:PROMPTBIO_MODEL_BASE_URL,null}
       model_key_file: ${oc.env:PROMPTBIO_MODEL_KEY_FILE,null}
       sandbox_image: ${oc.env:PROMPTBIO_SANDBOX_IMAGE,null}
       cache_dir: ${oc.env:PROMPTBIO_CACHE_DIR,null}
       output_dir: ${oc.env:PROMPTBIO_OUTPUT_DIR,null}
       scorer_dir: ${oc.env:PROMPTBIO_SCORER_DIR,null}
-      scorer_python: ${oc.env:PROMPTBIO_SCORER_PYTHON,null}
+      scorer_image: ${oc.env:PROMPTBIO_SCORER_IMAGE,null}
+      scorer_python: ${oc.env:PROMPTBIO_SCORER_PYTHON,python}
       comparison_models: []
       judge_model: nvidia/nvidia/nemotron-3.5-super-vl
       judge_base_url: http://127.0.0.1:49180/v1

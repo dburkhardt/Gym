@@ -115,36 +115,59 @@ def test_solver_uses_workspace_owner_and_resumes(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_gym_run_response_contract(monkeypatch):
+async def test_gym_run_response_contract(monkeypatch, tmp_path):
     from types import SimpleNamespace
 
     from responses_api_agents.promptbio_bench.app import PromptBioAgent, PromptBioRequest
 
-    agent = PromptBioAgent.model_construct(config=SimpleNamespace(model_name="test-model"))
-    monkeypatch.setattr(PromptBioAgent, "_evaluate", lambda self, task_id: (0.75, "/artifacts/test"))
+    agent = PromptBioAgent.model_construct(
+        config=SimpleNamespace(model_name="test-model", model_server=SimpleNamespace(name="policy_model")),
+        server_client=SimpleNamespace(
+            global_config_dict={
+                "provider_dispatch_guard": True,
+                "policy_model": {"responses_api_models": {"openai_model": {"host": "127.0.0.1", "port": 12345}}},
+            }
+        ),
+    )
+
+    async def evaluate(self, task_id, endpoint, rollout_id):
+        assert endpoint == "http://127.0.0.1:12345/ng-rollout/test-rollout/v1"
+        (tmp_path / "receipt.json").write_text(json.dumps({"status": "completed"}))
+        return 0.75, str(tmp_path)
+
+    monkeypatch.setattr(PromptBioAgent, "_evaluate", evaluate)
+    monkeypatch.setattr("responses_api_agents.promptbio_bench.app.current_rollout_id", lambda: "test-rollout")
     body = PromptBioRequest.model_validate(
         {"responses_create_params": {"input": "task"}, "verifier_metadata": {"task_id": "a-1-1"}}
     )
     result = await agent.run(None, body)
     assert result.reward == 0.75
     assert result.response.model == "test-model"
-    assert (
-        result.response.output[0].content[0].text
-        == '{"artifact_dir": "/artifacts/test", "scoring": "upstream avg_similarity"}'
-    )
+    assert json.loads(result.response.output[0].content[0].text) == {
+        "artifact_dir": str(tmp_path),
+        "scoring": "upstream avg_similarity",
+        "solver_disposition": "completed",
+    }
 
 
 def test_completion_never_resends_ambiguous_provider_failure(monkeypatch):
     import urllib.error
+
     from responses_api_agents.promptbio_bench.runtime import completion
-    failures = [TimeoutError("ambiguous"), urllib.error.URLError("disconnected"),
-                urllib.error.HTTPError("http://local", 503, "unavailable", {}, None),
-                urllib.error.HTTPError("http://local", 429, "limited", {}, None)]
+
+    failures = [
+        TimeoutError("ambiguous"),
+        urllib.error.URLError("disconnected"),
+        urllib.error.HTTPError("http://local", 503, "unavailable", {}, None),
+        urllib.error.HTTPError("http://local", 429, "limited", {}, None),
+    ]
     for failure in failures:
         calls = []
+
         def fail(request, **kwargs):
             calls.append(request)
             raise failure
+
         monkeypatch.setattr("urllib.request.urlopen", fail)
         try:
             completion("http://local/v1", "placeholder", {"model": "test"}, timeout=1)

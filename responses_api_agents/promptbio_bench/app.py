@@ -13,36 +13,51 @@ from pydantic import Field, PrivateAttr, model_validator
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
+from nemo_gym.config_types import ModelServerRef
+from nemo_gym.global_config import get_first_server_config_dict
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
-from responses_api_agents.promptbio_bench.runtime import download_task, grade, solve
+from nemo_gym.rollout_correlation import current_rollout_id, maybe_rollout_id_from_run_body
+from nemo_gym.server_utils import rollout_path_prefix
+from responses_api_agents.promptbio_bench.managed_runtime import (
+    download_managed,
+    grade_managed,
+    solve_managed,
+    validate_image,
+)
 
 
 class PromptBioConfig(BaseResponsesAPIAgentConfig):
+    model_server: ModelServerRef | None = None
     model_name: str
-    model_base_url: str
-    model_key_file: Path
+    model_base_url: str | None = None
+    model_key_file: Path | None = None
     sandbox_image: str
     cache_dir: Path
     output_dir: Path
     scorer_dir: Path
     scorer_python: str
+    scorer_image: str | None = None
     # Pairing is deliberate: both solvers share the upstream Detect/Recommend pass.
     comparison_models: list[str] = Field(default_factory=list)
     judge_model: str = "gpt-5.4"
     judge_base_url: str | None = None
-    judge_key_file: Path
-    budget_ledger: Path
+    judge_key_file: Path | None = None
+    budget_ledger: Path | None = None
     budget_usd: float = 100
     max_steps: int = 100
     max_tokens: int = 16384
 
     @model_validator(mode="after")
     def campaign_contract(self):
-        if self.judge_base_url is not None:
-            from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL, GATEWAY
+        if self.judge_base_url is not None or self.model_server is not None:
+            from responses_api_agents.promptbio_bench.nemotron_proxy import GATEWAY, MODEL
+
             if self.judge_model != MODEL or any(x != MODEL for x in [self.model_name, *self.comparison_models]):
                 raise ValueError("Campaign requires Super for every role")
-            if self.model_base_url.rstrip("/") != GATEWAY or self.judge_base_url.rstrip("/") != GATEWAY:
+            if self.model_server is None and (
+                (self.model_base_url or "").rstrip("/") != GATEWAY
+                or (self.judge_base_url or "").rstrip("/") != GATEWAY
+            ):
                 raise ValueError("Campaign requires local gateway for every role")
         return self
 
@@ -60,40 +75,51 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
     ) -> NeMoGymResponse:
         raise NotImplementedError("PromptBio requires /run with a task ID")
 
-    def _evaluate(self, task_id: str) -> tuple[float, str]:
+    async def _evaluate(self, task_id: str, endpoint: str, rollout_id: str) -> tuple[float, str]:
         cfg = self.config
-        task = download_task(task_id, cfg.cache_dir)
+        validate_image(cfg.scorer_image)
+        validate_image(cfg.sandbox_image)
+        task = await download_managed(task_id, cfg.cache_dir, cfg.output_dir / "acquisition" / (uuid4().hex + ".json"))
         models = list(dict.fromkeys([cfg.model_name, *cfg.comparison_models]))
-        runs = [
-            solve(
-                task,
-                cfg.output_dir,
-                model=model,
-                base_url=cfg.model_base_url,
-                api_key=cfg.model_key_file.read_text().strip(),
-                image=cfg.sandbox_image,
-                max_steps=cfg.max_steps,
-                max_tokens=cfg.max_tokens,
+        runs = []
+        for model in models:
+            runs.append(
+                await solve_managed(
+                    task,
+                    cfg.output_dir,
+                    endpoint=endpoint,
+                    rollout_id=rollout_id,
+                    model=model,
+                    image=cfg.sandbox_image,
+                    max_steps=cfg.max_steps,
+                    max_tokens=cfg.max_tokens,
+                )
             )
-            for model in models
-        ]
-        scores = grade(
+        scores = await grade_managed(
             task,
             runs,
             scorer_dir=cfg.scorer_dir,
             python=cfg.scorer_python,
-            output=cfg.output_dir / task_id / "grading",
-            judge_model=cfg.judge_model,
-            judge_base_url=cfg.judge_base_url,
-            judge_key_file=cfg.judge_key_file,
-            budget_ledger=cfg.budget_ledger,
-            budget_usd=cfg.budget_usd,
+            output=cfg.output_dir / task_id / ("grading-" + runs[0].name),
+            endpoint=endpoint,
+            rollout_id=rollout_id,
+            scorer_image=cfg.scorer_image,
         )
         return scores[0], str(runs[0])
 
     async def run(self, request: Request, body: PromptBioRequest) -> BaseVerifyResponse:
+        if self.config.model_server is None:
+            raise ValueError("PromptBio native execution requires a guarded Gym model_server reference")
+        global_config = self.server_client.global_config_dict
+        if not global_config.get("provider_dispatch_guard"):
+            raise ValueError("PromptBio native execution requires provider_dispatch_guard")
+        rollout_id = current_rollout_id() or maybe_rollout_id_from_run_body(body)
+        if not rollout_id:
+            raise ValueError("PromptBio requires a native rollout identity")
+        server = get_first_server_config_dict(global_config, self.config.model_server.name)
+        endpoint = f"http://{server['host']}:{server['port']}" + rollout_path_prefix(rollout_id) + "/v1"
         async with self._semaphore:
-            score, path = await asyncio.to_thread(self._evaluate, body.verifier_metadata["task_id"])
+            score, path = await self._evaluate(body.verifier_metadata["task_id"], endpoint, rollout_id)
         response = NeMoGymResponse.model_validate(
             {
                 "id": "resp_" + uuid4().hex,
@@ -111,7 +137,15 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
                             {
                                 "type": "output_text",
                                 "annotations": [],
-                                "text": json.dumps({"artifact_dir": path, "scoring": "upstream avg_similarity"}),
+                                "text": json.dumps(
+                                    {
+                                        "artifact_dir": path,
+                                        "scoring": "upstream avg_similarity",
+                                        "solver_disposition": json.loads((Path(path) / "receipt.json").read_text())[
+                                            "status"
+                                        ],
+                                    }
+                                ),
                             }
                         ],
                     }
