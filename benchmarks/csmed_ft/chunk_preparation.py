@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Explicit, offline creator-tokenizer preparation; never replace frozen variants."""
 
-import csv
+import base64
 import hashlib
 import io
 import json
@@ -44,10 +44,12 @@ def load_recipe(config: dict):
         raise ValueError("Tokenizer asset hash mismatch")
     import tiktoken
     from langchain.text_splitter import TokenTextSplitter
-    from tiktoken.load import load_tiktoken_bpe
 
     encoding = tiktoken.encoding_for_model(config["recipe_model"])
-    if encoding.name != "cl100k_base" or encoding._mergeable_ranks != load_tiktoken_bpe(str(cache)):
+    if encoding.name != "cl100k_base" or encoding._mergeable_ranks != {
+        base64.b64decode(token): int(rank)
+        for token, rank in (line.split() for line in cache.read_bytes().splitlines() if line)
+    }:
         raise ValueError("Resolved encoding does not match declared cached tokenizer")
     return encoding, TokenTextSplitter
 
@@ -79,9 +81,14 @@ def prepare(config: dict, *, output: Path) -> Path:
     selected = Path(config["frozen_selection"]).read_bytes()
     if digest(source) != config["dataset_sha256"] or digest(selected) != config["selection_sha256"]:
         raise ValueError("Dataset or frozen selection hash mismatch")
+    import pandas as pd
+    from datasets import Value
+
+    for package, expected in (("pandas", "1.5.3"), ("datasets", "2.8.0")):
+        if version(package) != expected:
+            raise ValueError(f"Require qualified creator loader {package}=={expected}")
     with zipfile.ZipFile(io.BytesIO(source)) as archive:
-        csv.field_size_limit(10_000_000)
-        papers = list(csv.DictReader(io.TextIOWrapper(archive.open("CSMeD-FT/CSMeD-FT-test.csv"))))
+        papers = pd.read_csv(archive.open("CSMeD-FT/CSMeD-FT-test.csv")).to_dict("records")
         reviews = json.loads(archive.read("CSMeD-FT/CSMeD-FT-test_reviews_metadata.json"))
     by_identity = {}
     for index, paper in enumerate(papers):
@@ -98,9 +105,22 @@ def prepare(config: dict, *, output: Path) -> Path:
     for meta, key in zip(selection, keys):
         index, paper = by_identity[key]
         review = reviews[paper["review_id"]]
-        if meta["answer"] != paper["decision"] or not paper["main_text"] or not review["criteria_text"]:
+        if (
+            meta["answer"] != paper["decision"]
+            or meta.get("input_valid") is not True
+            or pd.isna(paper["main_text"])
+            or not paper["main_text"]
+            or not review["criteria_text"]
+        ):
             raise ValueError(f"Invalid or mismatched frozen source input: {key}")
-        example = dict(paper, review_title=review["title"], review_criteria=review["criteria_text"])
+        # Creator pandas -> datasets.Value("string") emits literal "nan" for
+        # missing title/abstract; empty-string CSV normalization would change prompts.
+        string = Value("string")
+        example = {key: string.encode_example(paper[key]) for key in ("title", "abstract", "main_text")}
+        example.update(
+            review_title=string.encode_example(review["title"]),
+            review_criteria=string.encode_example(review["criteria_text"]),
+        )
         prompts = chunk_paper(example, recipe_model=config["recipe_model"], encoding=encoding, splitter=splitter)
         if not prompts:
             raise ValueError(f"No chunks for {key}")
@@ -144,6 +164,11 @@ def prepare(config: dict, *, output: Path) -> Path:
                     "recipe_sha256": binding,
                     "protocol": PROTOCOL,
                     "output_sha256": digest(staged.read_bytes()),
+                    "preparation_sha256": digest(Path(__file__).read_bytes()),
+                    "runtime_versions": {
+                        name: version(name) for name in ("tiktoken", "langchain", "pandas", "datasets")
+                    },
+                    "loader_missing_string_semantics": "pandas_NaN_to_datasets_Value_string_literal_nan",
                     "papers": len(keys),
                     "chunks": len(rows),
                 },

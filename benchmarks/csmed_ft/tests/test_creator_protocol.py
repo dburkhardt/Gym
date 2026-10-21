@@ -156,3 +156,23 @@ def test_recipe_unknown_refused_and_exact_prompt_construction():
     assert calls[0]["chunk_size"] == 8000 and calls[1]["chunk_size"] == 8000
     assert prompts[0] == QUESTION + "\n\nSystematic review:\nR\nC\n\nCandidate paper:\nT\n\nA\n\nM\n\nAnswer: "
     assert prompts[1].endswith("\n\nsecond\n\nAnswer: ")
+
+
+def test_explicit_venv_interpreter_not_collapsed_by_symlink(tmp_path, monkeypatch):
+    import runpy
+    import subprocess
+    import sys
+
+    first = tmp_path / "first-python"
+    second = tmp_path / "second-python"
+    first.symlink_to(sys.executable)
+    second.symlink_to(sys.executable)
+    assert first.resolve() == second.resolve()
+    monkeypatch.setattr(sys, "executable", str(first))
+    monkeypatch.setenv("CSMED_CREATOR_PYTHON", str(second))
+    monkeypatch.setenv("CSMED_CREATOR_RECIPE", str(tmp_path / "recipe.json"))
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs)))
+    runpy.run_path(str(Path(__file__).parents[1] / "prepare_creator_chunks.py"), run_name="__main__")
+    assert calls[0][0][0] == str(second)
+    assert calls[0][1] == {"check": True, "timeout": 300}
