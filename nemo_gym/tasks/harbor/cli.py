@@ -24,7 +24,7 @@ import yaml
 
 from nemo_gym import component_search_roots
 from nemo_gym.tasks.harbor.hub import HubError, datasets_dir, fetch_ref, is_hub_ref
-from nemo_gym.tasks.harbor.materialize import run_config, write_rows
+from nemo_gym.tasks.harbor.materialize import require_resources_implementation, run_config, write_rows
 from nemo_gym.tasks.harbor.task import HarborTask, HarborTaskError, discover_tasks
 
 
@@ -194,6 +194,11 @@ def run_target(args: argparse.Namespace, overrides: list[str]) -> None:
     if not agent_name:
         args._parser.error("A Harbor target needs `--agent <harness>` (for example `--agent hermes`)")
     sandbox = getattr(args, "sandbox", None)
+    # Refuse missing execution support before downloads or output publication.
+    try:
+        require_resources_implementation()
+    except HarborTaskError as exc:
+        args._parser.error(str(exc))
     # Resolve selectors before preparation can download a registry dataset.
     try:
         agent = resolve_agent(agent_name)

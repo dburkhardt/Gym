@@ -29,6 +29,15 @@ from nemo_gym.tasks.harbor.materialize import materialize_task, run_config, writ
 from nemo_gym.tasks.harbor.task import HarborTaskError
 
 
+@pytest.fixture(autouse=True)
+def assume_resources_runtime_for_materialization_controls(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENSANDBOX_API_KEY", "unused-schema-fixture")
+    # These are schema/materialization/registry controls, not runtime acceptance.
+    # Actual missing/plugin runtime admission is covered separately.
+    monkeypatch.setattr("nemo_gym.tasks.harbor.materialize.require_resources_implementation", lambda: tmp_path)
+    monkeypatch.setattr("nemo_gym.tasks.harbor.cli.require_resources_implementation", lambda: tmp_path)
+
+
 HELLO_TOML = """
 schema_version = "1.4"
 
@@ -303,7 +312,8 @@ class TestMaterialize:
         assert params["metadata"] == {"agent_timeout_sec": "120.0"}
         assert row["task_input"]["task_data"] == {DIGEST_KEY: task.digest}
 
-    def test_write_rows_and_run_config(self, tmp_path):
+    def test_write_rows_and_run_config(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("nemo_gym.tasks.harbor.materialize.require_resources_implementation", lambda: tmp_path)
         folder = tmp_path / "ds"
         tasks = [load_task(write_task(folder / "a")), load_task(write_task(folder / "b"))]
         rows_path = tmp_path / "out" / "tasks.jsonl"

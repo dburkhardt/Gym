@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from nemo_gym import _resolve_under_cwd_or_install
 from nemo_gym.episode_types import MaterializedTask, TaskId
 from nemo_gym.single_agent_turn_types import SingleAgentTurnTaskInput
 from nemo_gym.tasks.harbor.digest import DIGEST_KEY
@@ -18,6 +19,20 @@ AGENT_TIMEOUT_METADATA_KEY = "agent_timeout_sec"
 # Instance names in the generated run config, per taskset.
 RESOURCES_SERVER_IMPL = "harbor"
 ENVIRONMENT_SERVER_IMPL = "single_agent_turn"
+
+
+def require_resources_implementation() -> Path:
+    """Respect plugin search roots, but never present absent execution as runnable."""
+    folder = _resolve_under_cwd_or_install("resources_servers/harbor")
+    if not (folder / "app.py").is_file():
+        raise HarborTaskError(
+            "Harbor folder-target execution is unavailable: resources_servers/harbor/app.py "
+            "was not found in the configured Gym component roots. Materialized tasks alone "
+            "are not runnable. Use a maintained benchmark configuration selecting "
+            "responses_api_agents/harbor_agent, or install and qualify the Harbor resources "
+            "implementation for the requested tool harness; the two routes are not interchangeable."
+        )
+    return folder
 
 
 def _instance_taskset(taskset: str) -> str:
@@ -106,6 +121,7 @@ def run_config(
     resources server. The environment server is a ``single_agent_turn`` instance. Rows
     route to it by taskset.
     """
+    require_resources_implementation()
     resources_name = resources_server_instance(taskset)
     agent_name = agent_instance(taskset)
     environment_name = environment_server_instance(taskset)
