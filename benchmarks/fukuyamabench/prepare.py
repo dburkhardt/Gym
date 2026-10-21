@@ -119,6 +119,21 @@ def prepare(limit: int | None = None) -> Path:
     return OUTPUT_FPATH
 
 
+def is_prepared_data_current(fpath: Path) -> bool:
+    """Validate frozen publication; retain the creator non-frozen preparation mode."""
+    from benchmarks.scientific_agent_campaign.stage_sample import is_sample_current
+
+    source = os.environ.get("FUKUYAMA_FROZEN_SAMPLE")
+    if source is None and not Path(fpath).with_suffix(".source.json").exists():
+        return True
+    return is_sample_current(
+        fpath,
+        default_destination=OUTPUT_FPATH,
+        source=Path(source) if source else None,
+        expected_normalizations=["fukuyama_native_metadata_aliases"],
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare the FukuyamaBench benchmark split")
     parser.add_argument("--limit", type=int, default=None, help="Max rows, for a smoke subset")

@@ -11,6 +11,64 @@ from pathlib import Path
 from nemo_gym.dataset_staging import stage_file
 
 
+def is_sample_current(
+    fpath: Path,
+    *,
+    default_destination: Path,
+    source: Path | None = None,
+    expected_normalizations: list[str] | None = None,
+) -> bool:
+    """Check cached publication against its receipt and currently selected source.
+
+    Explicit external prepared files need no campaign receipt. If a frozen source
+    is selected, an unreceipted external file must be that exact source. Invalid
+    overrides are refused, never rewritten by the wrapper's canonical prepare().
+    """
+    destination = Path(fpath)
+    external = (destination.parent.resolve() / destination.name) != (
+        default_destination.parent.resolve() / default_destination.name
+    )
+    receipt_path = destination.with_suffix(".source.json")
+    source_name = source or os.environ.get("CAMPAIGN_SAMPLE_JSONL")
+    expected = os.environ.get("CAMPAIGN_SAMPLE_SHA256")
+    source_hash = None
+    if source_name:
+        source_hash = hashlib.sha256(Path(source_name).read_bytes()).hexdigest()
+        if expected is not None and source_hash != expected:
+            raise ValueError("Frozen campaign sample SHA-256 mismatch")
+    elif expected is not None:
+        source_hash = expected
+    if destination.is_symlink() or receipt_path.is_symlink():
+        raise ValueError("Campaign cached sample and receipt must not be symlinks")
+    content = destination.read_bytes()
+    output_hash = hashlib.sha256(content).hexdigest()
+    if external and not receipt_path.exists():
+        if source_hash is None or output_hash == source_hash:
+            return True
+        raise ValueError("External prepared sample does not match the selected frozen source; it was not modified")
+    try:
+        receipt = json.loads(receipt_path.read_text())
+        rows = [json.loads(line) for line in content.splitlines() if line.strip()]
+        ids = [str(row["task_id"]) for row in rows]
+        valid = (
+            isinstance(receipt, dict)
+            and receipt.get("output_sha256") == output_hash
+            and isinstance(receipt.get("source_sha256"), str)
+            and len(receipt["source_sha256"]) == 64
+            and (source_hash is None or receipt["source_sha256"] == source_hash)
+            and receipt.get("task_ids") == ids
+            and receipt.get("rows") == len(rows)
+            and receipt.get("normalizations") == (expected_normalizations or [])
+            and 1 <= len(rows) <= 50
+            and len(ids) == len(set(ids))
+        )
+    except (OSError, ValueError, TypeError, KeyError):
+        valid = False
+    if not valid and external:
+        raise ValueError("External prepared sample provenance is invalid or stale; it was not modified")
+    return valid
+
+
 def prepare_sample(
     destination: Path,
     *,

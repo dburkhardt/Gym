@@ -15,5 +15,17 @@ def prepare() -> Path:
     )
 
 
+def is_prepared_data_current(fpath: Path) -> bool:
+    """Validate the selected frozen sample before native cached preparation."""
+    from benchmarks.scientific_agent_campaign.stage_sample import is_sample_current
+
+    return is_sample_current(
+        fpath,
+        expected_normalizations=["image_detail_auto"],
+        default_destination=Path(__file__).resolve().parents[2]
+        / "resources_servers/microvqa_plusplus_demo/data/benchmark.jsonl",
+    )
+
+
 if __name__ == "__main__":
     print(prepare())

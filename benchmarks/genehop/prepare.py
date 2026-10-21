@@ -23,5 +23,16 @@ def prepare() -> Path:
     return prepare_sample(destination, source=path)
 
 
+def is_prepared_data_current(fpath: Path) -> bool:
+    """Validate the selected frozen sample before native cached preparation."""
+    from benchmarks.scientific_agent_campaign.stage_sample import is_sample_current
+
+    return is_sample_current(
+        fpath,
+        default_destination=Path(os.environ.get("GENEHOP_PREPARED_SAMPLE", "benchmarks/genehop/data/benchmark.jsonl")),
+        source=Path(os.environ["GENEHOP_SAMPLE"]),
+    )
+
+
 if __name__ == "__main__":
     prepare()
