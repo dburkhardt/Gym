@@ -173,8 +173,9 @@ microVM). For that reason:
   disabled) so one sandbox can't starve the host.
 - **Rootless Docker** narrows the blast radius (container root ≠ host root) and is recommended
   for shared machines; `docker cp` ownership and some `--user`/cgroup behaviors differ under it.
-- Every container is labeled `nemo-gym.sandbox=1`; if a run is killed uncleanly, reap leaks with
-  `docker rm -f $(docker ps -aq --filter label=nemo-gym.sandbox=1)`.
+- Every container is labeled `nemo-gym.sandbox=1`, but that label alone does not
+  establish ownership of a particular run. Use the scoped recovery procedure below;
+  other Gym containers may belong to active evaluations.
 
 ## Limitations
 
@@ -228,3 +229,26 @@ container name does not redirect removal after inspection. Legacy handles withou
 ownership labels retain their existing behavior. Labels are operational attribution,
 not authentication against another user with Docker daemon access. No blanket
 label-based cleanup is performed.
+
+### Recovering containers after an interrupted run
+
+First settle the process that creates containers and preserve its logs, generated
+outputs and verifier inputs. Use the recorded `nemo-gym.workload` and
+`nemo-gym.run` labels with `DockerProvider.reconcile_owned(ownership_labels)`
+when removal is intended. The run label must be the original 32-character lowercase
+hexadecimal run ID. The method checks immutable IDs and all supplied ownership
+labels before removal, including containers created before a lifecycle receipt was
+written. Do not generate a new run ID for cleanup or select containers by name
+prefix. This operation removes containers; it is not a retention operation.
+
+For a legacy container without these labels, inspect its exact ID, image, mounts,
+processes and current use before deciding ownership. If the intention is to stop
+while retaining its writable layer, inspect `HostConfig.AutoRemove` **before**
+stopping it. An auto-removing container can disappear on stop without an explicit
+remove command. Skip the stop if that setting is unknown or incompatible with
+the required preservation. An archived bind-mounted workspace does not preserve
+the container's full writable layer or in-memory application state.
+
+After cleanup, record the observed final state by exact ID: stopped and retained,
+removed, still running, or unknown. Keep preservation checks and cleanup receipts
+separate; a successful archive does not prove that the container still exists.
