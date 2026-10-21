@@ -33,6 +33,7 @@ def run(packet: dict) -> dict:
         "benchmarks.scienceboard.prepare",
         "benchmarks.scienceboard.result_mapping",
         "nemo_gym.sandbox.guarded_chat_transport",
+        "nemo_gym.guarded_chat_transport",
     ):
         loaded.append(importlib.import_module(name).__file__)
     for filename in loaded:

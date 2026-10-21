@@ -129,6 +129,7 @@ def test_actual_tester_swallowed_exception_attribution(tmp_path, monkeypatch):
                 "benchmarks.scienceboard.prepare",
                 "benchmarks.scienceboard.result_mapping",
                 "nemo_gym.sandbox.guarded_chat_transport",
+                "nemo_gym.guarded_chat_transport",
                 "benchmarks.scienceboard.qualification",
             )
         ],

@@ -18,9 +18,9 @@ from pathlib import Path
 
 import httpx
 
+from nemo_gym.guarded_chat_transport import GuardedChatTransport
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox
-from nemo_gym.sandbox.guarded_chat_transport import GuardedChatTransport
 from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
 from nemo_gym.sandbox.model_bridge import bridge
 from nemo_gym.sandbox.providers.base import SandboxResources, SandboxSpec
@@ -58,7 +58,7 @@ def source_hashes() -> dict[str, str]:
         name: hashlib.sha256((root / name).read_bytes()).hexdigest()
         for name in ("managed_runtime.py", "guarded_scorer.py", "runtime.py", "nemotron_proxy.py")
     }
-    from nemo_gym.sandbox import guarded_chat_transport
+    from nemo_gym import guarded_chat_transport
 
     result["guarded_chat_transport.py"] = hashlib.sha256(
         Path(guarded_chat_transport.__file__).read_bytes()
@@ -366,7 +366,7 @@ async def grade_managed(
     shared.mkdir(parents=True)
     for parent in (package, package.parent, shared, shared.parent):
         (parent / "__init__.py").write_text("")
-    from nemo_gym.sandbox import guarded_chat_transport
+    from nemo_gym import guarded_chat_transport
 
     shutil.copyfile(Path(guarded_chat_transport.__file__), shared / "guarded_chat_transport.py")
     for name in ("guarded_scorer.py", "runtime.py", "nemotron_proxy.py"):

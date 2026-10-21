@@ -18,7 +18,7 @@ from openai import OpenAI
 
 from benchmarks.biabench.prepare import validate
 from benchmarks.biabench.regrade_outcome import imported_creator_hashes, prediction_hashes
-from nemo_gym.sandbox.guarded_chat_transport import GuardedSyncChatTransport, publish
+from nemo_gym.guarded_chat_transport import GuardedSyncChatTransport, publish
 
 
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"

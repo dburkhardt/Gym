@@ -50,3 +50,5 @@ isolation, and runtime behavior before using an override. Preparation records
 the image and published file hashes. Changed images, sources, or prepared bytes
 refuse reuse: use a fresh versioned source/preparation directory and retain the
 old artifacts. An image ID alone is not scientific equivalence evidence.
+
+Minimal creator children import `nemo_gym.guarded_chat_transport`, which requires only the standard library and httpx. The former sandbox module remains a compatibility re-export. Source-copy and qualification manifests bind the canonical implementation; receipts from before this import-boundary change do not qualify the changed runtime and must be regenerated before execution.

@@ -110,6 +110,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
     ]
     modules.append(source / "responses_api_agents/scivis_native/app.py")
     modules.append(source / "nemo_gym/sandbox/guarded_chat_transport.py")
+    modules.append(source / "nemo_gym/guarded_chat_transport.py")
     imported = [
         Path(inspect.getfile(inspect.unwrap(obj))).resolve()
         for obj in (AsyncSandbox, LocalProvider, bridge, _owned_sandbox)

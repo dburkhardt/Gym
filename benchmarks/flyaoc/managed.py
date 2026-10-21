@@ -73,7 +73,7 @@ def spec(
     if phase == "solver":
         if request is None or socket_dir is None or token is None:
             raise ValueError("Solver requires task-scoped request/bridge")
-        transport = CONTROLLER.parents[1] / "nemo_gym/sandbox/guarded_chat_transport.py"
+        transport = CONTROLLER.parents[1] / "nemo_gym/guarded_chat_transport.py"
         volumes += [
             f"{request.resolve()}:/request.json:ro",
             f"{socket_dir}:/model-socket:ro",
@@ -125,7 +125,7 @@ async def run_solver(*, image: str, root: Path, output: Path, payload: dict, end
         {
             "image": image,
             "guard_transport_sha256": hashlib.sha256(
-                (CONTROLLER.parents[1] / "nemo_gym/sandbox/guarded_chat_transport.py").read_bytes()
+                (CONTROLLER.parents[1] / "nemo_gym/guarded_chat_transport.py").read_bytes()
             ).hexdigest(),
             "runtime": runtime,
             "model": model,

@@ -20,6 +20,7 @@ def implementation_identity(python: Path) -> dict:
     files = [
         *MANIFEST.parent.glob("*.py"),
         MANIFEST,
+        source / "nemo_gym/guarded_chat_transport.py",
         source / "responses_api_agents/scienceboard_native/app.py",
         *[
             source / "nemo_gym/sandbox" / name
