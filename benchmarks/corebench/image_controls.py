@@ -211,7 +211,7 @@ def inspect_local_image(image):
     return {k: value[k] for k in ("Id", "RepoDigests", "Os", "Architecture")}
 
 
-async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096):
+async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, script=None):
     """Run a bounded no-network probe through the existing owned sandbox path."""
     import shlex
     import uuid
@@ -232,6 +232,10 @@ async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096):
         ),
     )
     async with _owned_sandbox(sandbox, destination / "lifecycle.json"):
+        if script is not None:
+            script_path = destination / "probe.py"
+            script_path.write_text(script)
+            await sandbox.upload(script_path, "/tmp/corebench-image-probe.py")
         result = await sandbox.exec("/bin/sh -c " + shlex.quote(command), timeout_s=120)
         (destination / "stdout.txt").write_text(result.stdout or "")
         (destination / "stderr.txt").write_text(result.stderr or "")
@@ -240,6 +244,7 @@ async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096):
             {
                 "image": identity,
                 "command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+                "script_sha256": hashlib.sha256(script.encode()).hexdigest() if script is not None else None,
                 "return_code": result.return_code,
                 "error_type": result.error_type,
             },
@@ -280,14 +285,13 @@ async def qualify_images(row, medium_root, reference_root, runtime_archive, fina
     harness = await probe_image(final_image, HARNESS_PROBE, destination / "harness", **kwargs)
     if "harness-python-ok" not in harness["stdout"] or "reference-isolation-ok" not in harness["stdout"]:
         raise ValueError("Harness probe markers absent")
-    import shlex
-
     modes = {f["path"]: (source / f["path"]).stat().st_mode & 0o777 for f in row["medium_file_manifest"]}
     source_script = image_source_probe(row, modes, "/workspace/" + row["id"])
     observed_source = await probe_image(
         final_image,
-        "/opt/corebench-harness/bin/python3 -c " + shlex.quote(source_script),
+        "/opt/corebench-harness/bin/python3 -I /tmp/corebench-image-probe.py",
         destination / "image-source",
+        script=source_script,
         **kwargs,
     )
     if "image-source-ok" not in observed_source["stdout"]:

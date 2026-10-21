@@ -175,7 +175,7 @@ async def test_maintained_qualification_producer(tmp_path, monkeypatch):
             "image": {"Id": "sha256:" + "b" * 64},
             "stdout": "harness-python-ok reference-isolation-ok"
             if command == controls.HARNESS_PROBE
-            else ("image-source-ok" if "image-source-ok" in command else "R package inventory"),
+            else ("image-source-ok" if destination.name == "image-source" else "R package inventory"),
         }
 
     monkeypatch.setattr(controls, "probe_image", probe)
@@ -283,3 +283,67 @@ def test_context_excludes_staging_metadata_preserves_creator_lock_filename(tmp_p
     assert (tmp_path / ".context.stage.lock").exists()
     with pytest.raises(ValueError, match="existing"):
         stage_context(row, medium, refs, archive, context)
+
+
+@pytest.mark.asyncio
+async def test_large_source_probe_staged_with_short_argv(tmp_path, monkeypatch):
+    import contextlib
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    import benchmarks.corebench.image_controls as controls
+    import nemo_gym.sandbox as sandbox_api
+    import nemo_gym.sandbox.lifecycle as lifecycle
+
+    root = tmp_path / "capsule"
+    root.mkdir()
+    manifest, modes = [], {}
+    for index in range(3686):
+        name = f"scientific-file-{index:05d}.txt"
+        path = root / name
+        path.write_text(str(index))
+        manifest.append({"path": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+        modes[name] = path.stat().st_mode & 0o777
+    script = controls.image_source_probe({"medium_file_manifest": manifest}, modes, root)
+    assert len(script.encode()) > 131072
+    uploaded = []
+    executed = []
+
+    class Sandbox:
+        def __init__(self, *args):
+            pass
+
+        async def upload(self, local_path, remote_path):
+            assert remote_path == "/tmp/corebench-image-probe.py"
+            assert local_path.read_text() == script
+            uploaded.append(local_path)
+
+        async def exec(self, command, timeout_s):
+            assert len(command.encode()) < 256
+            assert timeout_s == 120
+            executed.append(command)
+            result = subprocess.run([sys.executable, "-I", str(uploaded[-1])], capture_output=True, text=True)
+            return SimpleNamespace(
+                stdout=result.stdout, stderr=result.stderr, return_code=result.returncode, error_type=None
+            )
+
+    @contextlib.asynccontextmanager
+    async def owned(sandbox, receipt):
+        try:
+            yield sandbox
+        finally:
+            receipt.write_text(json.dumps({"cleanup_confirmed": True}))
+
+    monkeypatch.setattr(sandbox_api, "AsyncSandbox", Sandbox)
+    monkeypatch.setattr(lifecycle, "_owned_sandbox", owned)
+    monkeypatch.setattr(controls, "inspect_local_image", lambda image: {"Id": image})
+    command = "/opt/corebench-harness/bin/python3 -I /tmp/corebench-image-probe.py"
+    await controls.probe_image("sha256:" + "b" * 64, command, tmp_path / "pass", script=script)
+    receipt = json.loads((tmp_path / "pass/probe.json").read_text())
+    assert receipt["script_sha256"] == hashlib.sha256(script.encode()).hexdigest()
+    assert receipt["command_sha256"] == hashlib.sha256(command.encode()).hexdigest()
+    (root / manifest[-1]["path"]).write_text("tampered last file")
+    with pytest.raises(ValueError, match="Image probe failed"):
+        await controls.probe_image("sha256:" + "b" * 64, command, tmp_path / "fail", script=script)
+    assert len(executed) == 2
