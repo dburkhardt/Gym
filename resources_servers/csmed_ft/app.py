@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Native Gym verifier; references never enter model messages."""
 
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from fastapi import HTTPException
 from pydantic import ConfigDict
@@ -22,6 +22,7 @@ from resources_servers.csmed_ft.grading import grade
 
 
 class Config(BaseResourcesServerConfig):
+    scoring_protocol: Literal["whole-paper-strict", "creator-chunk-labels"] = "whole-paper-strict"
     REVERIFY_MODE: ClassVar[ReverifyMode] = ReverifyMode.STATELESS
 
 
@@ -42,7 +43,22 @@ class Verifier:
     async def verify(self, body: Request) -> Response:
         import asyncio
 
-        result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
+        if getattr(getattr(self, "config", None), "scoring_protocol", "whole-paper-strict") == "creator-chunk-labels":
+            from benchmarks.csmed_ft.creator_protocol import PROTOCOL, parse_label
+
+            if body.verifier_metadata.get("protocol") != PROTOCOL:
+                raise HTTPException(status_code=422, detail="Creator chunk protocol binding required")
+            prediction = parse_label(body.response.output_text or "")
+            result = {
+                "reward": float(prediction == int(body.verifier_metadata["answer"] == "included")),
+                "diagnostics": {
+                    "prediction": prediction,
+                    "protocol": PROTOCOL,
+                    "metric_scope": "chunk_only_not_paper_accuracy",
+                },
+            }
+        else:
+            result = await asyncio.to_thread(grade, body.response.output_text or "", **body.verifier_metadata)
         return Response(**body.model_dump(), **result)
 
 
@@ -57,6 +73,18 @@ class Server(Verifier, SimpleResourcesServer):
         meta = payload.get("verifier_metadata", {})
         if not isinstance(meta, dict):
             meta = {}
+        if self.config.scoring_protocol == "creator-chunk-labels":
+            from benchmarks.csmed_ft.creator_protocol import PROTOCOL
+
+            if meta.get("protocol") != PROTOCOL or not meta.get("recipe_sha256"):
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "failure_kind": "csmed_ft:protocol_mismatch",
+                        "task_id": meta.get("task_id"),
+                        "dispatch_status": "not_sent",
+                    },
+                )
         # Frozen preparation stores validity rather than separate raw text fields.
         # Do not reconstruct criteria from the rendered prompt or invent replacements.
         if meta.get("input_valid") is not True:

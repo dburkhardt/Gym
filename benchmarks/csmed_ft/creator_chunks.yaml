@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+config_paths:
+- resources_servers/csmed_ft/configs/csmed_ft.yaml
+disable_aggregation: true
+csmed_ft:
+  resources_servers:
+    csmed_ft:
+      scoring_protocol: creator-chunk-labels
+      datasets:
+      - name: csmed_ft_creator_chunks
+        type: benchmark
+        jsonl_fpath: resources_servers/csmed_ft/data/creator_chunks.jsonl
+        prepare_script: benchmarks/csmed_ft/prepare_creator_chunks.py
+        num_repeats: 1

@@ -125,3 +125,56 @@ def test_modern_seed_missing_or_malformed_metadata():
     reply = client.post("/seed_session", json=envelope | {"task_data": {"verifier_metadata": {"input_valid": True}}})
     assert reply.status_code == 200
     assert reply.json()["resources_session_id"] == "resource-1"
+
+
+def test_creator_chunk_protocol_is_explicit_and_parser_differs():
+    from unittest.mock import MagicMock
+
+    from fastapi.testclient import TestClient
+
+    from benchmarks.csmed_ft.creator_protocol import PROTOCOL
+    from nemo_gym.server_utils import ServerClient
+    from resources_servers.csmed_ft.app import Config, Server
+
+    server = Server(
+        config=Config(
+            host="127.0.0.1",
+            port=8080,
+            name="csmed",
+            entrypoint="app.py",
+            domain="knowledge",
+            scoring_protocol="creator-chunk-labels",
+        ),
+        server_client=MagicMock(spec=ServerClient),
+    )
+    client = TestClient(server.setup_webserver())
+    meta = {"input_valid": True, "answer": "included", "task_id": "paper:0"}
+    assert client.post("/seed_session", json={"verifier_metadata": meta}).status_code == 422
+    meta.update(protocol=PROTOCOL, recipe_sha256="fixture")
+    assert client.post("/seed_session", json={"verifier_metadata": meta}).status_code == 200
+    response = {
+        "id": "fixture",
+        "created_at": 0,
+        "object": "response",
+        "status": "completed",
+        "model": "fixture",
+        "output": [
+            {
+                "id": "message",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "yes", "annotations": []}],
+            }
+        ],
+        "parallel_tool_calls": False,
+        "tool_choice": "auto",
+        "tools": [],
+    }
+    result = client.post(
+        "/verify", json={"response": response, "verifier_metadata": meta, "responses_create_params": {"input": []}}
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["reward"] == 1
+    assert result.json()["diagnostics"]["metric_scope"] == "chunk_only_not_paper_accuracy"
+    assert grade("yes", answer="included")["reward"] == 0

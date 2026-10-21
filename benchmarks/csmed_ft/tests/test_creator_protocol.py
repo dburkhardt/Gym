@@ -61,3 +61,98 @@ def test_contract_does_not_accept_unbound_or_invalid_records():
         merge_chunks([ChunkPrediction("1", 1, 0)])
     with pytest.raises(ValueError, match="prediction"):
         merge_chunks([ChunkPrediction(1, 2, 0)])
+
+
+def test_grouped_complete_missing_and_mixed_scope():
+    from benchmarks.csmed_ft.creator_protocol import PROTOCOL
+    from benchmarks.csmed_ft.grouped_report import report
+
+    inputs, outputs = [], []
+    for paper, gold, answers in [(1, "included", ["yes", "unknown"]), (2, "excluded", ["no", "yes"])]:
+        for chunk, answer in enumerate(answers):
+            key = f"{paper}:{chunk}"
+            meta = dict(
+                paper_id=str(paper),
+                review_id="r",
+                uuid=paper,
+                chunk_count=2,
+                paper_chunk_id=chunk,
+                answer=gold,
+                protocol=PROTOCOL,
+                recipe_sha256="bound",
+                generation_protocol={"model": "fixture", "temperature": 0.3, "max_output_tokens": 10},
+            )
+            request = {"input": [{"role": "user", "content": key}], "temperature": 0.3, "max_output_tokens": 10}
+            inputs.append(dict(task_id=key, verifier_metadata=meta, responses_create_params=request))
+            outputs.append(
+                dict(
+                    task_id=key,
+                    verifier_metadata=meta,
+                    responses_create_params=request,
+                    response={
+                        "model": "fixture",
+                        "output": [{"type": "message", "content": [{"type": "output_text", "text": answer}]}],
+                    },
+                )
+            )
+    actual = report(inputs, outputs)
+    creator = creator_function("analyse_results.py", "get_evaluation")
+    # Inject only explicit sklearn symbols required by the extracted pure function.
+    from sklearn import metrics
+
+    creator.__globals__.update(
+        {
+            name: getattr(metrics, name)
+            for name in ["accuracy_score", "precision_score", "recall_score", "f1_score", "fbeta_score"]
+        }
+    )
+    assert actual["metrics"] == creator([1, 0], [1, 0])
+    assert actual["metric_denominator"] == 2
+    altered = copy.deepcopy(outputs)
+    altered[0]["responses_create_params"]["input"][0]["content"] = "altered"
+    with pytest.raises(ValueError, match="prompt"):
+        report(inputs, altered)
+    wrong_model = copy.deepcopy(outputs)
+    wrong_model[0]["response"]["model"] = "another-model"
+    with pytest.raises(ValueError, match="model/settings"):
+        report(inputs, wrong_model)
+    missing = report(inputs, outputs[:-1])
+    assert missing["unresolved_papers"] == 1 and missing["metric_denominator"] == 1
+    masked = copy.deepcopy(outputs)
+    masked[0]["mask_sample"] = True
+    assert report(inputs, masked)["unresolved_papers"] == 1
+    failed = copy.deepcopy(outputs)
+    failed[0]["response"]["status"] = "failed"
+    assert report(inputs, failed)["unresolved_papers"] == 1
+    with pytest.raises(ValueError, match="duplicate"):
+        report(inputs, outputs + outputs[:1])
+    changed = copy.deepcopy(inputs)
+    changed[0]["verifier_metadata"]["recipe_sha256"] = "different"
+    with pytest.raises(ValueError, match="Mixed"):
+        report(changed, outputs)
+
+
+def test_recipe_unknown_refused_and_exact_prompt_construction():
+    from benchmarks.csmed_ft.chunk_preparation import QUESTION, chunk_paper, load_recipe
+
+    with pytest.raises(ValueError, match="Unknown"):
+        load_recipe({"recipe_model": "nemotron-unspecified"})
+    calls = []
+
+    class Splitter:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+        def split_text(self, text):
+            return [text, "second"]
+
+    encoding = SimpleNamespace(encode=lambda text: list(range(9000)))
+    prompts = chunk_paper(
+        dict(review_title="R", review_criteria="C", title="T", abstract="A", main_text="M"),
+        recipe_model="gpt-3.5-turbo-16k",
+        encoding=encoding,
+        splitter=Splitter,
+    )
+    assert calls[0]["chunk_size"] == 8000 and calls[1]["chunk_size"] == 8000
+    assert prompts[0] == QUESTION + "\n\nSystematic review:\nR\nC\n\nCandidate paper:\nT\n\nA\n\nM\n\nAnswer: "
+    assert prompts[1].endswith("\n\nsecond\n\nAnswer: ")
