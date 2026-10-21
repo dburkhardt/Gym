@@ -29,6 +29,14 @@ def publish(path: Path, value: dict):
         os.close(descriptor)
 
 
+def provider_messages(messages: list[dict]) -> list[dict]:
+    """Remove creator response IDs, not scientific content or tool call IDs."""
+    return [
+        {key: value for key, value in message.items() if not (message.get("role") == "assistant" and key == "id")}
+        for message in messages
+    ]
+
+
 @contextmanager
 def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, dispatch_digest: str | None = None):
     from corral.agents import base_agent
@@ -68,6 +76,8 @@ def guarded_agent(endpoint: str, lineage: str, calls: Path, *, client=None, disp
                 raise ValueError("Creator model or endpoint changed")
             if kwargs.get("max_tokens") != 16384 or kwargs.get("temperature") != 1.0:
                 raise ValueError("Creator generation settings changed")
+            if "messages" in kwargs:
+                kwargs["messages"] = provider_messages(kwargs["messages"])
             stem = calls / f"{ordinal:06d}"
             headers = dict(kwargs.pop("extra_headers", {}) or {})
             headers.update(
