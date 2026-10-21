@@ -126,6 +126,24 @@ def bind_execution(
         "provider_dispatch_guard",
     ):
         global_science.pop(key, None)
+    scientific_closure = None
+    if any(
+        "scicode" in value.get("resources_servers", {})
+        for value in config.values()
+        if isinstance(value, dict) and isinstance(value.get("resources_servers", {}), dict)
+    ):
+        from nemo_gym.scicode_restart import qualify_scicode_dependencies
+
+        try:
+            scientific_closure = qualify_scicode_dependencies(Path.cwd(), config)
+            qualified = True
+        except ConfigError as error:
+            if require_prior:
+                raise
+            # Ordinary first runs remain possible, but an unavailable dependency
+            # closure can never authorize a later explicit restart.
+            scientific_closure = {"unsupported": str(error)}
+            qualified = False
     if collector.get("skills") or collector.get("prompt_config"):
         qualified = False
     if require_prior and not qualified:
@@ -150,6 +168,8 @@ def bind_execution(
             }
         ),
     }
+    if scientific_closure is not None:
+        binding["scientific_dependencies"] = scientific_closure
     prior = getattr(tracker, "execution_binding", None)
     if require_prior and (not resume or prior is None):
         raise ConfigError(

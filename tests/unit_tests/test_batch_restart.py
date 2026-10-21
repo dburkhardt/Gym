@@ -231,7 +231,8 @@ async def test_native_collector_rejection_preserves_artifacts_and_dispatches_not
 
 
 @pytest.mark.asyncio
-async def test_native_collector_restart_selects_only_explicit_failure(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scientific", [False, True])
+async def test_native_collector_restart_selects_only_explicit_failure(tmp_path, monkeypatch, scientific):
     fresh = False
     from omegaconf import OmegaConf
 
@@ -272,6 +273,70 @@ async def test_native_collector_restart_selects_only_explicit_failure(tmp_path, 
             "agent": {"responses_api_agents": {"simple_agent": {"entrypoint": "app.py"}}},
         }
     )
+    if scientific:
+        import hashlib
+
+        import nemo_gym.cli.setup_command as setup
+        import nemo_gym.scicode_restart as scientific_restart
+
+        data = tmp_path / "test_data.h5"
+        data.write_bytes(b"fixed scientific test targets")
+        image = "sha256:" + "a" * 64
+        global_config["agent"] = {
+            "responses_api_agents": {
+                "scicode_agent": {
+                    "entrypoint": "app.py",
+                    "model_server": {"name": "model"},
+                    "resources_server": {"name": "science"},
+                    "prompt_fpath": "benchmarks/scicode/prompts/background.yaml",
+                }
+            }
+        }
+        global_config["science"] = {
+            "resources_servers": {
+                "scicode": {
+                    "entrypoint": "app.py",
+                    "sandbox_image": image,
+                    "test_data_fpath": str(data),
+                    "test_data_sha256": hashlib.sha256(data.read_bytes()).hexdigest(),
+                }
+            }
+        }
+        global_config["relay"] = {
+            "environment_servers": {"legacy_agent": {"entrypoint": "app.py", "agent_server": {"name": "agent"}}}
+        }
+        global_config["uv_venv_dir"] = str(tmp_path)
+        fields = {
+            "entrypoint",
+            "openai_model",
+            "model_server",
+            "resources_server",
+            "prompt_fpath",
+            "sandbox_image",
+            "test_data_fpath",
+            "test_data_sha256",
+            "agent_server",
+        }
+        monkeypatch.setattr(setup, "get_venv_path", lambda component, config: component / ".venv")
+        monkeypatch.setattr(
+            scientific_restart,
+            "inspect_component_runtime",
+            lambda *args: {"config_fields": sorted(fields), "packages": [["fixture", "1"]]},
+        )
+        actual_binding = scientific_restart.scicode_dependency_binding
+        image_metadata = {
+            "Id": image,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "RootFS": {"Layers": ["sha256:" + "b" * 64]},
+        }
+        monkeypatch.setattr(
+            scientific_restart,
+            "scicode_dependency_binding",
+            lambda root, agent, resource: actual_binding(
+                root, agent, resource, image_inspector=lambda _: image_metadata
+            ),
+        )
     tracker = BatchStatusTracker(manifest, rows)
     bind_execution(
         tracker,

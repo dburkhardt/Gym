@@ -8,7 +8,16 @@ select a better answer.
 Default guarded resume still skips completed rows and refuses occupied capture
 identities. The explicit path currently supports only inspected built-in
 `simple_agent`, `openai_model`, `mcqa` and `example_single_tool_call` components.
-Harbor/external creator runtimes, skills and external prompt configuration remain
+The exact maintained SciCode graph can also qualify when its native component
+interpreters, prompt/source files, H5 checksum and locally inspected immutable
+Docker image all validate. Missing environments or images fail closed; no setup,
+pull or provisioning occurs. The source binding includes non-Python requirements
+and build files, and component package versions and actual import origins are
+checked; external editable packages are unsupported. This permits an explicit
+new attempt, not restoration of a prior scientific sandbox. SciCode's existing
+scientific validity findings remain unchanged.
+
+Harbor and other external creator runtimes, skills and external prompt configuration remain
 unsupported; their dependency/runtime qualification is not inferred from Python
 source alone. No historical run is retroactively made eligible.
 
