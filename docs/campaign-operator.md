@@ -36,6 +36,8 @@ gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.json
 
 Inspect the emitted `*_dispatch_plan.json` and `*_planned_inputs.jsonl`: exact task IDs, draw IDs, input hashes, role settings, and expected counts must match the frozen selection. `--limit` selects source tasks before repetition; omitting `--num-repeats` preserves dataset defaults. Planning starts no model services but can invoke preparation. Do not combine `--plan-only` with `--no-serve`.
 
+For managed serving, configure the input dataset in the run configuration. The CLI rejects `--input` in that mode; it is for externally served `--no-serve` runs. Check the planned task IDs before dispatch rather than assuming a command copied from another mode selects the same sample.
+
 ## Run and inspect
 
 Before removing `--plan-only`, verify runtime/image availability, actual memory and disk, owned ports, endpoint readiness, full task-plus-cleanup budget, and all prior dispatch identities. Use the existing owned supervisor with an explicit absolute bound; collector admission/drain windows must leave each admitted task its original scientific budget. On qualified Linux hosts, optional `NEMO_GYM_SERVICE_OWNERSHIP_MODE=systemd` scopes apply to new service receipts only.
@@ -45,6 +47,8 @@ gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.json
 ```
 
 Keep native results, failure sidecars, materialized inputs, batch manifest/status, capture ledger, trajectories, and cleanup receipts together. Use the existing [rollout evidence tools](../fern/versions/latest/pages/observability/rollout-evidence.mdx) and benchmark-specific reports. Distinguish raw score from measurement validity, model failure from infrastructure failure, and attempted/scored/unresolved/undispatched counts. Never convert missing or unknown outcomes to zero; retain genuine model-budget zeros. Health and cleanup are separate from scientific scoring.
+
+A run with no scored rows can exit nonzero after recording a definitive provider rejection. Inspect its failure sidecar, capture and batch binding before choosing recovery. A nonzero exit alone neither authorizes a fresh dispatch nor proves that no request was sent.
 
 ```sh
 gym eval health-check /absolute/attempt --rollouts-file results.jsonl --json
