@@ -48,6 +48,7 @@ class RunRequest(BaseRunRequest):
 
 
 class VerifyResponse(BaseVerifyResponse):
+    model_config = ConfigDict(extra="allow")
     artifact_dir: str
     native_metrics: dict
     reward_metric: str = "final_round_inspiration_top3_recall_not_hypothesis_quality"

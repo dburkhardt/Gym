@@ -45,3 +45,25 @@ def test_native_collection_identity_survives_request_validation(metadata, expect
             assert body.capture_rollout_id == value  # Upstream deliberately excludes this routing-only field.
         else:
             assert body.model_dump()[key] == value
+
+
+@pytest.mark.asyncio
+async def test_saved_native_result_preserves_collection_identity(tmp_path):
+    import asyncio
+    from responses_api_agents.moosechem_native.app import RunRequest
+    stub = fixture(tmp_path)
+    tasks = tmp_path / "tasks.jsonl"
+    tasks.write_text(json.dumps({"id":18,"question":"Question","survey":"Survey"})+"\n")
+    stub.config.frozen_tasks = tasks
+    stub._semaphore = asyncio.Semaphore(1)
+    stub.read_result = lambda task: Agent.read_result(stub, task)
+    body = RunRequest.model_validate({
+        "responses_create_params":{"input":[{"role":"user","content":"Question\n\nSurvey"}]},
+        "verifier_metadata":{"id":18},
+        "_ng_task_index":18,"_ng_rollout_index":0,"_ng_attempt_index":1,
+    })
+    result = await Agent.run(stub, None, body)
+    serialized = result.model_dump()
+    for key in ("_ng_task_index", "_ng_rollout_index", "_ng_attempt_index"):
+        assert serialized[key] == body.model_dump()[key]
+    assert result.reward == 0.5
