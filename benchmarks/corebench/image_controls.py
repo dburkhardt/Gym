@@ -100,6 +100,41 @@ def qualification_digest(row):
 
 
 def stage_context(row, medium_root, reference_root, runtime_archive, destination):
+    """Publish a clean checked context; staging locks stay outside COPY trees.
+
+    Uses the shared trusted-parent/cooperating-writer lock convention. Original
+    creator filenames, including legitimate .stage.lock files, are preserved.
+    """
+    import fcntl
+    import os
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    from nemo_gym.dataset_staging import _regular_fd, _sync_parent
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    lock = destination.with_name("." + destination.name + ".stage.lock")
+    with os.fdopen(_regular_fd(lock, os.O_CREAT | os.O_RDWR), "rb+") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        if destination.exists() or destination.is_symlink():
+            raise ValueError("Refusing existing image context")
+        with TemporaryDirectory(dir=destination.parent) as temporary:
+            clean = Path(temporary) / "context"
+            _stage_context_tree(row, medium_root, reference_root, runtime_archive, clean)
+            for path in clean.rglob("*"):
+                if path.is_file() and not path.is_symlink():
+                    with path.open("rb") as handle:
+                        os.fsync(handle.fileno())
+            directories = [clean, *(p for p in clean.rglob("*") if p.is_dir() and not p.is_symlink())]
+            for directory in sorted(directories, key=lambda p: len(p.parts), reverse=True):
+                _sync_parent(directory / ".directory-sync")
+            os.replace(clean, destination)
+            _sync_parent(destination)
+    return destination
+
+
+def _stage_context_tree(row, medium_root, reference_root, runtime_archive, destination):
     """Build context from preserved, checked sources; no Docker/network action."""
     import os
     import tarfile
@@ -115,8 +150,18 @@ def stage_context(row, medium_root, reference_root, runtime_archive, destination
         raise ValueError("Recovered harness runtime hash differs")
     if destination.exists():
         raise ValueError("Refusing existing image context")
-    with TemporaryDirectory() as temporary:
+    with TemporaryDirectory(dir=destination.parent) as temporary:
         temporary = Path(temporary)
+        counter = 0
+
+        def publish_clean(src, dst, *, expected_sha256):
+            nonlocal counter
+            counter += 1
+            staged = temporary / "cache" / str(counter)
+            stage_file(src, staged, expected_sha256=expected_sha256)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(staged, dst)
+
         with tarfile.open(runtime_archive) as archive:
             for member in archive.getmembers():
                 path = Path(member.name)
@@ -131,7 +176,7 @@ def stage_context(row, medium_root, reference_root, runtime_archive, destination
         for f in row["medium_file_manifest"]:
             src = source / f["path"]
             dst = destination / "capsule" / f["path"]
-            stage_file(src, dst, expected_sha256=f["sha256"])
+            publish_clean(src, dst, expected_sha256=f["sha256"])
             dst.chmod(src.stat().st_mode & 0o777)
         for src in (temporary / "python").rglob("*"):
             dst = destination / src.relative_to(temporary)
@@ -139,14 +184,14 @@ def stage_context(row, medium_root, reference_root, runtime_archive, destination
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 dst.symlink_to(os.readlink(src))
             elif src.is_file():
-                stage_file(src, dst, expected_sha256=digest(src))
+                publish_clean(src, dst, expected_sha256=digest(src))
                 dst.chmod(src.stat().st_mode & 0o777)
         if row.get("harness_install_variant"):
             helper = Path(__file__).with_name("harness_install.py")
-            stage_file(helper, destination / "harness_install.py", expected_sha256=digest(helper))
+            publish_clean(helper, destination / "harness_install.py", expected_sha256=digest(helper))
         recipe = temporary / "Dockerfile"
         recipe.write_text(dockerfile(row))
-        stage_file(recipe, destination / "Dockerfile")
+        publish_clean(recipe, destination / "Dockerfile", expected_sha256=digest(recipe))
     return destination
 
 

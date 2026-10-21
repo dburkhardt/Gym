@@ -252,3 +252,34 @@ def test_actual_image_source_check(tmp_path, mutation):
     result = subprocess.run([sys.executable, "-O", "-c", command], capture_output=True, text=True)
     assert (result.returncode == 0) is (mutation is None)
     assert ("image-source-ok" in result.stdout) is (mutation is None)
+
+
+def test_context_excludes_staging_metadata_preserves_creator_lock_filename(tmp_path, monkeypatch):
+    import tarfile
+
+    import benchmarks.corebench.prepare as preparation
+    from benchmarks.corebench.image_controls import stage_context
+
+    medium, refs, row, _, _ = fixture(tmp_path)
+    original_lock = medium / row["id"] / "code/.legitimate.stage.lock"
+    original_lock.write_text("creator data, not a staging artifact")
+    row["medium_file_manifest"].append(
+        {"path": "code/.legitimate.stage.lock", "sha256": hashlib.sha256(original_lock.read_bytes()).hexdigest()}
+    )
+    runtime = tmp_path / "runtime"
+    (runtime / "python/bin").mkdir(parents=True)
+    (runtime / "python/bin/python3").write_text("fixture runtime")
+    archive = tmp_path / "runtime.tar"
+    with tarfile.open(archive, "w") as tar:
+        tar.add(runtime / "python", arcname="python")
+    monkeypatch.setattr(preparation, "RUNTIME_SHA256", hashlib.sha256(archive.read_bytes()).hexdigest())
+    context = stage_context(row, medium, refs, archive, tmp_path / "context")
+    actual = {str(p.relative_to(context / "capsule")) for p in (context / "capsule").rglob("*") if p.is_file()}
+    assert actual == {f["path"] for f in row["medium_file_manifest"]}
+    assert (context / "capsule/code/.legitimate.stage.lock").read_text() == original_lock.read_text()
+    assert {str(p.relative_to(context)) for p in (context / "python").rglob("*") if p.is_file()} == {
+        "python/bin/python3"
+    }
+    assert (tmp_path / ".context.stage.lock").exists()
+    with pytest.raises(ValueError, match="existing"):
+        stage_context(row, medium, refs, archive, context)
