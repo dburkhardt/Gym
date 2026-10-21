@@ -919,3 +919,79 @@ async def test_native_continued_tool_state_loss_refuses_checkpoint(deploy, tmp_p
         assert "missing exported state" in rejected.text
     assert not list((tmp_path / "missing-state").rglob("manifest.json"))
     assert (await deployment.backend_call_count())["calls"] == 0
+
+
+async def test_csv_files_restored_in_fresh_process_after_workspace_loss(deploy, tmp_path):
+    """Scientific arithmetic fixture, not creator benchmark or live inference acceptance."""
+    import shutil
+
+    uninterrupted = deploy("csv")
+    uninterrupted.backend("/_ctl/script", COUNTER_SCRIPT)
+    async with GymHTTP(uninterrupted.url("environment")) as http:
+        baseline = await http.post("/run", json=counter_row("csv-baseline"))
+    assert baseline.status_code == 200 and baseline.json()["reward"] == 1
+    baseline_calls = uninterrupted.backend_calls()
+    baseline_artifacts = {
+        p.name: p.read_bytes() for p in next((uninterrupted.work_dir / "csv-result-artifacts").iterdir()).iterdir()
+    }
+    uninterrupted.stop()
+    shutil.rmtree(uninterrupted.work_dir / "csv-workspaces", ignore_errors=True)
+
+    deployment = deploy("csv")
+    deployment.backend("/_ctl/script", COUNTER_SCRIPT)
+    deployment.backend("/_ctl/hold", {"after_calls": 1})
+    async with GymHTTP(deployment.url("environment")) as http:
+        first = asyncio.create_task(http.post("/run", json=counter_row("csv-restored")))
+        await wait_for_calls(deployment, 2)
+        await checkpoint(deployment, tmp_path / "csv-ckpt", ["csv-restored"])
+        workspaces = deployment.work_dir / "csv-workspaces"
+        selected = list(workspaces.glob("*/selected.json"))
+        assert len(selected) == 1
+        assert json.loads(selected[0].read_text()) == [{"sample": "a", "value": "2"}]
+        old_pids = [deployment.procs[name].pid for name in deployment.dirs]
+        deployment.crash_gym()
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        shutil.rmtree(workspaces)
+        assert not workspaces.exists()
+        deployment.backend("/_ctl/release", {})
+        deployment.start_gym()
+        assert not set(old_pids) & {deployment.procs[name].pid for name in deployment.dirs}
+        participants = await deployment.participants()
+        await coordination.restore(
+            participants,
+            "csv-restore",
+            str(tmp_path / "csv-ckpt"),
+            [EpisodeId(rollout_id="csv-restored", attempt=0)],
+            deadline_ts=deadline(),
+        )
+        await coordination.resume(participants, "csv-restore", deadline_ts=deadline())
+        assert json.loads(next(workspaces.glob("*/selected.json")).read_text()) == [{"sample": "a", "value": "2"}]
+        replacement = await http.post("/run", json=counter_row("csv-restored", attempt=1))
+    assert replacement.status_code == 200, replacement.text
+    assert replacement.json()["reward"] == baseline.json()["reward"] == 1
+    # The next request after restoration is byte-for-byte the same semantic request
+    # as the uninterrupted next turn (no capture metadata in this fixture).
+    restored_calls = deployment.backend_calls()
+    assert restored_calls[2]["request"] == baseline_calls[1]["request"]
+    assert len(restored_calls) == 4  # one deliberately held fixture request, not an external provider
+    retained = list((deployment.work_dir / "csv-result-artifacts").iterdir())
+    assert len(retained) == 2
+    for folder in retained:
+        assert {p.name: p.read_bytes() for p in folder.iterdir()} == baseline_artifacts
+
+    (tmp_path / "csv-recovery-evidence.json").write_text(
+        json.dumps(
+            {
+                "baseline_calls": baseline_calls,
+                "restored_calls": restored_calls,
+                "old_pids": old_pids,
+                "new_pids": [deployment.procs[name].pid for name in deployment.dirs],
+                "baseline_reward": baseline.json()["reward"],
+                "restored_reward": replacement.json()["reward"],
+                "original_workspace_removed": True,
+                "artifacts_equal": True,
+            },
+            indent=2,
+        )
+    )

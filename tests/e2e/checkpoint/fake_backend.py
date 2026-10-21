@@ -177,7 +177,13 @@ async def chat(request: Request) -> dict:
     messages = body["messages"]
     index = len(STATE["calls"])
     admission_payload = body.get("ng_capture")
-    call = {"index": index, "n_messages": len(messages), "admission": admission_payload, "t": time.time()}
+    call = {
+        "index": index,
+        "n_messages": len(messages),
+        "admission": admission_payload,
+        "request": body,
+        "t": time.time(),
+    }
     STATE["calls"].append(call)
     rollout_id = (admission_payload or {}).get("rollout_id")
     rollout_index = STATE["rollout_calls"][rollout_id]

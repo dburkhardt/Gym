@@ -240,7 +240,20 @@ class Deployment:
                 checkpoint_generation_cuts=generation_cuts,
             ),
         )
-        if self.topology in ("counter", "counter_missing_state"):
+        if self.topology == "csv":
+            add(
+                "resources",
+                str(HERE / "csv_state_server"),
+                _server(
+                    "resources_servers",
+                    "example_session_state_mgmt",
+                    domain="agent",
+                    verified=False,
+                    description="CSV fixture",
+                    workspace_root=str(self.work_dir / "csv-workspaces"),
+                ),
+            )
+        elif self.topology in ("counter", "counter_missing_state"):
             resources = _server(
                 "resources_servers",
                 "example_session_state_mgmt",
@@ -316,7 +329,7 @@ class Deployment:
                     cleanup_timeout_seconds=30,
                 ),
             )
-        if self.topology in ("legacy", "counter", "counter_missing_state"):
+        if self.topology in ("legacy", "counter", "counter_missing_state", "csv"):
             environment = _server(
                 "environment_servers", "legacy_agent", agent_server=_ref("responses_api_agents", "agent")
             )
