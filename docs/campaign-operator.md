@@ -1,5 +1,7 @@
 # Campaign operator quickstart
 
+For the short command sequence, start with [Run a campaign benchmark](campaign-quickstart.md). This page supplies the detailed operating and recovery reference.
+
 Run from the selected fork checkout with its installed `gym` CLI and qualified Python environment. This is an operating guide, not authorization to spend, dispatch inference, or replace the campaign's frozen 63-candidate scope. Registration, a successful plan, and scientific acceptance are separate gates.
 
 ## Discover and prepare
