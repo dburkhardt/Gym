@@ -62,7 +62,7 @@ def spec(
         raise ValueError("Unknown phase")
     volumes = [f"{root.resolve()}:/assets:ro", f"{output.resolve()}:/output", f"{CONTROLLER}:/controller:ro"]
     env = {
-        "PYTHONPATH": "/assets/src:/controller",
+        "PYTHONPATH": "/assets/src:/controller:/shared",
         "PYTHONDONTWRITEBYTECODE": "1",
         "HF_HUB_OFFLINE": "1",
         "HF_DATASETS_OFFLINE": "1",
@@ -77,7 +77,7 @@ def spec(
         volumes += [
             f"{request.resolve()}:/request.json:ro",
             f"{socket_dir}:/model-socket:ro",
-            f"{transport}:/controller/guarded_chat_transport.py:ro",
+            f"{transport}:/shared/guarded_chat_transport.py:ro",
         ]
         env.update(
             OPENAI_API_KEY="task-local-placeholder", OPENAI_BASE_URL="http://gym-internal/v1", FLYAOC_TOKEN=token
