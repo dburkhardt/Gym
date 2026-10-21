@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import nullcontext
+from hashlib import sha256
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -173,6 +175,7 @@ class LabbenchVLMResourcesServer(SimpleResourcesServer):
             prompt_template=self._judge_prompt_protocol if is_protocol else self._judge_prompt,
             include_reference_passage=is_protocol,
             reference_passage=reference_passage,
+            verification_id=body.verification_id,
         )
         reward = 1.0 if is_equal else 0.0
         return LabbenchVLMVerifyResponse(
@@ -190,6 +193,7 @@ class LabbenchVLMResourcesServer(SimpleResourcesServer):
         prompt_template: str,
         include_reference_passage: bool = False,
         reference_passage: str = "",
+        verification_id: str | None = None,
     ) -> tuple[bool, JudgeEvaluation]:
         cfg = self.config
         if include_reference_passage:
@@ -217,6 +221,17 @@ class LabbenchVLMResourcesServer(SimpleResourcesServer):
                     url_path="/v1/responses",
                     json=params,
                     response_model=NeMoGymResponse,
+                    verification_id=verification_id,
+                    call_id="answer-equivalence",
+                    scorer_identity={
+                        "protocol": "labbench2-vlm-equivalence-v1",
+                        "verifier_sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+                        "rubric_sha256": sha256(prompt_template.encode("utf-8")).hexdigest(),
+                        "include_reference_passage": include_reference_passage,
+                        "equal_label": cfg.judge_equal_label,
+                        "not_equal_label": cfg.judge_not_equal_label,
+                        "generation": params.model_dump(mode="json", exclude={"input"}),
+                    },
                 )
             except JudgeError as e:
                 print(f"[labbench2_vlm] judge HTTP error: {e}", flush=True)

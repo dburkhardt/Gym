@@ -676,3 +676,32 @@ class TestPdfTextExtraction:
 
         out = _files_to_text(d)
         assert "Alpha" in out and "Beta" in out
+
+
+async def test_guarded_judge_identity(server):
+    import pytest
+
+    from nemo_gym.judge import JudgeError
+
+    server.server_client.global_config_dict = {"provider_dispatch_guard": True}
+    _mock_judge(server, "[[A=B]]")
+    req = _verify_request(question="q", ideal="3.5", vlm_answer="3.50")
+    with pytest.raises(JudgeError, match="persisted verification_id"):
+        await server.verify(req)
+    server.server_client.post.assert_not_called()
+    req.verification_id = "attempt-a"
+    result = await server.verify(req)
+    assert result.reward == 1
+    first = server.server_client.post.call_args.kwargs
+    await server.verify(req)
+    assert server.server_client.post.call_args.kwargs["headers"] == first["headers"]
+    req.verification_id = "attempt-b"
+    await server.verify(req)
+    second = server.server_client.post.call_args.kwargs
+    assert second["headers"]["x-nemo-gym-logical-call-id"] != first["headers"]["x-nemo-gym-logical-call-id"]
+    server._judge_prompt += "\nAdditional rubric instruction."
+    await server.verify(req)
+    assert (
+        server.server_client.post.call_args.kwargs["headers"]["x-nemo-gym-call-config-sha256"]
+        != second["headers"]["x-nemo-gym-call-config-sha256"]
+    )
