@@ -55,7 +55,8 @@ class AIRSVerifier(BaseVerifier):
         before = hashlib.sha256(prediction.read_bytes()).hexdigest()
         identity = scorer_identity(task) | {
             "task_id": name,
-            "image": task["image"],
+            "image": self.task.config.environment.docker_image,
+            "historical_manifest_image": task["image"],
             "prediction_sha256": before,
             "new_model_calls": 0,
             "metric_lower_is_better": True,

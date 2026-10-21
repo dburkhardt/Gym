@@ -24,7 +24,10 @@ def setup_verifier(tmp_path, monkeypatch):
     instance = module.AIRSVerifier(
         source_roots_json=json.dumps({"task": str(source)}),
         task=SimpleNamespace(
-            config=SimpleNamespace(verifier=SimpleNamespace(environment_mode="separate")),
+            config=SimpleNamespace(
+                verifier=SimpleNamespace(environment_mode="separate"),
+                environment=SimpleNamespace(docker_image="sha256:fixed"),
+            ),
             paths=SimpleNamespace(task_dir=Path("task")),
         ),
         trial_paths=SimpleNamespace(verifier_dir=output, artifacts_dir=artifacts),
