@@ -153,14 +153,14 @@ class ScicodeResourcesServer(SimpleResourcesServer):
 
         async def _run_substep(i: int) -> Optional[bool]:
             sub_step = body.sub_steps[i]
+            code = solutions[f"{body.problem_id}.{i + 1}"]
+            if not code or code == _OUT_OF_CONTEXT:
+                return False
             review = review_substep(sub_step, data_sha256=self.config.test_data_sha256)
             if review is not None:
                 validity[i] = {"step_number": sub_step["step_number"], **review}
                 execution_details[i] = validity[i]
                 return None
-            code = solutions[f"{body.problem_id}.{i + 1}"]
-            if not code or code == _OUT_OF_CONTEXT:
-                return False
             sanitized = [sanitize_test(tc) for tc in sub_step["test_cases"]]
             program = build_test_program(code, "/data/test_data.h5", sub_step["step_number"], sanitized)
             async with self._semaphore:

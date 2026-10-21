@@ -259,12 +259,13 @@ async def test_infrastructure_failure_settles_sibling_cleanup():
     assert cleaned.is_set()
 
 
-async def test_known_shape_conflict_is_masked_without_execution(tmp_path):
+@pytest.mark.parametrize("candidate", ["pass", "", "_ran_out_of_context_"])
+async def test_known_shape_conflict_is_masked_without_execution(tmp_path, candidate):
     import json
     from pathlib import Path
 
     step = json.loads((Path(__file__).parent / "fixtures/step79_4.json").read_text())
-    body = _request({"79.1": "pass", "79.4": "pass"})
+    body = _request({"79.1": "pass", "79.4": candidate})
     body.problem_id = "79"
     body.sub_steps = [{"step_number": f"79.{i}", "test_cases": ["assert True"]} for i in range(1, 4)] + [step]
     server = _server()
@@ -275,7 +276,15 @@ async def test_known_shape_conflict_is_masked_without_execution(tmp_path):
     ):
         result = await server.verify(body)
     assert execute.await_count == 1
+    if candidate != "pass":
+        assert result.step_results == [True, False]
+        assert not result.mask_sample
+        assert result.reward == 0.0 and result.subtask_accuracy == 0.5
+        assert result.measurement_validity == []
+        assert result.num_steps_total == 2
+        return
     assert result.step_results == [True, None]
+    assert [x["step_number"] for x in result.step_execution] == ["79.1", "79.4"]
     assert result.mask_sample and result.failure_kind == "scicode:reference_shape_conflict"
     assert result.problem_accuracy is None and result.subtask_accuracy is None
     assert result.num_steps_total == 2 and result.num_steps_passed == 1
