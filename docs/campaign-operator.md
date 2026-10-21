@@ -60,6 +60,14 @@ gym eval health-check /absolute/attempt --rollouts-file results.jsonl --json
 
 A dead coordinator or absent listener does not prove provider settlement or complete cleanup. Reconcile exact owned service identities; never kill processes by name or port. For quota handling, use the reviewed [shared overlays](../configs/eval/README.md): one-attempt peer settlement is distinct from explicitly versioned rejected-only retries. Cooldown does not extend scientific deadlines or establish provider capacity.
 
+## Resolve admission budgets from the actual workflow
+
+For supported Harbor jobs, set `harbor_admission_finalization_allowance_s` and an explicit `drain_margin_s`. The [phase-budget check](../responses_api_agents/harbor_agent/README.md#optional-declared-phase-budget-admission) resolves the downloaded task and installed agent before execution. Inspect `gym-phase-budget.json`: environment startup, agent setup, agent execution and verification all count, including a second environment startup for separate verification. Do not size the drain from the solver timeout alone. The declared phases plus operational allowance must fit the drain; service shutdown and supervisor cleanup need their own space. This is a check on declared budgets, not a guarantee that artifact transfer or other operational I/O will finish within the allowance.
+
+For each model role, `upstream_admission_timeout_seconds` optionally bounds cumulative queue waiting separately from `upstream_request_timeout_seconds`. See the [model-server queue policy](../responses_api_models/openai_model/README.md#optional-cumulative-queue-allowance). A solver followed by a judge needs allowance for both roles. Queue expiry is an infrastructure disposition, and a successful solver response followed by a rejected judge request is still unscored. Preserve that solver output; generic reverification can call the judge again and is not a zero-inference replay.
+
+Read a supervisor receipt's child `return_code`, not only the supervisor command's exit status. Successful cleanup can coexist with a failed child evaluation. Confirm scored, failed, unstarted and unresolved counts from the native records before calling the attempt successful.
+
 ## Harbor cancellation and retry ownership
 
 For guarded Harbor calls, the agent submits once; the model server owns the configured physical retry policy and shared cooldown. A one-attempt model policy must not be multiplied by an outer agent retry. Preserve rejected calls as unscored infrastructure outcomes and unknown calls as unresolved; neither becomes an automatic new attempt.
