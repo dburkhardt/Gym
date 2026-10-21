@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -57,3 +58,37 @@ def test_container_absence_refuses_unproven(code, message):
 
     with pytest.raises(RuntimeError):
         control.require_container_absence("exact-owned", SimpleNamespace(returncode=code, stderr=message))
+
+
+@pytest.fixture
+def planned_rows():
+    return [
+        {"task_source": "moljson_resources", "uuid": "mol-id", "task_id": "mol-id", "_ng_task_index": 0},
+        {"task_source": "scicode_benchmark_agent", "uuid": "20", "task_id": "20", "_ng_task_index": 1},
+    ]
+
+
+def test_reads_plan_only_artifact_not_execution_file(tmp_path, planned_rows):
+    output = tmp_path / "results.jsonl"
+    (tmp_path / "results_planned_inputs.jsonl").write_text("".join(json.dumps(row) + "\n" for row in planned_rows))
+    (tmp_path / "results_materialized_inputs.jsonl").write_text("invalid execution artifact")
+    assert control.read_planned_inputs(output, "mol-id") == planned_rows
+
+
+@pytest.mark.parametrize("mutation", ["reversed", "missing", "identity", "indices", "nonobject", "malformed"])
+def test_plan_rejects_malformed_or_crosswired(tmp_path, planned_rows, mutation):
+    rows = planned_rows
+    if mutation == "reversed":
+        rows.reverse()
+    elif mutation == "missing":
+        rows.pop()
+    elif mutation == "identity":
+        rows[0]["task_id"] = "other"
+    elif mutation == "indices":
+        rows[1]["_ng_task_index"] = 0
+    elif mutation == "nonobject":
+        rows[1] = []
+    content = "{" if mutation == "malformed" else "".join(json.dumps(row) + "\n" for row in rows)
+    (tmp_path / "results_planned_inputs.jsonl").write_text(content)
+    with pytest.raises(ValueError):
+        control.read_planned_inputs(tmp_path / "results.jsonl", "mol-id")

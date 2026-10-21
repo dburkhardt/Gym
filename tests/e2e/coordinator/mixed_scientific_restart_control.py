@@ -53,6 +53,21 @@ def require_container_absence(name, probe):
         raise RuntimeError("Scientific container absence not established")
 
 
+def read_planned_inputs(output, moljson_uuid):
+    """Read eval run --plan-only's artifact, not execution materialized inputs."""
+    path = output.with_stem(output.stem + "_planned_inputs").with_suffix(".jsonl")
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    if len(rows) != 2 or not all(isinstance(row, dict) for row in rows):
+        raise ValueError("Expected exactly two planned task objects")
+    if [row.get("task_source") for row in rows] != ["moljson_resources", "scicode_benchmark_agent"]:
+        raise ValueError("Unexpected planned route order")
+    if rows[0].get("uuid") != moljson_uuid or rows[0].get("task_id") != moljson_uuid or rows[1].get("task_id") != "20":
+        raise ValueError("Unexpected planned task identity")
+    if [row.get("_ng_task_index") for row in rows] != [0, 1]:
+        raise ValueError("Unexpected planned task indices")
+    return rows
+
+
 def remaining(deadline):
     value = deadline - time.monotonic()
     if value <= 0:
@@ -272,11 +287,7 @@ async def main():
     try:
         await run("plan", ["--plan-only"])
         assert not calls
-        from nemo_gym.path_utils import materialized_path_for
-
-        planned = [json.loads(line) for line in materialized_path_for(R / "results.jsonl").read_text().splitlines()]
-        assert [x["task_source"] for x in planned] == ["moljson_resources", "scicode_benchmark_agent"]
-        assert planned[0]["uuid"] == molrow[0]["uuid"] and str(planned[1]["task_id"]) == "20"
+        read_planned_inputs(R / "results.jsonl", molrow[0]["uuid"])
 
         # rollout_collection's zero-results guard raises only when no rollout succeeded.
         # The accepted pure SciCode control exits 1 there; this mixed prefix makes exit 0 correct.
