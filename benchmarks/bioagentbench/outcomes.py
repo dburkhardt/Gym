@@ -27,7 +27,12 @@ def disposition(trace: dict) -> dict:
         and not trace.get("errors")
         and bool(trace.get("timing", {}).get("scoring", {}).get("end"))
     )
+    metrics = trace.get("info", {}).get("gym_giab_benchmark_metrics")
+    unresolved = isinstance(metrics, dict) and metrics.get("status") == "hap.py_failed"
+    if unresolved:
+        scored = False
     return {
+        "native_benchmark_metrics": metrics,
         "count_as_attempted": True,
         "scientific_reward": reward if scored else None,
         "measurement_available": scored,
@@ -35,7 +40,9 @@ def disposition(trace: dict) -> dict:
         "native_stop_condition": trace.get("stop_condition"),
         "native_errors": trace.get("errors", []),
         "raw_native_reward": reward,
-        "disposition": ("upstream_scored_budget_outcome" if budget else "upstream_scored_outcome")
+        "disposition": "verifier_execution_failure_cause_unresolved"
+        if unresolved
+        else ("upstream_scored_budget_outcome" if budget else "upstream_scored_outcome")
         if scored
         else ("unscored_model_or_agent_budget_outcome" if budget else "unscored_native_failure_requires_review"),
     }

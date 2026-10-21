@@ -17,6 +17,32 @@ from benchmarks.bioagentbench.child_runtime import runtime_class
 _OWNER = threading.Lock()
 
 
+class GiabMetricCapture:
+    """Observe the pinned scorer result without changing its return or exception."""
+
+    def __init__(self, original):
+        self.original = original
+        self.result = None
+        self.called = False
+
+    async def __call__(self, task_id, artifact_dir, source_dir):
+        if task_id != "giab" or self.called:
+            raise ValueError("GIAB metric capture requires one admitted GIAB rollout")
+        self.called = True
+        result = await self.original(task_id, artifact_dir, source_dir)
+        self.result = json.loads(json.dumps(result))
+        return result
+
+    def attach(self, traces):
+        if len(traces) != 1:
+            raise ValueError("GIAB metric capture requires exactly one native trace")
+        if self.result is not None:
+            info = traces[0].setdefault("info", {})
+            if "gym_giab_benchmark_metrics" in info:
+                raise ValueError("Reserved GIAB metric observation already exists")
+            info["gym_giab_benchmark_metrics"] = self.result
+
+
 @asynccontextmanager
 async def parent_interception(packet, endpoint, secret):
     async with httpx.AsyncClient(
@@ -51,6 +77,7 @@ async def relay_port(runtime) -> int:
 
 async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
     """Delegate one frozen task to native Environment/run_eval; never native resume."""
+    import bioagent_taskset.taskset as creator_taskset
     import verifiers.v1 as vf
     import verifiers.v1.runtimes as runtimes
     from bioagent_opencode.harness import OpenCodeHarness
@@ -104,6 +131,8 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
 
     original = (runtimes.DockerRuntime, clients.EvalClient, judge.build_async_openai, OpenCodeHarness.launch)
     original_launch = OpenCodeHarness.launch
+    original_metrics = creator_taskset.benchmark_metrics
+    metric_capture = GiabMetricCapture(original_metrics) if packet["task_id"] == "giab" else None
 
     async def launch(self, ctx, trace, runtime, endpoint, secret, mcp_urls):
         if mcp_urls:
@@ -127,6 +156,8 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
     if not _OWNER.acquire(blocking=False):
         raise RuntimeError("Native creator module patches already owned by another invocation")
     try:
+        if metric_capture is not None:
+            creator_taskset.benchmark_metrics = metric_capture
         runtimes.DockerRuntime = Managed
         clients.EvalClient = GuardedEvalClient
         judge.build_async_openai = sdk
@@ -137,9 +168,12 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
         )
         traces = await runner.run_eval(vf.Environment(resolved), resolved)
         result = [trace.model_dump(mode="json") for trace in traces]
+        if metric_capture is not None:
+            metric_capture.attach(result)
         (output / "traces.json").write_text(json.dumps(result, indent=2))
         return result
     finally:
+        creator_taskset.benchmark_metrics = original_metrics
         runtimes.DockerRuntime, clients.EvalClient, judge.build_async_openai, OpenCodeHarness.launch = original
         try:
             await transport.aclose()

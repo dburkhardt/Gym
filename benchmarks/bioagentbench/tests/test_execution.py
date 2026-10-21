@@ -11,18 +11,26 @@ from benchmarks.bioagentbench import creator_execution as execution
 
 
 @pytest.mark.asyncio
-async def test_native_environment_configuration_and_restoration(tmp_path, monkeypatch):
+@pytest.mark.parametrize("task_id", ["cystic-fibrosis", "giab"])
+async def test_native_environment_configuration_and_restoration(tmp_path, monkeypatch, task_id):
+    import bioagent_taskset.taskset as creator
     import verifiers.v1.runtimes as runtimes
     from bioagent_opencode.harness import OpenCodeHarness
     from verifiers.v1 import judge
     from verifiers.v1.cli.eval import runner
 
-    source = tmp_path / "assets" / "cystic-fibrosis"
+    source = tmp_path / "assets" / task_id
     (source / "data").mkdir(parents=True)
     metadata = tmp_path / "metadata.json"
     metadata.write_text("[]")
     original = (runtimes.DockerRuntime, judge.build_async_openai, OpenCodeHarness.launch)
     observed = []
+    raw_metrics = {"status": "hap.py_failed", "f1_score": 0.0, "exit_code": 255}
+
+    async def scorer(*args):
+        return raw_metrics
+
+    monkeypatch.setattr(creator, "benchmark_metrics", scorer)
 
     async def run(env, config):
         observed.append(config.model_dump(mode="json"))
@@ -30,6 +38,13 @@ async def test_native_environment_configuration_and_restoration(tmp_path, monkey
         client = judge.build_async_openai(config.taskset.task.judge)
         assert client.max_retries == 0
         await client.close()
+        if task_id == "giab":
+            from types import SimpleNamespace
+
+            assert creator.benchmark_metrics is not scorer
+            assert await creator.benchmark_metrics("giab", source, source) is raw_metrics
+            return [SimpleNamespace(model_dump=lambda **kwargs: {"info": {}, "rewards": {"results_match": 0.0}})]
+        assert creator.benchmark_metrics is scorer
         raise RuntimeError("controlled native pre-dispatch stop")
 
     monkeypatch.setattr(runner, "run_eval", run)
@@ -41,7 +56,7 @@ async def test_native_environment_configuration_and_restoration(tmp_path, monkey
             "id": "bioagent-taskset",
             "metadata_path": str(metadata),
             "data_root": str(source.parent),
-            "task_id": "cystic-fibrosis",
+            "task_id": task_id,
             "staging": "local",
             "include_reference": True,
             "task": {"judge": {"model": "model"}},
@@ -53,7 +68,7 @@ async def test_native_environment_configuration_and_restoration(tmp_path, monkey
         },
     }
     packet = {
-        "task_id": "cystic-fibrosis",
+        "task_id": task_id,
         "image": "sha256:" + "a" * 64,
         "endpoint": "http://local/ng-rollout/one/v1",
         "lineage": "one",
@@ -66,8 +81,14 @@ async def test_native_environment_configuration_and_restoration(tmp_path, monkey
         "runtime_config": {},
     }
     (tmp_path / "run").mkdir()
-    with pytest.raises(RuntimeError, match="controlled native"):
-        await execution.run_native(config=config, packet=packet, output=tmp_path / "run")
+    if task_id == "giab":
+        result = await execution.run_native(config=config, packet=packet, output=tmp_path / "run")
+        assert result[0]["info"]["gym_giab_benchmark_metrics"] == raw_metrics
+        assert result[0]["rewards"]["results_match"] == 0
+    else:
+        with pytest.raises(RuntimeError, match="controlled native"):
+            await execution.run_native(config=config, packet=packet, output=tmp_path / "run")
+    assert creator.benchmark_metrics is scorer
     assert (runtimes.DockerRuntime, judge.build_async_openai, OpenCodeHarness.launch) == original
     assert observed and not (tmp_path / "run/calls").exists()
 
