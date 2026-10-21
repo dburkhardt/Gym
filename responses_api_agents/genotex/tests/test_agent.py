@@ -25,6 +25,7 @@ def response(output):
 
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "get_global_config_dict", lambda: {})
     paths = {
         name: tmp_path / "runs" / "shared" / name
         for name in ["public", "prediction", "reference", "grading", "workspace"]
@@ -125,43 +126,55 @@ def test_shell_tool_matches_gym_request_schema():
 
 
 @pytest.mark.asyncio
-async def test_container_checks_writes_and_uses_host_uid(tmp_path, monkeypatch):
+async def test_container_shared_spec_and_scoped_cleanup(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
     from responses_api_agents.genotex import runtime
 
-    calls = AsyncMock(return_value=(0, ""))
-    monkeypatch.setattr(runtime, "command", calls)
-    container = runtime.Container(
-        image="test", paths={"public": tmp_path, "prediction": tmp_path, "workspace": tmp_path}, cpus=1, memory_gb=1
-    )
+    seen = {}
+    sandbox = AsyncMock()
+    sandbox.serialize.return_value = {"sandbox_id": "owned-fixture"}
+    sandbox.exec.return_value = SimpleNamespace(return_code=0, stdout="", stderr="", error_type=None)
+
+    def factory(config, spec):
+        seen.update(config=config, spec=spec)
+        return sandbox
+
+    monkeypatch.setattr(runtime, "AsyncSandbox", factory)
+    paths = {name: tmp_path / name for name in ("public", "prediction", "workspace")}
+    for path in paths.values():
+        path.mkdir()
+    container = runtime.Container(image="fixture", paths=paths, cpus=4, memory_gb=16, ttl_s=100)
     await container.start()
-    args = calls.call_args_list[0].args
-    assert args[args.index("--user") + 1] == f"{runtime.os.getuid()}:{runtime.os.getgid()}"
-    assert "/output/.write-check" in calls.call_args_list[1].args[-1]
-    assert "/work/.write-check" in calls.call_args_list[1].args[-1]
+    await container.stop()
+    await container.stop()
+    spec = seen["spec"]
+    assert spec.resources.memory_mib == 16384 and spec.ttl_s == 280
+    assert seen["config"]["docker"]["create"]["network"] == "none"
+    assert all("reference" not in v and "grading" not in v for v in spec.provider_options["volumes"])
+    assert spec.provider_options["run_args"] == ["--user", f"{runtime.os.getuid()}:{runtime.os.getgid()}"]
+    assert "/output/.write-check" in sandbox.exec.call_args.args[0]
+    sandbox.stop.assert_awaited_once()
+    assert json.loads((tmp_path / "sandbox-lifecycle.json").read_text())["cleanup_confirmed"]
 
 
 @pytest.mark.asyncio
 async def test_unwritable_container_is_stopped_before_inference(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
     from responses_api_agents.genotex import runtime
 
-    calls = AsyncMock(side_effect=[(0, ""), (1, "permission denied"), (0, "")])
-    monkeypatch.setattr(runtime, "command", calls)
-    container = runtime.Container(
-        image="test", paths={"public": tmp_path, "prediction": tmp_path, "workspace": tmp_path}, cpus=1, memory_gb=1
-    )
+    sandbox = AsyncMock()
+    sandbox.serialize.return_value = {"sandbox_id": "owned"}
+    sandbox.exec.return_value = SimpleNamespace(return_code=1, stdout="denied", stderr="", error_type=None)
+    monkeypatch.setattr(runtime, "AsyncSandbox", lambda *a: sandbox)
+    paths = {name: tmp_path / name for name in ("public", "prediction", "workspace")}
+    for path in paths.values():
+        path.mkdir()
+    container = runtime.Container(image="fixture", paths=paths, cpus=4, memory_gb=16)
     with pytest.raises(RuntimeError, match="not writable"):
         await container.start()
-    assert calls.call_args_list[-1].args[:3] == ("docker", "rm", "--force")
-
-
-@pytest.mark.asyncio
-async def test_cleanup_failure_is_reported(tmp_path, monkeypatch):
-    from responses_api_agents.genotex import runtime
-
-    monkeypatch.setattr(runtime, "command", AsyncMock(return_value=(1, "daemon unavailable")))
-    container = runtime.Container(image="test", paths={}, cpus=1, memory_gb=1)
-    with pytest.raises(RuntimeError, match="cleanup failed"):
-        await container.stop()
+    sandbox.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -256,3 +269,86 @@ def test_checkpoint_refuses_uncertain_tool_and_exhausted_budget(tmp_path):
         remaining_budget(state, timeout_s=10, max_steps=80)
     with pytest.raises(ValueError, match="budget exhausted"):
         remaining_budget(state, timeout_s=7200, max_steps=2)
+
+
+@pytest.mark.asyncio
+async def test_guarded_call_binds_action_and_rejects_changed_image_resume(setup, monkeypatch):
+    from pathlib import Path
+
+    agent, body, client, container, scorer = setup
+    monkeypatch.setattr(app, "get_global_config_dict", lambda: {"provider_dispatch_guard": True})
+    client.post.return_value = response([])
+    result = await agent.run(body)
+    assert not result.mask_sample
+    kwargs = client.post.call_args.kwargs
+    assert kwargs["headers"]["x-nemo-gym-logical-call-id"].startswith("genotex:")
+    assert kwargs["_max_num_tries"] == 1 and kwargs["_resend_after_disconnect"] is False
+    state = json.loads((Path(result.artifact_dir) / "checkpoint.json").read_text())
+    assert state["guard_config_sha256"] == kwargs["headers"]["x-nemo-gym-call-config-sha256"]
+    resumed = body.model_copy(deep=True)
+    resumed.verifier_metadata["resume_checkpoint"] = str(Path(result.artifact_dir) / "checkpoint.json")
+    container.inspect.return_value = {"image_id": "changed-image"}
+    client.reset_mock()
+    scorer.reset_mock()
+    refusal = await agent.run(resumed)
+    assert refusal.mask_sample and "matching recorded runtime" in refusal.failure_reason
+    client.post.assert_not_awaited()
+    scorer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_guarded_unknown_cannot_be_cleared_by_caller_assertion(setup, monkeypatch):
+    from pathlib import Path
+
+    agent, body, client, container, scorer = setup
+    monkeypatch.setattr(app, "get_global_config_dict", lambda: {"provider_dispatch_guard": True})
+    client.post.side_effect = RuntimeError("unknown provider outcome")
+    result = await agent.run(body)
+    checkpoint = Path(result.artifact_dir) / "checkpoint.json"
+    state = json.loads(checkpoint.read_text())
+    resumed = body.model_copy(deep=True)
+    resumed.verifier_metadata.update(
+        resume_checkpoint=str(checkpoint),
+        resume_resolution={
+            "action_id": state["pending"]["action_id"],
+            "outcome": "not_forwarded",
+            "checkpoint": str(checkpoint),
+        },
+    )
+    client.reset_mock()
+    refusal = await agent.run(resumed)
+    assert refusal.mask_sample and "caller assertion is insufficient" in refusal.failure_reason
+    client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_shared_command_timeout_reaps_real_scientific_child(tmp_path):
+    import os
+    import sys
+
+    from responses_api_agents.genotex import runtime
+
+    marker = tmp_path / "pid"
+    script = f"import os,time;open({str(marker)!r},'w').write(str(os.getpid()));time.sleep(30)"
+    with pytest.raises(TimeoutError, match="process group settled"):
+        await runtime.command(sys.executable, "-c", script, timeout=1)
+    pid = int(marker.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+@pytest.mark.asyncio
+async def test_grader_timeout_is_failure_without_second_scoring_attempt(tmp_path, monkeypatch):
+    from responses_api_agents.genotex import runtime
+
+    calls = AsyncMock(side_effect=TimeoutError("deadline"))
+    monkeypatch.setattr(runtime, "command", calls)
+    with pytest.raises(RuntimeError, match="no automatic regrade"):
+        await runtime.score(
+            data_root=tmp_path,
+            run_root=tmp_path,
+            paths={k: tmp_path for k in ("grading", "prediction", "reference")},
+            task={"trait": "fixture", "condition": None},
+            python="python3",
+        )
+    calls.assert_awaited_once()

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
@@ -70,7 +71,19 @@ if __name__ == "__main__":
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--trait", required=True)
     parser.add_argument("--condition", default="None")
+    parser.add_argument("--identity", type=Path)
     args = parser.parse_args()
+    if args.identity:
+        paths = [Path(__file__).resolve(), args.upstream.resolve() / "eval.py", Path(sys.executable).resolve()]
+        args.identity.write_text(
+            json.dumps(
+                {
+                    "files": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
+                    "python_version": sys.version,
+                },
+                indent=2,
+            )
+        )
     result = grade(
         args.upstream.resolve(),
         args.staging.resolve(),

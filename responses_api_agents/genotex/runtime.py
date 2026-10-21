@@ -4,12 +4,19 @@
 
 from __future__ import annotations
 
-import asyncio
+import hashlib
+import inspect
 import json
 import os
+import shlex
 import shutil
 import uuid
 from pathlib import Path
+
+from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
+from nemo_gym.sandbox.lifecycle import _owned_sandbox
+from nemo_gym.sandbox.providers.local.provider import LocalProvider
+from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
 
 SHELL_TOOL = {
@@ -27,17 +34,47 @@ SHELL_TOOL = {
 
 
 async def command(*args: str, timeout: int = 300) -> tuple[int, str]:
-    """Execute an argument vector, terminating the child on timeout."""
-    process = await asyncio.create_subprocess_exec(
-        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
-    )
+    """Execute trusted control/scorer code with shared process-group settlement."""
+    provider = LocalProvider(concurrency=1)
+    async with scoring_workspace(provider) as handle:
+        result = await provider.exec(handle, shlex.join(args) + " 2>&1", timeout_s=timeout)
+    if result.error_type == "timeout":
+        raise TimeoutError(f"Native command exceeded {timeout}s; process group settled")
+    return result.return_code, (result.stdout or "") + (result.stderr or "")
+
+
+async def execution_identity(*, image: dict, grader_python: str, data_root: Path) -> dict:
+    """Bind resumes to the actual container image and selected implementation files."""
+    root = Path(__file__).resolve().parent
+    files = [root / name for name in ("app.py", "runtime.py", "grade.py", "checkpoint.py")]
+    files += [
+        Path(inspect.getfile(inspect.unwrap(obj))).resolve()
+        for obj in (AsyncSandbox, LocalProvider, _owned_sandbox, scoring_workspace)
+    ]
+    interpreter = Path(shutil.which(grader_python) or grader_python).resolve()
     try:
-        output, _ = await asyncio.wait_for(process.communicate(), timeout)
-    except (TimeoutError, asyncio.CancelledError):
-        process.kill()
-        await process.wait()
-        raise
-    return process.returncode, output.decode(errors="replace")
+        code, freeze = await command(
+            str(interpreter),
+            "-c",
+            "import importlib.metadata as m,json,sys;print(json.dumps({'python_version':sys.version,'distributions':sorted((d.metadata['Name'],d.version) for d in m.distributions())}))",
+            timeout=60,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError("Grader runtime inspection timed out before inference") from exc
+    if code:
+        raise RuntimeError("Could not inspect selected grader dependency environment")
+    scientific = data_root / "upstream"
+    files += [p for p in scientific.rglob("*.py") if ".git" not in p.parts]
+
+    return {
+        "image_id": image["image_id"],
+        "grader_environment": json.loads(freeze),
+        "files": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
+        "grader_interpreter": {
+            "path": str(interpreter),
+            "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest(),
+        },
+    }
 
 
 def stage(data_root: Path, run_root: Path, task: dict) -> dict[str, Path]:
@@ -47,6 +84,13 @@ def stage(data_root: Path, run_root: Path, task: dict) -> dict[str, Path]:
         if not value or Path(value).name != value or value in (".", ".."):
             raise ValueError("Unsafe trait identifier")
     source = data_root / "upstream"
+    selected_roots = [source / "tools", data_root / "assets/metadata"]
+    selected_roots += [data_root / "assets/input/GEO" / t for t in task["traits"]]
+    selected_roots += [data_root / "assets/output/preprocess" / t for t in task["traits"]]
+    selected_roots += [data_root / "assets/output/regress" / trait]
+    for root in selected_roots:
+        if root.is_symlink() or any(p.is_symlink() for p in root.rglob("*")):
+            raise ValueError("Staged GenoTEX assets contain a symlink")
     paths = {name: run_root / name for name in ["public", "prediction", "reference", "grading", "workspace"]}
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=False)
@@ -84,59 +128,64 @@ This is an end-to-end pilot with raw inputs, not an analysis-only test with supp
 
 
 class Container:
-    """A per-task container with no credentials, references, network, or Docker socket."""
+    """Compatibility surface backed by shared attributed Docker lifecycle."""
 
-    def __init__(self, *, image: str, paths: dict[str, Path], cpus: int, memory_gb: int):
-        self.name = "genotex-" + uuid.uuid4().hex
-        self.image, self.paths, self.cpus, self.memory_gb = image, paths, cpus, memory_gb
+    def __init__(self, *, image: str, paths: dict[str, Path], cpus: int, memory_gb: int, ttl_s: float = 7200):
+        self.paths = paths
+        self.lineage = uuid.uuid4().hex
+        self.sandbox = AsyncSandbox(
+            {
+                "docker": {
+                    "create": {
+                        "network": "none",
+                        "cap_drop": ["ALL"],
+                        "security_opt": ["no-new-privileges"],
+                        "pids_limit": 256,
+                    }
+                }
+            },
+            SandboxSpec(
+                image=image,
+                ttl_s=ttl_s + 180,
+                workdir="/work",
+                resources=SandboxResources(cpu=cpus, memory_mib=memory_gb * 1024),
+                metadata={"workload": "gym-genotex", "run": self.lineage},
+                provider_options={
+                    "volumes": [
+                        f"{paths['public']}:/data:ro",
+                        f"{paths['prediction']}:/output",
+                        f"{paths['workspace']}:/work",
+                    ],
+                    "run_args": ["--user", f"{os.getuid()}:{os.getgid()}"],
+                },
+            ),
+        )
+        self._ownership = None
+        self._descriptor = None
 
     async def start(self) -> None:
-        code, output = await command(
-            "docker",
-            "run",
-            "--detach",
-            "--name",
-            self.name,
-            "--user",
-            f"{os.getuid()}:{os.getgid()}",
-            "--network",
-            "none",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges",
-            "--pids-limit",
-            "256",
-            "--cpus",
-            str(self.cpus),
-            "--memory",
-            f"{self.memory_gb}g",
-            "--mount",
-            f"type=bind,source={self.paths['public']},target=/data,readonly",
-            "--mount",
-            f"type=bind,source={self.paths['prediction']},target=/output",
-            "--mount",
-            f"type=bind,source={self.paths['workspace']},target=/work",
-            "--workdir",
-            "/work",
-            self.image,
-            "sleep",
-            "infinity",
-        )
-        if code:
-            raise RuntimeError(f"Container startup failed: {output}")
-        check = await self.shell(
-            "touch /output/.write-check /work/.write-check && rm /output/.write-check /work/.write-check"
-        )
-        if check["exit_code"]:
-            await self.stop()
-            raise RuntimeError("Container output directory is not writable")
+        self._ownership = _owned_sandbox(self.sandbox, self.paths["workspace"].parent / "sandbox-lifecycle.json")
+        await self._ownership.__aenter__()
+        try:
+            self._descriptor = await self.sandbox.serialize()
+            check = await self.shell(
+                "touch /output/.write-check /work/.write-check && rm /output/.write-check /work/.write-check"
+            )
+            if check["exit_code"]:
+                raise RuntimeError("Container output directory is not writable")
+        except BaseException as original:
+            try:
+                await self.stop()
+            except BaseException as cleanup:
+                original.add_note(f"Container cleanup failed: {cleanup}")
+            raise
 
     async def inspect(self) -> dict:
-        """Record the resolved image and isolation controls without environment secrets."""
-        code, output = await command("docker", "inspect", self.name)
+        if not self._descriptor:
+            raise RuntimeError("Container has no owned handle")
+        code, output = await command("docker", "inspect", self._descriptor["sandbox_id"])
         if code:
-            raise RuntimeError("Cannot inspect task container")
+            raise RuntimeError("Cannot inspect owned task container")
         item = json.loads(output)[0]
         return {
             "image_id": item["Image"],
@@ -144,51 +193,50 @@ class Container:
             "mounts": item["Mounts"],
             "memory_bytes": item["HostConfig"]["Memory"],
             "nano_cpus": item["HostConfig"]["NanoCpus"],
+            "ownership": self._descriptor,
         }
 
     async def shell(self, text: str, timeout: int = 300) -> dict:
-        code, output = await command(
-            "docker",
-            "exec",
-            self.name,
-            "timeout",
-            "--kill-after=5",
-            str(timeout),
-            "bash",
-            "-lc",
-            text,
-            timeout=timeout + 15,
-        )
-        return {"exit_code": code, "output": output[-20000:]}
+        result = await self.sandbox.exec("bash -lc " + shlex.quote(text) + " 2>&1", timeout_s=timeout)
+        if result.error_type == "timeout":
+            raise TimeoutError(f"Shell command exceeded {timeout}s; scoped execution settled")
+        if result.error_type:
+            raise RuntimeError(f"Shared sandbox execution failed: {result.error_type}")
+        return {"exit_code": result.return_code, "output": ((result.stdout or "") + (result.stderr or ""))[-20000:]}
 
     async def stop(self) -> None:
-        code, output = await command("docker", "rm", "--force", self.name, timeout=60)
-        if code and "No such container" not in output:
-            raise RuntimeError(f"Container cleanup failed: {output}")
+        if self._ownership is not None:
+            ownership, self._ownership = self._ownership, None
+            await ownership.__aexit__(None, None, None)
 
 
 async def score(*, data_root: Path, run_root: Path, paths: dict[str, Path], task: dict, python: str) -> dict:
     """Run upstream grader as a separate host process; no scorer is in the model container."""
     result = run_root / "grading.json"
-    code, output = await command(
-        python,
-        str(Path(__file__).with_name("grade.py")),
-        "--upstream",
-        str(data_root / "upstream"),
-        "--staging",
-        str(paths["grading"]),
-        "--prediction",
-        str(paths["prediction"]),
-        "--reference",
-        str(paths["reference"]),
-        "--trait",
-        task["trait"],
-        "--condition",
-        str(task.get("condition")),
-        "--result",
-        str(result),
-        timeout=900,
-    )
+    try:
+        code, output = await command(
+            python,
+            str(Path(__file__).with_name("grade.py")),
+            "--upstream",
+            str(data_root / "upstream"),
+            "--staging",
+            str(paths["grading"]),
+            "--prediction",
+            str(paths["prediction"]),
+            "--reference",
+            str(paths["reference"]),
+            "--trait",
+            task["trait"],
+            "--condition",
+            str(task.get("condition")),
+            "--result",
+            str(result),
+            "--identity",
+            str(run_root / "scorer-imports.json"),
+            timeout=900,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError("Upstream grader timed out; no automatic regrade or scientific zero") from exc
     (run_root / "grading.log").write_text(output)
     if code or not result.exists():
         raise RuntimeError(f"Upstream grader failed (exit {code}); see {run_root / 'grading.log'}")

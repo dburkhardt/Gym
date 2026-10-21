@@ -119,3 +119,13 @@ Preparation accepts `--sample-size 20` or `--sample-size 50`, preserving the def
 ## Existing frozen campaign sample
 
 Set `GENOTEX_FROZEN_TASKS_JSONL` to the existing campaign `tasks20.jsonl` before native preparation or `gym eval plan --benchmark genotex --out plan.json`. Preparation checks its pinned SHA-256 and publishes all twenty original records through shared atomic staging without reselection or network calls. This only prepares task identities: raw GEO inputs, creator dependencies, reference isolation and execution still require runtime qualification. Omit this variable to use the original upstream acquisition path.
+
+## Shared native lifecycle migration
+
+The maintained runtime now uses shared AsyncSandbox Docker ownership, resource limits, TTL and cancellation-safe cleanup. It retains4CPU/16GiB, network disabled, host UID, public read-only inputs and separate writable prediction/workspace mounts; references and evaluator code remain absent from the solver container. Shell-command timeouts use the shared scoped execution lifecycle. Trusted upstream grading runs through LocalProvider process-group management, outside the solver container. Grader timeout is infrastructure failure and never triggers a second automatic scoring attempt or a scientific zero.
+
+The80-step/7200-second task budget,300-second shell limit,900-second scorer limit, checkpoint history and completed tool effects remain unchanged. New runtime identity receipts bind the actual resolved image, agent/runtime/scorer/checkpoint/shared implementation hashes, upstream Python source hashes, grader interpreter and installed distribution versions. Resumes require the same recorded identity; old snapshots without these receipts require review instead of silent migration. A mutable image tag is still accepted for an initial run, but its resolved image is recorded and a changed image blocks resume. Distribution/version receipts are provenance, not a lockfile or proof that every dependency byte is immutable.
+
+With provider dispatch guarding enabled, each call binds its persisted action ID and configuration digest and client resends are disabled. Pending checkpoint actions are rejected even when a caller supplies a `not_forwarded` assertion: this adapter does not yet implement durable provider-ledger reconciliation. This restriction prevents an unverified new physical request. Unguarded historical checkpoint behavior is retained for compatibility, not certified as safe provider replay.
+
+Offline migration controls and a native frozen20 plan are available in the campaign evidence. No new model run or real Docker acceptance was performed for this migration. The harness remains the explicitly documented generic Gym shell-agent variant, not published GenoAgent.

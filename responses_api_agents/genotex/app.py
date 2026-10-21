@@ -16,10 +16,12 @@ from pydantic import ConfigDict, Field, JsonValue, PrivateAttr
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
 from nemo_gym.config_types import ModelServerRef
+from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
+from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.server_utils import get_response_json, raise_for_status
 from responses_api_agents.genotex.checkpoint import remaining_budget, restore_checkpoint, save_checkpoint
-from responses_api_agents.genotex.runtime import SHELL_TOOL, Container, score, stage, task_prompt
+from responses_api_agents.genotex.runtime import SHELL_TOOL, Container, execution_identity, score, stage, task_prompt
 
 
 class GenoTEXConfig(BaseResponsesAPIAgentConfig):
@@ -93,6 +95,15 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
 
         try:
             if resume_path:
+                if get_global_config_dict().get("provider_dispatch_guard"):
+                    selected_checkpoint = Path(str(resume_path)).resolve()
+                    if not selected_checkpoint.is_relative_to(work_root):
+                        raise ValueError("Checkpoint outside configured work root")
+                    saved_state = json.loads(selected_checkpoint.read_text())
+                    if saved_state.get("pending"):
+                        raise ValueError(
+                            "Guarded pending action requires durable ledger reconciliation; caller assertion is insufficient"
+                        )
                 state = restore_checkpoint(
                     Path(str(resume_path)),
                     work_root=work_root,
@@ -122,12 +133,44 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                 response = NeMoGymResponse.model_validate(state["last_response"])
             persist()
             container = Container(
-                image=self.config.image, paths=paths, cpus=self.config.cpus, memory_gb=self.config.memory_gb
+                image=self.config.image,
+                paths=paths,
+                cpus=self.config.cpus,
+                memory_gb=self.config.memory_gb,
+                ttl_s=remaining_s,
             )
             await container.start()
-            (run_root / "container.json").write_text(json.dumps(await container.inspect(), indent=2))
+            observed_container = await container.inspect()
+            (run_root / "container.json").write_text(json.dumps(observed_container, indent=2))
+            observed_runtime = await execution_identity(
+                image=observed_container,
+                grader_python=self.config.grader_python,
+                data_root=Path(self.config.data_root).expanduser().resolve(),
+            )
+            save_checkpoint(run_root / "runtime-identity.json", observed_runtime)
+            if resume_path and state.get("runtime_identity") != observed_runtime:
+                raise ValueError("Resume requires matching recorded runtime and resolved image identity")
+            state["runtime_identity"] = observed_runtime
+            persist()
             params = body.responses_create_params.model_dump(exclude_none=True)
             params.update(tools=[SHELL_TOOL], parallel_tool_calls=False, temperature=0)
+            guarded = bool(get_global_config_dict().get("provider_dispatch_guard"))
+            dispatch_digest = configuration_digest(
+                {
+                    **self.config.model_dump(),
+                    "task": task,
+                    "params": params,
+                    "runtime": observed_runtime,
+                    "policy_model_name": get_global_config_dict().get("policy_model_name"),
+                }
+            )
+            if guarded:
+                previous_digest = state.get("guard_config_sha256")
+                if resume_path and previous_digest != dispatch_digest:
+                    raise ValueError("Guarded resume requires matching native checkpoint/configuration")
+                state["guard_config_sha256"] = dispatch_digest
+                persist()
+
             remaining_s = self.config.timeout_s - prior_elapsed - (time.monotonic() - started)
             if remaining_s <= 0:
                 raise TimeoutError("Original elapsed budget exhausted during setup")
@@ -145,6 +188,15 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                             url_path="/v1/responses",
                             json={**params, "input": history},
                             cookies=request.cookies if request else {},
+                            headers={
+                                "x-nemo-gym-logical-call-id": "genotex:" + state["pending"]["action_id"],
+                                "x-nemo-gym-call-config-sha256": dispatch_digest,
+                            }
+                            if guarded
+                            else {},
+                            _max_num_tries=1,
+                            _max_connection_retries=0,
+                            _resend_after_disconnect=False,
                         )
                         await raise_for_status(reply)
                         payload = await get_response_json(reply)
