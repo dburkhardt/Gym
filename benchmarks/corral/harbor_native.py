@@ -19,6 +19,7 @@ from harbor.verifier.base import BaseVerifier
 from benchmarks.corral.database import database_clone
 from benchmarks.corral.guarded_agent import MODEL
 from benchmarks.corral.outcomes import NativeAgentIterationLimitError, NativeAgentSurrenderError, outcome
+from benchmarks.corral.state_artifact import pack_state, unpack_state
 from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
@@ -205,7 +206,12 @@ class CorralNativeAgent(BaseAgent):
             endpoint=self.endpoint,
             output=self.logs_dir / "native-solver",
         )
-        await environment.upload_dir(state, "/workspace/native")
+        archive = self.logs_dir / "native-state.tar"
+        manifest = pack_state(state, archive)
+        receipt = self.logs_dir / "native-state-manifest.json"
+        _publish(receipt, manifest)
+        await environment.upload_file(archive, "/workspace/native-state.tar")
+        await environment.upload_file(receipt, "/workspace/native-state-manifest.json")
 
 
 class CorralNativeVerifier(BaseVerifier):
@@ -218,7 +224,11 @@ class CorralNativeVerifier(BaseVerifier):
 
     async def verify(self):
         submitted = self.trial_paths.verifier_dir / "submitted"
-        await self.environment.download_dir("/workspace/native", submitted)
+        archive = self.trial_paths.verifier_dir / "native-state.tar"
+        receipt = self.trial_paths.verifier_dir / "native-state-manifest.json"
+        await self.environment.download_file("/workspace/native-state.tar", archive)
+        await self.environment.download_file("/workspace/native-state-manifest.json", receipt)
+        unpack_state(archive, json.loads(receipt.read_text()), submitted)
         state = await run_phase(
             task_id=self.task.paths.task_dir.name,
             phase="scorer",
