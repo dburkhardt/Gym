@@ -46,6 +46,7 @@ from nemo_gym.metrics_config import ACROSS_REPEATS_MARKER, COMPLETION_TOKEN_METR
 from nemo_gym.metrics_config import (
     is_primary_metric as is_repeat_aggregatable_metric,
 )
+from nemo_gym.result_disposition import summarize_dispositions
 
 
 class RewardProfileConfig(BaseNeMoGymCLIConfig):
@@ -1207,7 +1208,12 @@ def compute_aggregate_metrics(
     if not scored:
         # Every rollout was masked. Publishing means over an empty set would invent a
         # zero; report what happened instead.
-        return AggregateMetrics(agent_metrics=dict(coverage), key_metrics=dict(coverage), perf_summary=perf_summary)
+        return AggregateMetrics(
+            agent_metrics=dict(coverage),
+            key_metrics=dict(coverage),
+            perf_summary=perf_summary,
+            disposition_summary=summarize_dispositions(verify_responses),
+        )
 
     rp = RewardProfiler()
 
@@ -1292,6 +1298,7 @@ def compute_aggregate_metrics(
     ]
 
     return AggregateMetrics(
+        disposition_summary=summarize_dispositions(verify_responses),
         group_level_metrics=serialized_group,
         agent_metrics=serialized_agent,
         key_metrics=key_metrics,

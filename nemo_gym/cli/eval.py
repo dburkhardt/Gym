@@ -798,6 +798,17 @@ def reward_profile():  # pragma: no cover
     for name, entry_coverage in agent_coverage.items():
         agent_level_metrics.append({"agent_ref": {"name": name}, **entry_coverage})
 
+    from nemo_gym.path_utils import failures_path_for
+    from nemo_gym.result_disposition import summarize_dispositions
+    from nemo_gym.sandbox.lifecycle import _publish
+
+    failure_path = failures_path_for(Path(config.rollouts_jsonl_fpath))
+    failures = []
+    if failure_path.exists():
+        with failure_path.open() as handle:
+            failures = [loads_jsonl_line(line, str(failure_path), i) for i, line in enumerate(handle, 1)]
+    disposition_path = Path(config.rollouts_jsonl_fpath).with_suffix(".dispositions.json")
+    _publish(disposition_path, summarize_dispositions(results, failures=failures, expected_count=len(rows)))
     completion_summary = rp.profile_completion_summary(rows, results)
     reward_profiling_fpath, agent_level_metrics_fpath, repeat_level_metrics_fpath = rp.write_to_disk(
         group_level_metrics, agent_level_metrics, repeat_level_metrics, Path(config.rollouts_jsonl_fpath)
@@ -807,6 +818,7 @@ def reward_profile():  # pragma: no cover
 Reward profile completion: {completion_summary["completed_rollout_rows"]}/{completion_summary["expected_rollout_rows"]} rollout rows ({completion_summary["reward_profile_completion_pct"]:.2f}%)
 Input rows: {completion_summary["total_input_rows"]} total; {completion_summary["complete_input_rows"]} complete; {completion_summary["partial_input_rows"]} partial; {completion_summary["missing_input_rows"]} without rollouts dropped from output.
 Masked from quality metrics: {len(masked)} rollout rows (kept in completion accounting above).
+Disposition accounting: {disposition_path}
 Reward profiling outputs: {reward_profiling_fpath}
 Agent-level metrics: {agent_level_metrics_fpath}
 Repeat-level metrics: {repeat_level_metrics_fpath}""")

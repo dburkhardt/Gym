@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Evidence-only accounting alongside native quality metrics; never rescore records."""
+
+import hashlib
+import json
+import math
+from collections import Counter
+from collections.abc import Mapping, Sequence
+
+
+def _numeric(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def summarize_dispositions(
+    results: Sequence[Mapping], *, failures: Sequence[Mapping] = (), expected_count: int | None = None
+) -> dict:
+    """Describe observed records without equating missing output with no dispatch.
+
+    A result is completed collection output, not proof of successful scientific
+    execution. Only explicit measurement reviews certify individual metrics.
+    Attempt and provider-call totals require their own ledgers and remain unknown.
+    """
+    counts = Counter()
+    metrics = {}
+    lineage = []
+    observed_identities = set()
+    for stream, records in (("results", results), ("failures", failures)):
+        for index, record in enumerate(records):
+            identity = {
+                k: record[k]
+                for k in ("_ng_task_index", "_ng_rollout_index", "_ng_attempt_index", "agent_ref", "instance_id")
+                if k in record
+            }
+            if "_ng_task_index" in identity and "_ng_rollout_index" in identity:
+                observed_identities.add((identity["_ng_task_index"], identity["_ng_rollout_index"]))
+            metadata = record.get("metadata") or {}
+            metadata = metadata if isinstance(metadata, dict) else {}
+            verifier = metadata.get("verifier_result") or {}
+            verifier = verifier if isinstance(verifier, dict) else {}
+            native = verifier.get("rewards") or {}
+            native = native if isinstance(native, dict) else {}
+            review = metadata.get("measurement_review") or {}
+            review = review if isinstance(review, dict) else {}
+            dispositions = review.get("metrics") or {}
+            dispositions = dispositions if isinstance(dispositions, dict) else {}
+            selected = stream == "results" and not record.get("mask_sample", False)
+            raw_scored = any(_numeric(v) for v in native.values()) or (
+                selected and not record.get("_ng_failure_class") and _numeric(record.get("reward"))
+            )
+            counts["completed_result_records"] += stream == "results"
+            counts["failure_records"] += stream == "failures"
+            counts["raw_scored_records"] += raw_scored
+            counts["quality_selected_records"] += selected
+            counts["masked_result_records"] += stream == "results" and bool(record.get("mask_sample"))
+            counts["explicitly_not_dispatched_records"] += record.get("_ng_dispatch_drained") is True
+            row_metrics = {}
+            for name in sorted(set(native) | set(dispositions)):
+                disposition = dispositions.get(name) or {}
+                disposition = disposition if isinstance(disposition, dict) else {}
+                status = disposition.get("status")
+                if status not in {"valid", "invalid", "unresolved"}:
+                    status = "unreviewed"
+                bucket = metrics.setdefault(name, Counter())
+                bucket[status] += 1
+                bucket["raw_numeric_scores"] += _numeric(native.get(name))
+                row_metrics[name] = {
+                    "status": status,
+                    "raw_score": native.get(name),
+                    "reason": disposition.get("reason"),
+                }
+            lineage.append(
+                {
+                    "stream": stream,
+                    "record_index": index,
+                    "identity": identity,
+                    "record_sha256": hashlib.sha256(
+                        json.dumps(dict(record), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+                    ).hexdigest(),
+                    "quality_selected": selected,
+                    "raw_scored": raw_scored,
+                    "failure_kind": record.get("failure_kind"),
+                    "failure_class": record.get("_ng_failure_class"),
+                    "review_version": review.get("version"),
+                    "review_implementation": review.get("implementation"),
+                    "metric_dispositions": row_metrics,
+                }
+            )
+    return {
+        "schema_version": "1",
+        "expected_rollout_count": expected_count,
+        "counts": dict(counts),
+        "observed_logical_rollout_lower_bound": len(observed_identities),
+        "attempted_total": None,
+        "provider_dispatch_unresolved_total": None,
+        "scientifically_accepted_total": None,
+        "limitations": [
+            "Missing result rows do not establish whether dispatch occurred.",
+            "Logical rollout lower bound merges attempts and optional agent fields within this input run; it is not an attempt total.",
+            "Quality selection follows native mask policy; absent metric review is not scientific acceptance.",
+            "Provider dispatch state requires its durable ledger; no text-based inference is made.",
+        ],
+        "per_metric": {name: dict(count) for name, count in metrics.items()},
+        "records": lineage,
+    }
