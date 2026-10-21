@@ -54,7 +54,9 @@ def serve(*, socket_path: str, port_file: Path) -> None:
             pass  # Native prompts, headers and local bearer tokens are not logged.
 
     with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-        port_file.write_text(json.dumps({"port": server.server_port}))
+        temporary = port_file.with_name(port_file.name + ".ready")
+        temporary.write_text(json.dumps({"port": server.server_port}))
+        temporary.replace(port_file)
         server.serve_forever()
 
 

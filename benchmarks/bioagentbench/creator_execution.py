@@ -33,6 +33,22 @@ async def parent_interception(packet, endpoint, secret):
             response.raise_for_status()
 
 
+async def relay_port(runtime) -> int:
+    """Wait for an atomically published relay file without retrying failed IPC."""
+    async with asyncio.timeout(30):
+        while True:
+            ready = await runtime.run(["test", "-s", ".vf-relay-port.json"], {})
+            if ready.exit_code == 0:
+                break
+            if ready.exit_code != 1:
+                raise RuntimeError("Relay readiness command failed")
+            await asyncio.sleep(0.1)
+        port = json.loads(await runtime.read(".vf-relay-port.json"))["port"]
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError("Invalid relay port")
+        return port
+
+
 async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
     """Delegate one frozen task to native Environment/run_eval; never native resume."""
     import verifiers.v1 as vf
@@ -105,13 +121,7 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
                 {},
                 ".vf-relay.log",
             )
-            async with asyncio.timeout(30):
-                while True:
-                    try:
-                        port = json.loads(await runtime.read(".vf-relay-port.json"))["port"]
-                        break
-                    except (RuntimeError, ValueError, KeyError):
-                        await asyncio.sleep(0.1)
+            port = await relay_port(runtime)
             return await original_launch(self, ctx, trace, runtime, f"http://127.0.0.1:{port}/v1", secret, mcp_urls)
 
     if not _OWNER.acquire(blocking=False):

@@ -143,3 +143,44 @@ async def test_actual_creator_judge_failure_does_not_publish_default_reward(tmp_
     # A parallel scoring branch could have assigned a reward before this failure.
     trace.rewards["results_match"] = 0.0
     assert not disposition(trace.model_dump())["measurement_available"]
+
+
+@pytest.mark.asyncio
+async def test_relay_readiness_preserves_definite_exit_and_reads_once():
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Runtime:
+        async def run(self, argv, env):
+            assert argv == ["test", "-s", ".vf-relay-port.json"] and env == {}
+            calls.append("test")
+            return SimpleNamespace(exit_code=1 if len(calls) == 1 else 0)
+
+        async def read(self, path):
+            calls.append("read")
+            return b'{"port": 12345}'
+
+    assert await execution.relay_port(Runtime()) == 12345
+    assert calls == ["test", "test", "read"]
+
+
+@pytest.mark.asyncio
+async def test_relay_unknown_read_is_never_retried():
+    import asyncio
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Runtime:
+        async def run(self, argv, env):
+            calls.append("test")
+            return SimpleNamespace(exit_code=0)
+
+        async def read(self, path):
+            calls.append("read")
+            raise asyncio.IncompleteReadError(b"", 4)
+
+    with pytest.raises(asyncio.IncompleteReadError):
+        await execution.relay_port(Runtime())
+    assert calls == ["test", "read"]

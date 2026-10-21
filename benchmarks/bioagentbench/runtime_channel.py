@@ -145,6 +145,7 @@ class RuntimeServer:
         task = asyncio.current_task()
         self.tasks.add(task)
         operation = disconnected = None
+        identity = stem = None
         try:
             async with asyncio.timeout(max(0, self.deadline - time.time())):
                 request = await read_frame(reader)
@@ -179,7 +180,13 @@ class RuntimeServer:
                     publish(stem.with_suffix(".complete.json"), {**identity, "completed": True})
                     await write_frame(writer, {"ordinal": ordinal, "ok": True, "result": result})
                     self.failed = False
-        except BaseException:
+        except BaseException as error:
+            if identity is not None and stem is not None:
+                # Exception text/arguments may contain private task data or tokens.
+                publish(
+                    stem.with_suffix(".failure.json"),
+                    {**identity, "error_type": type(error).__name__, "outcome": "unresolved_no_replay"},
+                )
             # No response retry. Parent teardown settles any partially completed work.
             self.failed = True
         finally:

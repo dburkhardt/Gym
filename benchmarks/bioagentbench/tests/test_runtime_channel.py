@@ -171,3 +171,23 @@ async def test_replaced_socket_is_not_removed(tmp_path):
         await s.close()
     assert (tmp_path / "s").read_text() == "unrelated replacement"
     assert b.calls == [("teardown",)]
+
+
+@pytest.mark.asyncio
+async def test_backend_failure_is_recorded_without_private_text_and_remains_poisoned(tmp_path):
+    import json
+
+    b, s, c = await setup(tmp_path)
+    try:
+        await c.call("start")
+        with pytest.raises(asyncio.IncompleteReadError):
+            await c.call("read", path="private-secret-path")
+        receipt = json.loads((tmp_path / "receipts/000001.failure.json").read_text())
+        assert receipt["error_type"] == "KeyError"
+        assert receipt["outcome"] == "unresolved_no_replay"
+        assert "private-secret-path" not in json.dumps(receipt)
+        assert not (tmp_path / "receipts/000001.complete.json").exists()
+        with pytest.raises(RuntimeError, match="replay forbidden"):
+            await c.call("read", path="private-secret-path")
+    finally:
+        await s.close()
