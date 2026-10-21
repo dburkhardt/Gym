@@ -98,6 +98,19 @@ async def test_actual_guarded_verifier_identity_and_protocol(tmp_path):
         for identity in ["attempt-a", "attempt-a", "attempt-b"]:
             result = await verifier.verify(Request.model_validate(base | {"verification_id": identity}))
             assert result.reward == 1 and result.model_dump()["_ng_task_index"] == 7
+        saved = result.model_dump(mode="json")
+        preserved = json.loads(json.dumps(saved))
+        replay = await verifier.verify(Request.model_validate(saved))
+        assert replay.reward == result.reward and replay.diagnostics == result.diagnostics
+        assert replay.model_dump()["_ng_task_index"] == 7 and saved == preserved
+        failed = verifier.judge_failure(Request.model_validate(saved), result.response, "fixture judge failure")
+        failed_saved = failed.model_dump(mode="json")
+        repeated_failure = verifier.judge_failure(
+            Request.model_validate(failed_saved), result.response, "new judge failure"
+        )
+        assert repeated_failure.mask_sample and repeated_failure.failure_reason == "new judge failure"
+        assert failed_saved["failure_reason"] == "fixture judge failure"
+        assert repeated_failure.model_dump()["_ng_task_index"] == 7
         assert seen[0] == seen[1]
         assert seen[0][1][b"x-nemo-gym-logical-call-id"] != seen[2][1][b"x-nemo-gym-logical-call-id"]
         payload = seen[0][0]

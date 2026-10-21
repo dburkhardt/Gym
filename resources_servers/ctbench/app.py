@@ -40,7 +40,7 @@ class Response(BaseVerifyResponse, Request):
 class Verifier:
     def judge_failure(self, body: Request, judged: NeMoGymResponse, reason: str) -> Response:
         return Response(
-            **body.model_dump(),
+            **body.model_dump(exclude={"reward", "diagnostics", "mask_sample", "failure_kind", "failure_reason"}),
             reward=0.0,
             mask_sample=True,
             failure_kind="judge_failed",
@@ -100,7 +100,7 @@ class Verifier:
         except (ValueError, KeyError, TypeError, ZeroDivisionError) as exc:
             return self.judge_failure(body, judged, f"Creator scorer or judge structure failure: {exc}")
         return Response(
-            **body.model_dump(),
+            **body.model_dump(exclude={"reward", "diagnostics"}),
             reward=float(scores["f1"]),
             diagnostics={
                 "protocol": "CTBench zero-shot Nemotron judge variant",

@@ -160,6 +160,21 @@ def test_guarded_judge_identity_and_missing_lineage(tmp_path):
         assert result.json()["reward"] == 1
         assert result.json()["task_id"] == "trial-1"
         assert result.json()["rollout_index"] == 2
+    saved = result.json()
+    preserved = json.loads(json.dumps(saved))
+    replay = client.post("/verify", json=saved)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["reward"] == saved["reward"]
+    assert replay.json()["diagnostics"] == saved["diagnostics"]
+    assert replay.json()["task_id"] == "trial-1" and saved == preserved
+    failed = server.judge_failure(
+        app.Request.model_validate(saved), NeMoGymResponse(**response("")), "fixture judge failure"
+    )
+    failed_saved = failed.model_dump(mode="json")
+    repeated = server.judge_failure(app.Request.model_validate(failed_saved), failed.response, "new judge failure")
+    assert repeated.mask_sample and repeated.failure_reason == "new judge failure"
+    assert repeated.model_dump()["task_id"] == "trial-1"
+    assert failed_saved["failure_reason"] == "fixture judge failure"
     assert seen[0] == seen[1]
     assert seen[0][0]["x-nemo-gym-logical-call-id"] == "judge:persisted-verification:feature-matching"
     functions = creator(str(source))
