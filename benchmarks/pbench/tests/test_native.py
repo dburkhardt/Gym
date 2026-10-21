@@ -33,6 +33,10 @@ def test_native_preparation_preserves_science_and_pins_runtime(tmp_path):
         assert TaskConfig.model_validate(
             __import__("tomllib").loads((staged / "task.toml").read_text())
         ).artifacts == ["/workspace"]
+        parsed = TaskConfig.model_validate(__import__("tomllib").loads((staged / "task.toml").read_text()))
+        assert parsed.environment.docker_image == IMAGE
+        assert parsed.environment.workdir == "/workspace"
+        assert parsed.environment.network_mode.value == "no-network"
         assert not (staged / "environment" / "answer_key.json").exists()
     assert [r["task_id"] for r in rows] == ["pbench::" + t["harbor_task"] for t in manifest["tasks"][:5]]
 

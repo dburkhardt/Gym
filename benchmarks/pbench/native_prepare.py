@@ -49,8 +49,10 @@ def native_prepare(source: Path, destination: Path, size: int = 5) -> Path:
                 old_destination.unlink()
             dockerfile.unlink()
             config = task / "task.toml"
-            text = config.read_text().replace(
-                "[environment]\n", f'[environment]\ndocker_image = "{IMAGE}"\nworkdir = "/workspace"\n'
+            text = (
+                config.read_text()
+                .replace("allow_internet = false", 'network_mode = "no-network"')
+                .replace("[environment]\n", f'[environment]\ndocker_image = "{IMAGE}"\nworkdir = "/workspace"\n')
             )
             config.write_text('artifacts = ["/workspace"]\n' + text)
             receipt["runtime_overlay_hashes"][task.name] = {
