@@ -1716,7 +1716,10 @@ class NeMoGymAsyncOpenAI(BaseModel):  # pragma: no cover
                 dispatch.response_headers(response.status)
                 if 300 <= response.status < 400:
                     raise RuntimeError("guarded provider dispatch refuses automatic HTTP redirects")
-                if response.status == 429:
+                # Explicit request-validation rejections are terminal non-generations.
+                # Do not broaden this to timeouts/conflicts/server errors: those may
+                # leave acceptance unknown. Only 429 follows the retry policy below.
+                if response.status in (400, 413, 415, 422, 429):
                     dispatch.attempts[-1]["outcome"] = "rejected"
                     dispatch.persist(dispatch.evidence())
                 elif response.status in RETRY_ERROR_CODES:

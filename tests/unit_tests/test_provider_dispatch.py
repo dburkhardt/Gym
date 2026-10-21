@@ -715,3 +715,25 @@ def test_collector_retry_suffix_cannot_ignore_incomplete_only_capture(tmp_path):
             [{"_ng_task_index": 1, "_ng_rollout_index": 0, "_ng_attempt_index": 1}], [tmp_path]
         )
     assert store.is_incomplete("1-0")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 413, 415, 422])
+async def test_validation_rejection_is_terminal_without_automatic_retry(tmp_path, monkeypatch, status):
+    store = store_at(tmp_path)
+    dispatch = dispatch_at(store)
+    reply = SimpleNamespace(status=status)
+    request = AsyncMock(return_value=reply)
+    monkeypatch.setattr("nemo_gym.openai_utils.request", request)
+    token = current_provider_dispatch.set(dispatch)
+    try:
+        client = NeMoGymAsyncOpenAI(api_key="fake", base_url="http://localhost", max_http_attempts=5)
+        assert await client._request_with_retry() is reply
+    finally:
+        current_provider_dispatch.reset(token)
+    assert request.await_count == 1
+    assert dispatch.attempts[0]["outcome"] == "rejected"
+    assert dispatch.attempts[0]["status_code"] == status
+    store.assert_restore_safe(["episode"])
+    store.clear_pending("episode", "call")
+    assert not store.has_pending("episode")
