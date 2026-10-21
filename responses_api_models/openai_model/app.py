@@ -19,6 +19,7 @@ import random
 import time
 from contextlib import asynccontextmanager, nullcontext
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Literal, Optional, TypeVar
 
 from aiohttp import ClientResponseError
@@ -129,6 +130,9 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
         description="Opt-in shared 429 cooldown fallback. Honors Retry-After; retries only explicit 429 responses.",
     )
 
+    upstream_rate_limit_shared_directory: Optional[Path] = None
+    upstream_rate_limit_shared_namespace: Optional[str] = Field(default=None, min_length=1, max_length=128)
+
     reasoning_effort_none_replacement: Optional[ReasoningEffort] = Field(
         default=None,
         description=(
@@ -204,6 +208,10 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
 
     @model_validator(mode="after")
     def validate_upstream_controls(self) -> "SimpleModelServerConfig":
+        if (self.upstream_rate_limit_shared_directory is None) != (self.upstream_rate_limit_shared_namespace is None):
+            raise ValueError("Shared cooldown requires both directory and namespace")
+        if self.upstream_rate_limit_shared_directory is not None and self.upstream_rate_limit_cooldown_seconds is None:
+            raise ValueError("Shared cooldown requires upstream_rate_limit_cooldown_seconds")
         if self.upstream_rate_limit_cooldown_seconds is not None and self.upstream_max_num_tries != 1:
             raise ValueError("Rate-limit cooldown requires upstream_max_num_tries=1")
         if self.upstream_retry_policy.max_attempts > 1 and self.upstream_max_num_tries != 1:
@@ -246,6 +254,18 @@ class SimpleModelServer(SimpleResponsesAPIModel):
 
     def model_post_init(self, context):
         self._rate_limit_until = 0.0
+        self._shared_cooldown = None
+        if self.config.upstream_rate_limit_shared_directory is not None:
+            from responses_api_models.openai_model.shared_cooldown import SharedCooldown
+
+            self._shared_cooldown = SharedCooldown(
+                self.config.upstream_rate_limit_shared_directory,
+                self.config.upstream_rate_limit_shared_namespace,
+                self.config.openai_base_url,
+                self.config.openai_model,
+            )
+            self._shared_cooldown.remaining()  # Reject mismatched/corrupt scope before dispatch.
+
         self._client = NeMoGymAsyncOpenAI(
             base_url=self.config.openai_base_url,
             api_key=self.config.openai_api_key,
@@ -294,6 +314,31 @@ class SimpleModelServer(SimpleResponsesAPIModel):
         finally:
             self._semaphore.release()
 
+    async def _shared_cooldown_call(self, operation: Callable, *args):
+        """Settle bounded local state I/O before returning caller cancellation."""
+        task = asyncio.create_task(asyncio.to_thread(operation, *args))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError as cancellation:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            try:
+                task.result()
+            except Exception as error:
+                cancellation.add_note(f"Shared cooldown state settlement failed: {type(error).__name__}")
+            raise cancellation
+
+    async def _cooldown_remaining(self) -> float:
+        local = max(0.0, self._rate_limit_until - time.monotonic())
+        if self._shared_cooldown is None:
+            return local
+        return max(local, await self._shared_cooldown_call(self._shared_cooldown.remaining))
+
     async def _call_with_cooldown(self, operation: Callable[[], Awaitable[ResponseT]]) -> ResponseT:
         """Wait outside the slot; only observed 429 rejection is safe to retry."""
         policy = self.config.upstream_retry_policy
@@ -301,12 +346,12 @@ class SimpleModelServer(SimpleResponsesAPIModel):
             if policy.pre_request_jitter_seconds is not None:
                 await asyncio.sleep(random.uniform(*policy.pre_request_jitter_seconds))
             while True:
-                delay = self._rate_limit_until - time.monotonic()
+                delay = await self._cooldown_remaining()
                 if delay > 0:
                     await asyncio.sleep(delay)
                 async with self._upstream_request_slot():
                     # Another request may have established a cooldown while we queued.
-                    if self._rate_limit_until > time.monotonic():
+                    if await self._cooldown_remaining() > 0:
                         continue
                     try:
                         return await operation()
@@ -327,6 +372,8 @@ class SimpleModelServer(SimpleResponsesAPIModel):
                         if math.isfinite(parsed) and parsed >= 0:
                             delay = parsed
                         self._rate_limit_until = max(self._rate_limit_until, time.monotonic() + delay)
+                        if self._shared_cooldown is not None:
+                            await self._shared_cooldown_call(self._shared_cooldown.extend, delay)
                         if error.status in policy.terminal_http_status_codes or attempt + 1 == policy.max_attempts:
                             raise
                 break

@@ -62,7 +62,7 @@ For NVCF endpoints, requests that take longer than 340 seconds to produce a firs
 ## Usage Example
 
 When cooldown is enabled, waiting does not occupy an upstream concurrency slot.
-The cooldown is shared by calls within one model-server process, not across workers.
+The cooldown is shared by calls within one model-server process by default. Optional `upstream_rate_limit_shared_directory` plus `upstream_rate_limit_shared_namespace` coordinate observed 429 deadlines across processes on one host; see the model server README for scope, boot identity, lock and cancellation boundaries. This is not cross-host RPM/TPM admission.
 Waiting still counts toward an enclosing benchmark wall-clock deadline; enabling it
 does not extend a benchmark's time or token budget. This option does not establish
 whether a timed-out provider request completed, or make recovery exactly once.
