@@ -15,6 +15,7 @@ from harbor.models.verifier.result import VerifierResult
 from harbor.verifier.base import BaseVerifier
 
 from benchmarks.ainsteinbench.native import MODEL
+from benchmarks.ainsteinbench.scoring import qualification
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log, prompt
 from benchmarks.ainsteinbench.trajectory import publish as publish_trajectory
 from nemo_gym.global_config import get_global_config_dict
@@ -175,7 +176,7 @@ class AInsteinAgent(BaseAgent):
                 "iterations": 30,
                 "adapter_sha256": {
                     name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                    for name in ("harbor_native.py", "source.py", "native.py", "trajectory.py")
+                    for name in ("harbor_native.py", "source.py", "native.py", "trajectory.py", "scoring.py")
                 },
             }
         )
@@ -302,11 +303,12 @@ class AInsteinVerifier(BaseVerifier):
             output / "execution.json",
             {"return_code": result.return_code, "stdout": result.stdout, "stderr": result.stderr},
         )
-        if result.return_code < 0 or result.return_code >= 126:
-            raise RuntimeError("Scientific process terminated by signal; no score fabricated")
         parsed = parse_log(self.source, (result.stdout or "") + (result.stderr or ""))
         total = parsed["passed_count"] + parsed["failed_count"]
         score = parsed["passed_count"] / total * 100 if total else 0.0
+        validity = qualification(
+            raw["question_id"], parsed, (result.stdout or "") + (result.stderr or ""), result.return_code
+        )
         _publish(
             output / "score.json",
             {
@@ -316,7 +318,13 @@ class AInsteinVerifier(BaseVerifier):
                 "total_count": total,
                 "success": parsed["failed_count"] == 0 and parsed["passed_count"] > 0,
                 "source_hashes": hashes,
-                "qualification": "Creator baseline-passing tests included; zero tests is setup/apply failure, not scientific failure denominator",
+                "scorer_adapter_sha256": {
+                    name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
+                    for name in ("harbor_native.py", "source.py", "scoring.py")
+                },
+                "qualification": validity,
             },
         )
+        if not validity["valid"]:
+            raise RuntimeError("Unscored native test execution: " + validity["kind"] + "; raw creator score retained")
         return VerifierResult(rewards={"score": score, "tests_passed": parsed["passed_count"], "tests_total": total})

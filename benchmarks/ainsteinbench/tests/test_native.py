@@ -219,7 +219,11 @@ async def test_native_scorer_failure_never_becomes_zero(tmp_path, failure):
     )
     with pytest.raises((TimeoutError, RuntimeError)):
         await verifier.verify()
-    assert not (tmp_path / "native/score.json").exists()
+    if isinstance(failure, Exception):
+        assert not (tmp_path / "native/score.json").exists()
+    else:
+        raw = json.loads((tmp_path / "native/score.json").read_text())
+        assert raw["overall_score"] == 0 and not raw["qualification"]["valid"]
     if isinstance(failure, int):
         assert json.loads((tmp_path / "native/execution.json").read_text())["return_code"] == 137
 
@@ -329,7 +333,7 @@ async def test_native_scorer_accepts_absent_stderr(tmp_path):
             pass
 
         async def exec(self, *args, **kwargs):
-            return SimpleNamespace(return_code=0, stdout="PASSED a\n", stderr=None)
+            return SimpleNamespace(return_code=0, stdout="PASSED a\nPASSED b\nPASSED c\nPASSED d\n", stderr=None)
 
     verifier = AInsteinVerifier(
         source=SOURCE,
@@ -341,7 +345,7 @@ async def test_native_scorer_accepts_absent_stderr(tmp_path):
         environment=Env(),
     )
     result = await verifier.verify()
-    assert result.rewards == {"score": 100, "tests_passed": 1, "tests_total": 1}
+    assert result.rewards == {"score": 100, "tests_passed": 4, "tests_total": 4}
 
 
 @pytest.mark.asyncio
@@ -362,3 +366,34 @@ async def test_tool_error_observation_preserved_but_cancellation_propagates():
 
     with pytest.raises(asyncio.CancelledError):
         await execute_tool(Cancelled(), "read_file", {"path": "x"})
+
+
+@pytest.mark.parametrize(
+    "parsed,text,code,valid,kind",
+    [
+        (
+            {"passed_count": 0, "failed_count": 0},
+            'error: No valid patches in input (allow with "--allow-empty")\nError: git apply failed\n',
+            1,
+            True,
+            "model_patch_rejected",
+        ),
+        (
+            {"passed_count": 0, "failed_count": 0},
+            "ModuleNotFoundError: missing_dependency\n",
+            1,
+            False,
+            "unclassified_no_tests",
+        ),
+        ({"passed_count": 0, "failed_count": 0}, "ERROR collecting tests\n", 2, False, "unclassified_no_tests"),
+        ({"passed_count": 1, "failed_count": 0}, "PASSED a\n", 0, False, "incomplete_or_failed_test_collection"),
+        ({"passed_count": 2, "failed_count": 2}, "PASSED a\nFAILED b\n", 1, True, "creator_tests_scored"),
+    ],
+)
+def test_zero_and_partial_test_qualification(parsed, text, code, valid, kind):
+    from benchmarks.ainsteinbench.scoring import qualification
+
+    result = qualification("MSB_pyscf_pyscf_pr2373", parsed, text, code)
+    assert result["valid"] is valid and result["kind"] == kind
+    assert result["expected_control_test_count"] == 4
+    assert result["observed_test_count"] == parsed["passed_count"] + parsed["failed_count"]
