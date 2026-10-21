@@ -161,6 +161,8 @@ def summarize_dispositions(
                     and isinstance(source_sha, str)
                     and re.fullmatch(r"[0-9a-f]{64}", source_sha) is not None
                 )
+                aggregation = disposition.get("aggregation", "mean")
+                supported_aggregation = isinstance(aggregation, str) and aggregation in {"mean", "sqrt_mean"}
                 eligible = (
                     stream == "results"
                     and status == "valid"
@@ -168,6 +170,8 @@ def summarize_dispositions(
                     and isinstance(disposition.get("reason"), str)
                     and bool(disposition["reason"].strip())
                     and _numeric(native.get(name))
+                    and supported_aggregation
+                    and (aggregation != "sqrt_mean" or native[name] >= 0)
                 )
                 bucket["reviewed_eligible_scores"] += bool(eligible)
                 bucket["valid_but_ineligible_scores"] += status == "valid" and not eligible
@@ -194,13 +198,14 @@ def summarize_dispositions(
                     ):
                         scope["unscoped_record"] = {"stream": stream, "record_index": index}
                     scope_json = json.dumps(scope, sort_keys=True, separators=(",", ":"))
-                    source = (review["version"], source_path, source_sha, scope_json)
+                    source = (review["version"], source_path, source_sha, scope_json, aggregation)
                     reviewed_values.setdefault(name, {}).setdefault(source, []).append(native[name])
                 row_metrics[name] = {
                     "status": status,
                     "raw_score": native.get(name),
                     "reason": disposition.get("reason"),
                     "reviewed_mean_eligible": bool(eligible),
+                    "aggregation": aggregation,
                 }
             lineage.append(
                 {
@@ -231,7 +236,9 @@ def summarize_dispositions(
                 "implementation": {"import_path": key[1], "sha256": key[2]},
                 "scope": json.loads(key[3]),
                 "denominator": len(values),
-                "mean": statistics.fmean(values),
+                "aggregation": key[4],
+                "mean": statistics.fmean(values) if key[4] == "mean" else None,
+                "value": (math.sqrt(statistics.fmean(values)) if key[4] == "sqrt_mean" else statistics.fmean(values)),
             }
             for key, values in sorted(groups.items())
         ]
@@ -239,6 +246,8 @@ def summarize_dispositions(
             **dict(count),
             "reviewed_denominator": sum(len(v) for v in groups.values()),
             "reviewed_mean": group_means[0]["mean"] if len(group_means) == 1 else None,
+            "reviewed_value": group_means[0]["value"] if len(group_means) == 1 else None,
+            "reviewed_aggregation": group_means[0]["aggregation"] if len(group_means) == 1 else None,
             "reviewed_source_groups": group_means,
         }
     provider_counts = Counter({"captured": 0, "rejected": 0, "unresolved": 0, "conflicting": 0})

@@ -158,6 +158,21 @@ class CreatorResourcesServer(SimpleResourcesServer):
                     failure_kind="scienceqa:invalid_measurement",
                     failure_reason="See separate strict and seeded-fallback metric qualifications",
                 )
+        if self.config.benchmark == "fgbench":
+            from benchmarks.fgbench.projection import project
+
+            metadata.update(
+                project(
+                    Path(self.config.upstream_repo),
+                    task,
+                    details,
+                    protocol={
+                        "model": body.response.model,
+                        "temperature": body.responses_create_params.temperature,
+                        "max_output_tokens": body.responses_create_params.max_output_tokens,
+                    },
+                )
+            )
         payload = body.model_dump(by_alias=True)
         # Preserve native task/rollout lineage, but never retain a prior regrade's
         # reward, mask or measurement review as if it were this verification.

@@ -4,6 +4,8 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
+
 from nemo_gym.result_disposition import summarize_dispositions
 from nemo_gym.reward_profile import compute_aggregate_metrics
 
@@ -323,3 +325,27 @@ def test_preserved_budget_zero_verifier_failure_and_pending_dispatch_when_availa
     assert unknown_report["provider_evidence"]["outcome_counts"]["unresolved"] == 1
     assert unknown_report["provider_dispatch_unresolved_total"] is None
     assert before == {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in (mol, archive, markers[0])}
+
+
+def test_declared_sqrt_mean_preserves_raw_and_rejects_unsupported_aggregation():
+    rows = []
+    for value in [4.0, 16.0]:
+        r = _reviewed_mixed()
+        r["metadata"].update(source="fixture", config={"protocol": "squared-errors"})
+        r["metadata"]["verifier_result"]["rewards"] = {"outcome": value}
+        r["metadata"]["measurement_review"]["metrics"] = {
+            "outcome": {"status": "valid", "reason": "native squared error", "aggregation": "sqrt_mean"}
+        }
+        rows.append(r)
+    before = copy.deepcopy(rows)
+    metric = summarize_dispositions(rows)["per_metric"]["outcome"]
+    assert metric["reviewed_denominator"] == 2
+    assert metric["reviewed_mean"] is None
+    assert metric["reviewed_value"] == pytest.approx(10**0.5)
+    assert rows == before
+    for aggregation, value in [("untrusted_function", 4), ("sqrt_mean", -1), (None, 4), ([], 4), ({}, 4)]:
+        r = copy.deepcopy(rows[0])
+        r["metadata"]["measurement_review"]["metrics"]["outcome"]["aggregation"] = aggregation
+        r["metadata"]["verifier_result"]["rewards"]["outcome"] = value
+        m = summarize_dispositions([r])["per_metric"]["outcome"]
+        assert m["reviewed_denominator"] == 0 and m["reviewed_value"] is None
