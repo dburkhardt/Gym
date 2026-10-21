@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# Explicit harness variant; combine with a task/model config and reviewed image root.
+harbor_agent:
+  responses_api_agents:
+    harbor_agent:
+      harbor_agent_name: null
+      harbor_agent_import_path: responses_api_agents.harbor_agent.custom_agents.terminus_2_images_nemo_gym:Terminus2ImagesNemoGym
+      harbor_agent_kwargs:
+        enable_summarize: false
+        image_root: ${oc.env:NEMO_GYM_IMAGE_ROOT}
+        image_reader_python: /opt/corebench-harness/bin/python3
+        image_max_bytes: 4000000
+        image_max_pixels: 16000000

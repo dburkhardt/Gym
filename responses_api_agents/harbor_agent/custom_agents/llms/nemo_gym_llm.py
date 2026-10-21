@@ -157,7 +157,7 @@ class NemoGymLLM(BaseLLM):
         if message_history is None:
             message_history = []
         self._select_dispatch_cursor(message_history)
-        messages = message_history + [{"role": "user", "content": prompt}]
+        messages = self._project_messages(message_history + [{"role": "user", "content": prompt}])
 
         # Attach token IDs from the previous turn to the last assistant
         # message so vLLM can perform on-policy correction via
@@ -283,6 +283,10 @@ class NemoGymLLM(BaseLLM):
             )
 
         return result
+
+    def _project_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Identity by default; opt-in harnesses project observations before hashing."""
+        return messages
 
     def _select_dispatch_cursor(self, history: list[dict[str, Any]]) -> None:
         if self._dispatch_path is None:
