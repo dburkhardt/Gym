@@ -69,3 +69,33 @@ def test_1906954_variant_requires_exact_published_identity():
         with pytest.raises(ValueError, match="Unsupported capsule-specific"):
             dockerfile({**variant, key: value})
     assert "harness_install_variant" not in original
+
+
+def test_1683542_exact_variant_and_observed_sources():
+    import json
+    from pathlib import Path
+
+    rows = json.loads((Path(__file__).parents[1] / "frozen20.json").read_text())["rows"]
+    original = next(row for row in rows if row["id"] == "capsule-1683542")
+    variant = {**original, "harness_install_variant": "ubuntu-bionic-isolated-v1"}
+    assert recipe_digest(variant) != recipe_digest(original)
+    assert "COPY harness_install.py" in dockerfile(variant)
+    assert "apt-get update &&" not in dockerfile(variant)
+    for key, value in [
+        ("id", "capsule-1683543"),
+        ("published_image", original["published_image"][:-1] + "0"),
+        ("harness_install_variant", "unreviewed"),
+    ]:
+        with pytest.raises(ValueError, match="Unsupported capsule-specific"):
+            dockerfile({**variant, key: value})
+    ubuntu = "deb http://archive.ubuntu.com/ubuntu/ bionic main restricted"
+    observed = "\n".join(
+        [
+            ubuntu,
+            "deb http://deb.codeocean.com/rstudio-server-bionic/ ubuntu main",
+            "deb http://deb.codeocean.com/shiny-server-trusty/ ubuntu main",
+            "deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/",
+        ]
+    )
+    assert select_sources(observed) == ubuntu + "\n"
+    assert "harness_install_variant" not in original
