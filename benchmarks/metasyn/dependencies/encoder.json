@@ -1,0 +1,84 @@
+{
+  "repository": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "revision": "4328cf26390c98c5e3c738b4460a05b95f4911f5",
+  "files": [
+    {
+      "path": "encoder/.gitattributes",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/.gitattributes",
+      "sha256": "f888dc7c230287cd68af7034aa9fc2e2d6663fb7b3e70faa153caf93877914c3",
+      "bytes": 744
+    },
+    {
+      "path": "encoder/1_Pooling/config.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/1_Pooling/config.json",
+      "sha256": "a37f83ada23e7887be6b88f4998927dbeac0038af301553c7cd5461413bf1a56",
+      "bytes": 190
+    },
+    {
+      "path": "encoder/README.md",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/README.md",
+      "sha256": "06184100d14bfb314649996e8e68d1aae5ec2efd6ff8865a7eec7e3741736154",
+      "bytes": 5122
+    },
+    {
+      "path": "encoder/config.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/config.json",
+      "sha256": "8b94b5c10efd3c3ca667e5ccd501314eb670cefbf7a465f0a3fc0928a1a0ab87",
+      "bytes": 723
+    },
+    {
+      "path": "encoder/config_sentence_transformers.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/config_sentence_transformers.json",
+      "sha256": "b8c64b5cece00d8424b4896ea75b512b6008576088497609dfeb6bd63e6d36b8",
+      "bytes": 122
+    },
+    {
+      "path": "encoder/model.safetensors",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/model.safetensors",
+      "sha256": "b5722100700c48b74c9c199c5f39ff9493c94d1497f719e791d4bc3861d7714a",
+      "bytes": 1112201288
+    },
+    {
+      "path": "encoder/modules.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/modules.json",
+      "sha256": "8f4b264b80206c830bebbdcae377e137925650a433b689343a63bdc9b3145460",
+      "bytes": 229
+    },
+    {
+      "path": "encoder/pytorch_model.bin",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/pytorch_model.bin",
+      "sha256": "29d10eabb079d11355d4405789dd9d43e229ccbc47bc2581d0639edaa1721380",
+      "bytes": 1112253233
+    },
+    {
+      "path": "encoder/sentence_bert_config.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/sentence_bert_config.json",
+      "sha256": "70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f",
+      "bytes": 53
+    },
+    {
+      "path": "encoder/sentencepiece.bpe.model",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/sentencepiece.bpe.model",
+      "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+      "bytes": 5069051
+    },
+    {
+      "path": "encoder/special_tokens_map.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/special_tokens_map.json",
+      "sha256": "378eb3bf733eb16e65792d7e3fda5b8a4631387ca04d2015199c4d4f22ae554d",
+      "bytes": 239
+    },
+    {
+      "path": "encoder/tokenizer.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/tokenizer.json",
+      "sha256": "2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8",
+      "bytes": 9081518
+    },
+    {
+      "path": "encoder/tokenizer_config.json",
+      "url": "https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2/resolve/4328cf26390c98c5e3c738b4460a05b95f4911f5/tokenizer_config.json",
+      "sha256": "a312d5bef89ec4c9355638520a31582e761f205d79df3002a3bd390d7077455f",
+      "bytes": 402
+    }
+  ]
+}
