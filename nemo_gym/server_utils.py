@@ -986,7 +986,8 @@ class ServerClient(BaseModel):
             # Sending it again would run the attempt a second time,
             # and the first run's sessions on other servers would never be freed: the second run replies,
             # so the controller never retires the attempt.
-            _resend_after_disconnect=not (self.checkpoint_enabled() and url_path == "/run"),
+            _resend_after_disconnect=kwargs.pop("_resend_after_disconnect", True)
+            and not (self.checkpoint_enabled() and url_path == "/run"),
             **kwargs,
         )
 
