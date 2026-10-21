@@ -23,3 +23,7 @@ The separate judge server is `biomaze_judge`; the solver is `policy_model`. For 
 The native five-task probe produced five solver outputs and five judge results. Fresh saved-output regrading made five judge calls and no solver calls; one judgment changed, moving the score from 2/5 to 3/5. This small, judge-sensitive probe is integration evidence, not a reliable training-priority or leaderboard estimate. Join results by task identity rather than completion order.
 
 Captured replay after simulated result-append loss made no new physical model calls. That experiment was not an arbitrary coordinator-kill test. Separate shared lifecycle and restart controls have their own evidence and must not be attributed to this BioMaze run. Expansion to 20 and 50 through the maintained path remains pending.
+
+## Judge format validity
+
+The unchanged creator parser maps malformed judgments to a Boolean, including a permissive positive fallback when `Judge:` is absent. The `explicit-creator-verdict-v1` qualification requires exactly one `Judge:` marker followed by `Correct` or `Incorrect`. Malformed judgments retain the creator raw reward and complete judge response but are masked as `judge_unparseable`; report these attempted items separately from scientific accuracy. Empty or incomplete judge responses remain judge failures. A valid `Incorrect` judgment of an empty solver answer remains a scored model failure. This qualification does not retroactively change saved results or explain judge-to-judge disagreement.

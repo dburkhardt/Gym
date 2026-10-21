@@ -17,7 +17,7 @@ from nemo_gym.config_types import ModelServerRef
 from nemo_gym.judge import call_judge
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from resources_servers.biomaze.grading import grade
-from resources_servers.biomaze.openended import judge_query, parse_judge
+from resources_servers.biomaze.openended import judge_format_valid, judge_query, parse_judge
 
 
 class Config(BaseResourcesServerConfig):
@@ -94,11 +94,20 @@ class Verifier:
                 return self.judge_failure(body, judged, f"Judge status {judged.status}: {judged.incomplete_details}")
             if not (judged.output_text or "").strip():
                 return self.judge_failure(body, judged, "Judge returned empty text")
+            raw_reward = float(parse_judge(judged.output_text or ""))
+            valid = judge_format_valid(judged.output_text or "")
             return Response(
                 **body.model_dump(),
-                reward=float(parse_judge(judged.output_text or "")),
+                reward=raw_reward,
+                mask_sample=not valid,
+                failure_kind=None if valid else "judge_unparseable",
+                failure_reason=None if valid else "Judge did not return one explicit Correct/Incorrect verdict",
                 diagnostics={
                     "protocol": "Configured conclusion-judge variant",
+                    "creator_raw_reward": raw_reward,
+                    "judge_format_valid": valid,
+                    "validity_policy": "explicit-creator-verdict-v1",
+                    "denominator_policy": "Retain attempted item; malformed judge excluded from scientific score",
                     "judge_response": judged.model_dump(),
                     "deviation": "Creator 3800-token model-specific input gate replaced by provider context enforcement",
                 },

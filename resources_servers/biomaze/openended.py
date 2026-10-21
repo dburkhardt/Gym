@@ -23,3 +23,8 @@ def judge_query(template: str, question: str, reference: str, candidate: str) ->
         + candidate.strip()
         + "\nComment: "
     )
+
+
+def judge_format_valid(response: str) -> bool:
+    """Qualify explicit creator verdicts without changing its permissive raw parser."""
+    return response.count("Judge:") == 1 and response.split("Judge:", 1)[1].strip().lower() in {"correct", "incorrect"}
