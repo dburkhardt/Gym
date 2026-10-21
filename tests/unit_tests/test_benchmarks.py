@@ -260,6 +260,42 @@ class TestDiscoverBenchmarksInDir:
         err = capsys.readouterr().err
         assert "Warning" in err and "bad" in err
 
+    def test_include_only_wrapper_is_discovered_but_suite_is_not(self, tmp_path: Path) -> None:
+        from nemo_gym.benchmarks import _discover_benchmarks_in_dir
+
+        (tmp_path / "single").mkdir()
+        (tmp_path / "single" / "config.yaml").write_text(
+            "config_paths:\n- benchmarks/gpqa/config.yaml\n"
+        )
+        (tmp_path / "suite.yaml").write_text(
+            "config_paths:\n- benchmarks/gpqa/config.yaml\n- benchmarks/aime24/config.yaml\n"
+        )
+        found = _discover_benchmarks_in_dir(tmp_path)
+        assert set(found) == {"single"}
+
+    def test_broken_and_cyclic_includes_keep_diagnostics(self, tmp_path: Path, capsys) -> None:
+        from nemo_gym.benchmarks import _discover_benchmarks_in_dir
+
+        missing = tmp_path / "missing.yaml"
+        missing.write_text("config_paths: [/nonexistent/discovery-test.yaml]\n")
+        cycle = tmp_path / "cycle.yaml"
+        cycle.write_text(f"config_paths: [{cycle}]\n")
+        assert _discover_benchmarks_in_dir(tmp_path) == {}
+        err = capsys.readouterr().err
+        assert "was not found" in err
+        assert "Duplicate config paths" in err and str(cycle) in err
+
+    def test_metasyn_include_wrapper_resolves_without_runtime_environment(self, monkeypatch) -> None:
+        from nemo_gym.benchmarks import _discover_benchmarks_in_dir
+
+        for name in ("METASYN_PYTHON", "METASYN_RUNNER", "METASYN_DATA", "METASYN_OUTPUT", "METASYN_REFERENCES"):
+            monkeypatch.delenv(name, raising=False)
+        root = Path(__file__).parents[2] / "benchmarks"
+        with patch("nemo_gym.global_config._find_open_port_using_range", side_effect=AssertionError("offline discovery probed a port")):
+            found = _discover_benchmarks_in_dir(root / "metasyn")
+        assert "config" in found
+        assert found["config"].name == "metasyn"
+
     def test_suite_resolving_to_many_benchmarks_is_skipped_not_aliased(self, tmp_path: Path, capsys) -> None:
         # Resolving `config_paths` can surface several benchmark datasets even when the file itself declares
         # one. Reporting the first would publish the suite under another benchmark's name, agent, and repeat
@@ -350,17 +386,32 @@ class TestDiscoverBenchmarksInDir:
         # Every config that declares a `type: benchmark` dataset must surface as its own listing entry —
         # no silent drop from a name collision (the name-keyed dict is last-writer-wins) or a resolve
         # failure. Mirrors the content-based discovery in `list_benchmarks`.
-        from nemo_gym.benchmarks import BENCHMARKS_DIR, _benchmark_config_paths, _discover_benchmarks_in_dir
+        from nemo_gym.benchmarks import BENCHMARKS_DIR, BenchmarkConfig, _benchmark_config_paths, _discover_benchmarks_in_dir
 
         config_paths = _benchmark_config_paths(BENCHMARKS_DIR)
+        # Include wrappers may resolve to suites, non-benchmarks or invalid configs; invalid configs must warn.
+        resolved_paths = []
+        failures = []
+        for path in config_paths:
+            try:
+                resolved = BenchmarkConfig.from_config_path(path, strict=False)
+            except Exception:
+                failures.append(path)
+                continue
+            if resolved is not None:
+                resolved_paths.append(path)
+        config_paths = resolved_paths
         assert config_paths, "no benchmark configs discovered under BENCHMARKS_DIR"
 
         benchmarks = _discover_benchmarks_in_dir(BENCHMARKS_DIR)
+        diagnostics = capsys.readouterr().err
+        for path in failures:
+            assert f"Warning: skipping benchmark config '{path}'" in diagnostics
 
         assert len(benchmarks) == len(config_paths), (
             f"{len(config_paths)} benchmark config(s) discovered but only {len(benchmarks)} appear in the "
             f"listing — a duplicate name or resolve failure is hiding at least one.\n"
-            f"stderr:\n{capsys.readouterr().err}"
+            f"stderr:\n{diagnostics}"
         )
 
 

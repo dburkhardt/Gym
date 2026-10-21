@@ -8,9 +8,10 @@ The preserved creator source is `THUIR/MetaSyn@3ee040f31b9a476c4efe4012d909aac6e
 
 Configure `METASYN_DATA` with the preserved materialized dataset, `METASYN_CREATOR_SOURCE` with the pinned `src/metasyn` directory, `METASYN_PYTHON` with the isolated scientific interpreter, `METASYN_RUNNER` with this directory's `native_runner.py`, `METASYN_REFERENCES` with the corresponding full reference JSONL, and `METASYN_OUTPUT` with a fresh output root. `METASYN_SAMPLE_COUNT` accepts 5 or 20. References remain in the trusted evaluator; the model receives only creator-generated prompts.
 
-From the Gym checkout, use the supported offline preparation and plan interface:
+From the Gym checkout, the discoverable benchmark name is `metasyn`. Listing does not require the runtime environment variables or credentials. Use the supported offline inspection and plan interface:
 
 ```sh
+gym list benchmarks metasyn --json
 gym eval plan --benchmark metasyn --out /absolute/path/metasyn-plan.json
 ```
 

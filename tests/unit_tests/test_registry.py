@@ -233,6 +233,24 @@ class TestEnvironmentCatalog:
         monkeypatch.setattr(registry_module, "component_search_roots", lambda: [tmp_path])
         assert [entry.name for entry in discover_environment_catalog()] == ["foo/web"]
 
+    def test_include_wrappers_are_singular_and_offline(self, tmp_path, monkeypatch, capsys) -> None:
+        from unittest.mock import patch
+        from nemo_gym.registry import _legacy_config_paths
+
+        (tmp_path / "single.yaml").write_text("config_paths: [benchmarks/metasyn/config.yaml]\n")
+        (tmp_path / "suite.yaml").write_text(
+            "config_paths: [benchmarks/gpqa/config.yaml, benchmarks/aime24/config.yaml]\n"
+        )
+        (tmp_path / "broken.yaml").write_text("config_paths: [/nonexistent/catalog-test.yaml]\n")
+        for key in ("METASYN_PYTHON", "METASYN_DATA", "METASYN_RUNNER", "METASYN_OUTPUT", "METASYN_REFERENCES"):
+            monkeypatch.delenv(key, raising=False)
+        with patch("nemo_gym.global_config._find_open_port_using_range", side_effect=AssertionError("port probe")):
+            found = dict(_legacy_config_paths(tmp_path, "benchmark"))
+        assert set(found) == {"single"}
+        diagnostics = capsys.readouterr().err
+        assert "2 benchmark datasets" in diagnostics
+        assert "was not found" in diagnostics
+
     def test_discovers_manifest_and_legacy_union(self, tmp_path: Path, monkeypatch) -> None:
         manifest_path = _write_manifest(
             tmp_path,

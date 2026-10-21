@@ -14,6 +14,7 @@
 # limitations under the License.
 """Read-only catalog for manifest-backed and legacy environments and benchmarks."""
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Literal, Optional
@@ -22,7 +23,7 @@ import yaml
 from omegaconf import DictConfig, OmegaConf
 
 from nemo_gym import PARENT_DIR, component_search_roots
-from nemo_gym.benchmarks import MANIFEST_FILENAME, _benchmark_config_name, _benchmark_config_paths
+from nemo_gym.benchmarks import MANIFEST_FILENAME, BenchmarkConfig, _benchmark_config_name, _benchmark_config_paths
 from nemo_gym.config_types import ConfigError
 from nemo_gym.discovery import iter_server_configs, read_config_metadata
 from nemo_gym.environment.manifest import (
@@ -228,6 +229,23 @@ def _discover_resource_workloads(
 def _legacy_config_paths(tree_dir: Path, kind: CatalogKind) -> Iterable[tuple[str, Path]]:
     if kind == "benchmark":
         for config_path in _benchmark_config_paths(tree_dir):
+            try:
+                raw = yaml.safe_load(config_path.read_text())
+            except yaml.YAMLError:
+                raw = None  # Preserve existing malformed-config metadata diagnostics.
+            if isinstance(raw, dict) and raw.get("config_paths"):
+                # Include wrappers need the same offline singular-dataset check as named inspection.
+                try:
+                    benchmark = BenchmarkConfig.from_config_path(config_path, strict=False)
+                except Exception as exc:
+                    print(
+                        f"Warning: skipping benchmark config '{config_path}': could not resolve it "
+                        f"({type(exc).__name__}: {str(exc).splitlines()[0]}).",
+                        file=sys.stderr,
+                    )
+                    continue
+                if benchmark is None:
+                    continue
             yield _benchmark_config_name(config_path.relative_to(tree_dir)), config_path
         return
 

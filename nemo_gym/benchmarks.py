@@ -147,11 +147,11 @@ def _benchmark_config_name(rel_config_path: Path) -> str:
 
 
 def _is_benchmark_config(config_path: Path) -> bool:
-    """True if the config declares exactly one `type: benchmark` dataset in its own structure.
+    """True if raw content could resolve to a single benchmark.
 
     A raw single-file parse (no `config_paths`/interpolation resolution), so it's format-agnostic and can't
-    fail on includes. Declaring several makes it an eval suite rather than a benchmark: there is no single
-    name, agent, or repeat count to catalog it under, so it is not a valid `--benchmark` argument. An
+    fail on includes. Include-bearing wrappers must reach the existing resolver, which checks the final
+    dataset count (and reports broken includes); raw content alone cannot determine that count. An
     unparseable file is kept (returns True) so the resolve step surfaces a diagnostic.
     """
     if config_path.name == MANIFEST_FILENAME:
@@ -165,7 +165,8 @@ def _is_benchmark_config(config_path: Path) -> bool:
         return 0
 
     try:
-        return count(yaml.safe_load(config_path.read_text(errors="ignore"))) == 1
+        raw = yaml.safe_load(config_path.read_text(errors="ignore"))
+        return (isinstance(raw, dict) and bool(raw.get("config_paths"))) or count(raw) == 1
     except yaml.YAMLError:
         return True
 
@@ -173,7 +174,7 @@ def _is_benchmark_config(config_path: Path) -> bool:
 def _benchmark_config_paths(benchmarks_dir: Path) -> List[Path]:
     """Sorted config paths under one dir that declare a benchmark, discovered by content.
 
-    A config is a benchmark iff it declares exactly one `type: benchmark` dataset, regardless of filename, so
+    A config is a benchmark iff it resolves to exactly one `type: benchmark` dataset, regardless of filename, so
     we scan every yaml. :func:`_is_benchmark_config` is a cheap prefilter (pay the resolve cost only on real
     candidates) that also catches non-`config.yaml` names like tau2's `configs/*.yaml`. Empty if dir missing.
     """
