@@ -15,8 +15,11 @@ def setup_verifier(tmp_path, monkeypatch):
     source = tmp_path / "source"
     (source / "tests").mkdir(parents=True)
     output = tmp_path / "verifier"
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "manifest.json").write_text(json.dumps([{"source": "/workspace", "status": "ok"}]))
     environment = SimpleNamespace(
-        download_dir=AsyncMock(), upload_dir=AsyncMock(), exec=AsyncMock(), download_file=AsyncMock()
+        download_dir_with_exclusions=AsyncMock(), upload_dir=AsyncMock(), exec=AsyncMock(), download_file=AsyncMock()
     )
     instance = module.AIRSVerifier(
         source_roots_json=json.dumps({"task": str(source)}),
@@ -24,17 +27,19 @@ def setup_verifier(tmp_path, monkeypatch):
             config=SimpleNamespace(verifier=SimpleNamespace(environment_mode="separate")),
             paths=SimpleNamespace(task_dir=Path("task")),
         ),
-        trial_paths=SimpleNamespace(verifier_dir=output),
+        trial_paths=SimpleNamespace(verifier_dir=output, artifacts_dir=artifacts),
         environment=environment,
     )
     monkeypatch.setattr(module, "validate_inputs", lambda *args: {"image": "sha256:fixed", "test_predictions": 10000})
     monkeypatch.setattr(module, "scorer_identity", lambda *args: {"creator_revision": "fixed"})
 
-    async def download(_, destination):
+    async def download(*, source_dir, target_dir, exclude):
+        destination = target_dir
+        assert exclude == ["data", "./data"]
         destination.mkdir(parents=True)
         (destination / "submission.csv").write_text("prediction\n1\n")
 
-    environment.download_dir.side_effect = download
+    environment.download_dir_with_exclusions.side_effect = download
     return instance, environment, output
 
 
@@ -59,7 +64,7 @@ async def test_native_verifier_uses_existing_environment_and_records_identity(se
 
 async def test_download_failure_is_not_missing_model_submission(setup_verifier):
     instance, environment, output = setup_verifier
-    environment.download_dir.side_effect = RuntimeError("transfer failed")
+    environment.download_dir_with_exclusions.side_effect = RuntimeError("transfer failed")
     with pytest.raises(RuntimeError, match="transfer failed"):
         await instance.verify()
     assert not (output / "native-score/failure.json").exists()
@@ -69,10 +74,11 @@ async def test_download_failure_is_not_missing_model_submission(setup_verifier):
 async def test_complete_missing_submission_is_model_failure(setup_verifier):
     instance, environment, output = setup_verifier
 
-    async def empty(_, destination):
+    async def empty(*, source_dir, target_dir, exclude):
+        destination = target_dir
         destination.mkdir(parents=True)
 
-    environment.download_dir.side_effect = empty
+    environment.download_dir_with_exclusions.side_effect = empty
     with pytest.raises(ValueError, match="omitted submission"):
         await instance.verify()
     assert json.loads((output / "native-score/failure.json").read_text())["kind"] == "model_missing_submission"
@@ -85,3 +91,14 @@ async def test_creator_failure_never_becomes_zero_score(setup_verifier):
     with pytest.raises(RuntimeError, match="Creator scorer rejected"):
         await instance.verify()
     assert not (output / "native-score/score.json").exists()
+
+
+async def test_failed_native_artifact_capture_is_not_model_failure(setup_verifier):
+    instance, environment, output = setup_verifier
+    (instance.trial_paths.artifacts_dir / "manifest.json").write_text(
+        json.dumps([{"source": "/workspace", "status": "failed"}])
+    )
+    with pytest.raises(RuntimeError, match="Incomplete native workspace"):
+        await instance.verify()
+    environment.download_dir_with_exclusions.assert_not_awaited()
+    assert not (output / "native-score/failure.json").exists()

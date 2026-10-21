@@ -25,9 +25,15 @@ class AIRSVerifier(BaseVerifier):
         output = self.trial_paths.verifier_dir / "native-score"
         output.mkdir(parents=True, exist_ok=False)
         workspace = output / "saved-workspace"
+        artifact_manifest = json.loads((self.trial_paths.artifacts_dir / "manifest.json").read_text())
+        captured = [entry for entry in artifact_manifest if entry["source"] == "/workspace"]
+        if len(captured) != 1 or captured[0]["status"] not in ("ok", "empty"):
+            raise RuntimeError("Incomplete native workspace artifact capture; not a model failure")
         # Harbor has restored the declared artifact into this separate environment.
         # A failed download is an infrastructure failure, never missing model output.
-        await self.environment.download_dir("/workspace", workspace)
+        await self.environment.download_dir_with_exclusions(
+            source_dir="/workspace", target_dir=workspace, exclude=["data", "./data"]
+        )
         task = validate_inputs(name, source, workspace)
         prediction = workspace / "submission.csv"
         if not prediction.is_file():

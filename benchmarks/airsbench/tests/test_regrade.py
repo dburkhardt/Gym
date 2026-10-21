@@ -60,7 +60,7 @@ allow_internet = false
     assert parsed["environment"]["docker_image"] == image
     assert parsed["environment"]["network_mode"] == "no-network"
     assert parsed["environment"]["memory_mb"] == 3072
-    assert parsed["artifacts"] == ["/workspace"]
+    assert parsed["artifacts"] == [{"source": "/workspace", "exclude": ["data", "./data"]}]
     with pytest.raises(ValueError, match="Immutable"):
         runtime_config(original, "mutable-tag")
 

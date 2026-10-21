@@ -20,7 +20,7 @@ def runtime_config(text: str, image: str) -> str:
     text = text.replace("allow_internet = false", 'network_mode = "no-network"')
     text = text.replace("[environment]\n", '[environment]\nworkdir = "/workspace"\n')
     text = text.replace("[verifier]\n", '[verifier]\nenvironment_mode = "separate"\n')
-    return 'artifacts = ["/workspace"]\n' + text
+    return 'artifacts = [{ source = "/workspace", exclude = ["data", "./data"] }]\n' + text
 
 
 def validate_existing_overlay(target: Path, expected: set[Path]) -> None:
