@@ -117,6 +117,9 @@ def bind_execution(
         "dispatch_longest_first",
         "dispatch_budget_s",
         "drain_margin_s",
+        "worker_lease_deadline_unix_s",
+        "worker_lease_cleanup_reserve_s",
+        "worker_lease_startup_reserve_s",
         "retain_results_in_memory",
         "health_check_ignored_checks",
         "disable_health_check",
@@ -156,6 +159,9 @@ def bind_execution(
         "eval_restore_checkpoint",
         "resume_from_cache",
         "reuse_existing_data_preparation",
+        "worker_lease_deadline_unix_s",
+        "worker_lease_cleanup_reserve_s",
+        "worker_lease_startup_reserve_s",
         "disallowed_ports",
     ):
         global_science.pop(key, None)

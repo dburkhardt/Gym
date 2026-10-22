@@ -791,6 +791,14 @@ def e2e_rollout_collection():  # pragma: no cover
             },
         }
         rh._service_ownership = ServiceOwnership(output_fpath.with_suffix("") / "native_services", binding)
+    if (
+        rollout_collection_config.worker_lease_deadline_unix_s is not None
+        and e2e_rollout_collection_config.rollout_collection_driver
+    ):
+        raise ConfigError(
+            "Worker lease admission is unsupported for custom rollout_collection_driver; use the built-in collector"
+        )
+    rollout_collection_config.check_worker_lease(before_service_start=True)
     rh.start(None)
 
     rch = RolloutCollectionHelper()

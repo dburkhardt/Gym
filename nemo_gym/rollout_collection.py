@@ -1751,6 +1751,36 @@ def migrate_invalid_judge_main_rows(output_fpath: Path) -> int:
     return invalid_count
 
 
+def _worker_lease_deadline(
+    deadline_unix_s: float | None,
+    cleanup_reserve_s: float | None,
+    full_task_s: float | None,
+    *,
+    startup_s: float = 0,
+    check_remaining: bool = True,
+) -> float | None:
+    """Convert a supplied worker lease into a monotonic collector bound, leaving cleanup time."""
+    if deadline_unix_s is None:
+        if cleanup_reserve_s is not None:
+            raise ValueError("worker_lease_cleanup_reserve_s requires worker_lease_deadline_unix_s")
+        return None
+    for name, value in (
+        ("worker lease deadline", deadline_unix_s),
+        ("worker lease cleanup reserve", cleanup_reserve_s),
+        ("drain_margin_s", full_task_s),
+    ):
+        if value is None or isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"Worker lease requires explicit positive finite {name}")
+    if isinstance(startup_s, bool) or not math.isfinite(startup_s) or startup_s < 0:
+        raise ValueError("Worker lease startup reserve must be finite and nonnegative")
+    if not check_remaining:
+        return None
+    remaining = deadline_unix_s - time.time() - cleanup_reserve_s
+    if remaining < full_task_s + startup_s:
+        raise ValueError("Worker lease cannot fit full rollout, startup reserve, and cleanup before shutdown")
+    return time.monotonic() + remaining
+
+
 class RolloutCollectionConfig(SharedRolloutCollectionConfig):
     """
     Perform a batch of rollout collection.
@@ -1880,15 +1910,58 @@ class RolloutCollectionConfig(SharedRolloutCollectionConfig):
                 raise ValueError(f"num_repeats dict values must be >= 1, got {bad}")
         return self
 
+    worker_lease_deadline_unix_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Absolute worker shutdown deadline (UTC Unix seconds); never a campaign budget horizon.",
+    )
+    worker_lease_cleanup_reserve_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Explicit time reserved for result persistence and service/worker cleanup before shutdown.",
+    )
+    worker_lease_startup_reserve_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Explicit startup bound required by the service-starting eval path when a worker lease is set.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_worker_lease(self) -> "RolloutCollectionConfig":
+        _worker_lease_deadline(
+            self.worker_lease_deadline_unix_s,
+            self.worker_lease_cleanup_reserve_s,
+            self.drain_margin_s,
+            check_remaining=False,
+        )
+        if self.worker_lease_deadline_unix_s is None and self.worker_lease_startup_reserve_s is not None:
+            raise ValueError("worker_lease_startup_reserve_s requires worker_lease_deadline_unix_s")
+        return self
+
+    def check_worker_lease(self, *, before_service_start: bool = False) -> None:
+        """Reject an insufficient lease before collection or service startup; never extend it."""
+        if before_service_start and self.worker_lease_deadline_unix_s is not None:
+            if self.worker_lease_startup_reserve_s is None:
+                raise ValueError("Service startup with a worker lease requires worker_lease_startup_reserve_s")
+        _worker_lease_deadline(
+            self.worker_lease_deadline_unix_s,
+            self.worker_lease_cleanup_reserve_s,
+            self.drain_margin_s,
+            startup_s=(self.worker_lease_startup_reserve_s or 0) if before_service_start else 0,
+        )
+
     @model_validator(mode="after")
     def _validate_dispatch_concurrency(self) -> "RolloutCollectionConfig":
         if (
-            self.dispatch_budget_s is not None
+            (self.dispatch_budget_s is not None or self.worker_lease_deadline_unix_s is not None)
             and self.num_samples_in_parallel is None
             and self.max_resident_rollout_tasks is None
         ):
             raise ValueError(
-                "dispatch_budget_s requires num_samples_in_parallel or max_resident_rollout_tasks; "
+                "dispatch_budget_s or worker lease requires num_samples_in_parallel or max_resident_rollout_tasks; "
                 "unbounded dispatch can POST the entire queue before the budget is re-checked"
             )
         return self
@@ -3150,6 +3223,7 @@ class RolloutCollectionHelper(BaseModel):
         preset but deliberately not in `per_rollout`, where each rollout is meant to be
         its own bounded root trace.
         """
+        config.check_worker_lease()
         async with observe_event_loop("driver"):
             if not is_span_group_enabled(GymSpanGroup.JOB):
                 return await self._run_from_config(config)
@@ -3592,6 +3666,8 @@ class RolloutCollectionHelper(BaseModel):
                 interleave_by_agent=True,
                 dispatch_budget_s=config.dispatch_budget_s,
                 drain_margin_s=config.drain_margin_s,
+                worker_lease_deadline_unix_s=config.worker_lease_deadline_unix_s,
+                worker_lease_cleanup_reserve_s=config.worker_lease_cleanup_reserve_s,
                 latency_tracker=latency_tracker,
                 **({"run_timing": run_timing} if run_timing is not None else {}),
             )
@@ -4516,6 +4592,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
         interleave_by_agent: bool = False,
         dispatch_budget_s: Optional[float] = None,
         drain_margin_s: Optional[float] = None,
+        worker_lease_deadline_unix_s: Optional[float] = None,
+        worker_lease_cleanup_reserve_s: Optional[float] = None,
         latency_tracker: Optional["DispatchLatencyTracker"] = None,
         run_timing: Optional[RunTimingReport] = None,
     ) -> Iterator[Future]:  # pragma: no cover
@@ -4561,6 +4639,15 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
             for name, block in server_client.global_config_dict.items()
             if isinstance(block, DictConfig) and isinstance(block.get(ENVIRONMENT_SERVER_TYPE_KEY_NAME), DictConfig)
         }
+        if worker_lease_deadline_unix_s is not None and not (
+            isinstance(semaphore, Semaphore)
+            or (
+                isinstance(max_resident_tasks, int)
+                and not isinstance(max_resident_tasks, bool)
+                and max_resident_tasks > 0
+            )
+        ):
+            raise ValueError("Worker lease requires bounded dispatch: semaphore or positive max_resident_tasks")
         semaphore = semaphore or nullcontext()
         observer = driver_metrics()
         if observer is not None:
@@ -4572,6 +4659,11 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
         deadline = (time.monotonic() + dispatch_budget_s) if dispatch_budget_s is not None else None
         from nemo_gym.agent_utils.process_supervisor import collector_deadline_from_environment
 
+        worker_deadline = _worker_lease_deadline(
+            worker_lease_deadline_unix_s, worker_lease_cleanup_reserve_s, drain_margin_s
+        )
+        if worker_deadline is not None:
+            deadline = min(deadline, worker_deadline) if deadline is not None else worker_deadline
         supervisor_deadline = collector_deadline_from_environment()
         if supervisor_deadline is not None:
             if drain_margin_s is None or not math.isfinite(drain_margin_s) or drain_margin_s <= 0:
@@ -4713,6 +4805,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
         max_resident_tasks: Optional[int] = None,
         dispatch_budget_s: Optional[float] = None,
         drain_margin_s: Optional[float] = None,
+        worker_lease_deadline_unix_s: Optional[float] = None,
+        worker_lease_cleanup_reserve_s: Optional[float] = None,
         latency_tracker: Optional["DispatchLatencyTracker"] = None,
     ) -> _RowResultIterator:  # pragma: no cover
         """
@@ -4784,6 +4878,8 @@ Aggregate metrics: {aggregate_metrics_fpath}{coverage}""")
                 max_resident_tasks=max_resident_tasks,
                 dispatch_budget_s=dispatch_budget_s,
                 drain_margin_s=drain_margin_s,
+                worker_lease_deadline_unix_s=worker_lease_deadline_unix_s,
+                worker_lease_cleanup_reserve_s=worker_lease_cleanup_reserve_s,
                 latency_tracker=latency_tracker,
             )
         )
