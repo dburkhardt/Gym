@@ -76,6 +76,7 @@ async def test_managed_failure_is_masked_not_scientific_zero(tmp_path, monkeypat
         _semaphore=asyncio.Semaphore(1),
         config=SimpleNamespace(
             inference_enabled=True,
+            saved_solver_manifest=None,
             task_manifest=str(manifest),
             output_root=str(tmp_path / "out"),
             model_server=SimpleNamespace(name="policy_model"),
@@ -176,7 +177,8 @@ async def test_request_manifest_binding_rejected_before_execution(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tmp_path, monkeypatch):
+@pytest.mark.parametrize("saved", [False, True])
+async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tmp_path, monkeypatch, saved):
     import asyncio
 
     import httpx
@@ -215,6 +217,7 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
 
 
     async def solver(*args):
+        assert not saved, "saved judging must never run the solver"
         return {"success": True}
 
     monkeypatch.setattr(worker, "run_native", solver)
@@ -245,6 +248,11 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
             }
         )
     )
+    if saved:
+        p = tmp_path / "worker-input.json"
+        payload = json.loads(p.read_text())
+        payload["saved_solver"] = {"success": True}
+        p.write_text(json.dumps(payload))
     for key in ("SCIVIS_SOCKET", "SCIVIS_TOKEN", "SCIVIS_LINEAGE", "SCIVIS_DIGEST"):
         monkeypatch.setenv(key, "fixture")
     with pytest.raises(TimeoutError):

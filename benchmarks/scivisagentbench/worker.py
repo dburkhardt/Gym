@@ -94,33 +94,37 @@ async def main(output: Path) -> None:
             response.raise_for_status()
             return response.json()
 
-        async with asyncio.timeout(identity["timeout_s"]):
-            solver = await run_native(
-                Path(payload["source_root"]),
-                payload["native_config"],
-                task,
-                output / "solver",
-                sender,
-                identity["max_tokens"],
-            )
+        if "saved_solver" in payload:
+            solver = payload["saved_solver"]
+        else:
+            async with asyncio.timeout(identity["timeout_s"]):
+                solver = await run_native(
+                    Path(payload["source_root"]),
+                    payload["native_config"],
+                    task,
+                    output / "solver",
+                    sender,
+                    identity["max_tokens"],
+                )
         evaluation = {}
         if solver.get("success"):
             judge_started = asyncio.get_running_loop().time()
-            exporter = await asyncio.create_subprocess_exec(
-                payload["artifact_export_python"], "-m", "benchmarks.scivisagentbench.artifacts", str(output),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(exporter.communicate(), 120)
-            except BaseException:
-                if exporter.returncode is None:
-                    exporter.kill()
-                await exporter.communicate()
-                raise
-            (output / "artifact-export.stdout").write_bytes(stdout)
-            (output / "artifact-export.stderr").write_bytes(stderr)
-            if exporter.returncode:
-                raise RuntimeError("Owned artifact export failed")
+            if "saved_solver" not in payload:
+                exporter = await asyncio.create_subprocess_exec(
+                    payload["artifact_export_python"], "-m", "benchmarks.scivisagentbench.artifacts", str(output),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout, stderr = await asyncio.wait_for(exporter.communicate(), 120)
+                except BaseException:
+                    if exporter.returncode is None:
+                        exporter.kill()
+                    await exporter.communicate()
+                    raise
+                (output / "artifact-export.stdout").write_bytes(stdout)
+                (output / "artifact-export.stderr").write_bytes(stderr)
+                if exporter.returncode:
+                    raise RuntimeError("Owned artifact export failed")
             stage_judge_data(
                 output / "exported-artifacts",
                 Path(task["judge_data_dir"]),

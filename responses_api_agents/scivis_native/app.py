@@ -18,6 +18,7 @@ from pydantic import ConfigDict, Field, PrivateAttr
 
 from benchmarks.scivisagentbench.managed import execute
 from benchmarks.scivisagentbench.prepare import FROZEN_SHA256
+from benchmarks.scivisagentbench.saved_judge import execute_saved
 from benchmarks.scivisagentbench.transport import MODEL
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -43,6 +44,7 @@ class Config(BaseResponsesAPIAgentConfig):
     timeout_s: int = 7200
     request_timeout_s: float = Field(default=600, gt=0, allow_inf_nan=False)
     inference_enabled: bool = False
+    saved_solver_manifest: str | None = None
     judge_command: list[str] = Field(default_factory=list)
 
 
@@ -115,7 +117,8 @@ class Agent(SimpleResponsesAPIAgent):
             evaluation = {}
             failure = "native_evaluator_pending"
             try:
-                result, evaluation = await execute(self.config, task, output, endpoint)
+                runner = execute_saved if self.config.saved_solver_manifest else execute
+                result, evaluation = await runner(self.config, task, output, endpoint)
                 if not result.get("success"):
                     failure = "native_solver_failed: " + str(result.get("error"))
                 elif evaluation:
