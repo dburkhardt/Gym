@@ -354,6 +354,18 @@ class TestApp:
         assert result.agent_metrics["mean/reward"] == 0.5
         assert result.key_metrics["mean/reward"] == 0.5
 
+    @pytest.mark.parametrize("error", [ImportError("optional"), RuntimeError("optional")])
+    async def test_observation_failure_preserves_scientific_result(self, error):
+        server = _make_server()
+        with (
+            _harbor_run_mocks(trajectory=DEFAULT_TRAJECTORY),
+            patch("responses_api_agents.harbor_agent.app.read_terminus_observations", side_effect=error),
+        ):
+            response = await server.run(_make_run_request())
+        assert response.reward == 1.0 and not response.mask_sample
+        assert response.failure_kind is None
+        assert response.model_dump()["ng_agent_observations"]["gaps"][0]["detail"] == type(error).__name__
+
     async def test_run_with_token_details(self):
         server = _make_server()
         with _harbor_run_mocks(trajectory=DEFAULT_TRAJECTORY):

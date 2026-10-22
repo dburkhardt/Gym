@@ -54,11 +54,12 @@ from nemo_gym.server_utils import (
 )
 from responses_api_agents.harbor_agent.failure_diagnostics import (
     intent_bound_provider_rejection,
-    terminus_bound_provider_rejection,
     measurement_failure,
     required_artifact_failure,
+    terminus_bound_provider_rejection,
 )
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
+from responses_api_agents.harbor_agent.observability import read_terminus_observations
 from responses_api_agents.harbor_agent.resource_admission import StaticRayResourceError, static_resource_feasibility
 from responses_api_agents.harbor_agent.utils import HarborAgentUtils
 
@@ -488,6 +489,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
             failure_kind = None
             failure_metadata = {}
             resource_admission = None
+            observations = None
             try:
                 params = dict(
                     job_config_dict=job_config_dict,
@@ -550,6 +552,22 @@ class HarborAgent(SimpleResponsesAPIAgent):
 
                 # Trajectories can be many MB; parse off the event loop.
                 trial_result, trajectory, agent_error_flags = await asyncio.to_thread(_read_trial_files)
+                try:
+                    observed = await asyncio.to_thread(
+                        read_terminus_observations,
+                        trial_dir=trial_dir,
+                        capture_dir=global_config_dict.get("model_call_capture_dir"),
+                        rollout_id=capture_id,
+                    )
+                    observations = observed.model_dump(mode="json")
+                except Exception as exc:
+                    # Optional reporting must not mask a native scientific result.
+                    # Cancellation is a BaseException and still propagates.
+                    observations = {
+                        "source": "harbor:terminus_dispatch_cursor",
+                        "records": [],
+                        "gaps": [{"code": "harbor_solver_call_bindings_unavailable", "detail": type(exc).__name__}],
+                    }
 
                 # Extract reward from verifier result
                 verifier_result = trial_result.get("verifier_result")
@@ -678,6 +696,9 @@ class HarborAgent(SimpleResponsesAPIAgent):
                     ((trial_result or {}).get("exception_info") or {}).get("exception_type") == "AgentTimeoutError"
                 ),
             )
+
+            if observations is not None:
+                verify_response = verify_response.model_copy(update={"ng_agent_observations": observations})
 
             # Save result to disk (folder = run_id, file = task name)
             output_path = output_file_dir / run_id

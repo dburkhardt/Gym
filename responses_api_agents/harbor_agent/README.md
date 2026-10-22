@@ -657,3 +657,17 @@ hash; Harbor's artifact manifest and failure classification remain authoritative
 This option does not silently truncate oversized output or establish a scientific
 score when capture fails. Container transfers and finalization still consume the
 run's existing operational allowance.
+
+### Guarded Terminus call observations
+
+Completed guarded Terminus runs report solver-call ownership from the durable
+`agent/gym-call-state.json` cursor and captured exchanges. The reader requires
+matching rollout, logical call, configuration and request hashes, unique capture
+IDs, and a fully settled successful history. The shared collector can then
+project turns from the actual captured responses. A mixed, missing or partial
+history remains an explicit observation gap; no call is inferred to belong to
+the solver merely because it shares the rollout.
+
+This does not reconstruct the full ATIF tool conversation or infer invocation
+success. Original Harbor trajectories remain the source for those details.
+Optional observation failures never replace the native scientific score.
