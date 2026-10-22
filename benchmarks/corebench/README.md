@@ -95,3 +95,5 @@ The reference-bearing artifact stays outside the solver workspace. Historical
 prepared tasks/results and the legacy single-capsule preparer are unchanged.
 A zero-width interval can expose rounding sensitivity, but this metadata does
 not by itself establish scientific invalidity or authorize a score correction.
+
+For R images, `auxiliary_controls.qualify_creator_r_startup` supplies an additional before/after check using normal image startup. A `--vanilla` inventory may omit creator site libraries, as observed for capsule 8912293. The check compares the Rscript executable, R version, library paths, selected startup variables and installed package inventory through owned no-network probes. It supplements `qualify_images`; it does not exercise project-local startup files or establish scientific execution. Keep its receipt with the ordinary image/source qualification.

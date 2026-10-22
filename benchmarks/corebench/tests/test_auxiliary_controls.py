@@ -114,3 +114,37 @@ async def test_failed_probe_does_not_publish_receipt(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="cleanup unconfirmed"):
         await auxiliary_controls.observe_auxiliaries(*example("phantomjs"), tmp_path / "observation")
     assert not (tmp_path / "observation").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("variant", ["same", "package-drift", "empty", "cleanup-failure"])
+async def test_creator_r_startup_requires_observed_parity(tmp_path, monkeypatch, variant):
+    from benchmarks.corebench import auxiliary_controls, image_controls
+
+    calls = []
+    original = 'creator-r-startup-v1\n/usr/local/lib/R/site-library\nelectionsBR\t0.3.2\n'
+
+    async def probe(image, command, destination, **kwargs):
+        calls.append((image, command, kwargs))
+        destination.mkdir(parents=True)
+        if len(calls) == 2 and variant == "cleanup-failure":
+            raise ValueError("cleanup unconfirmed")
+        text = "" if variant == "empty" else original
+        if len(calls) == 2 and variant == "package-drift":
+            text = text.replace("0.3.2", "0.5.0")
+        return {"image": {"Id": image}, "stdout": text}
+
+    monkeypatch.setattr(image_controls, "probe_image", probe)
+    row, _ = example("Rscript")
+    dest = tmp_path / "r-startup"
+    if variant == "same":
+        receipt = await auxiliary_controls.qualify_creator_r_startup(row, "sha256:" + "c" * 64, dest)
+        assert receipt["creator_r_startup_equal"]
+        assert "project startup" in receipt["scope"]
+        assert "--vanilla" not in calls[0][1]
+        assert calls[0][0] == row["published_image"]
+        assert calls[1][0] == "sha256:" + "c" * 64
+    else:
+        with pytest.raises(ValueError):
+            await auxiliary_controls.qualify_creator_r_startup(row, "sha256:" + "c" * 64, dest)
+        assert not (dest / "creator-r-startup.json").exists()

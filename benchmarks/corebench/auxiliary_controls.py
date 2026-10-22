@@ -168,3 +168,44 @@ async def qualify_required_tools(row, selections, final_image, destination, *, c
     )
     _publish(destination / "required-tools.json", receipt)
     return receipt
+
+
+CREATOR_R_STARTUP_PROBE = r"""set -eu
+command -v Rscript
+sha256sum "$(command -v Rscript)"
+Rscript -e 'cat("creator-r-startup-v1\n"); cat(R.version.string, "\n"); writeLines(.libPaths()); print(Sys.getenv(c("R_HOME", "R_LIBS", "R_LIBS_SITE", "R_LIBS_USER", "R_ENVIRON", "R_ENVIRON_USER", "R_PROFILE", "R_PROFILE_USER", "HOME"))); p <- installed.packages(); p <- p[order(p[, "Package"], p[, "LibPath"]), c("Package", "Version", "LibPath", "Built"), drop=FALSE]; write.table(p, stdout(), sep="\t", quote=TRUE, row.names=FALSE)'
+"""
+
+
+async def qualify_creator_r_startup(row, final_image, destination, *, cpus=1, memory_mb=1024):
+    """Compare normal image R startup; vanilla inventories can omit site libraries.
+
+    This supplements image/source qualification. It does not exercise project-local
+    startup files, workflow inputs, or scientific execution. No packages are installed.
+    """
+    from benchmarks.corebench.image_controls import probe_image
+    from nemo_gym.sandbox.lifecycle import _publish
+
+    destination = Path(destination)
+    before = await probe_image(
+        row["published_image"], CREATOR_R_STARTUP_PROBE, destination / "before", cpus=cpus, memory_mb=memory_mb
+    )
+    after = await probe_image(
+        final_image, CREATOR_R_STARTUP_PROBE, destination / "after", cpus=cpus, memory_mb=memory_mb
+    )
+    if "creator-r-startup-v1\n" not in before["stdout"] or before["stdout"] != after["stdout"]:
+        raise ValueError("Creator R startup interpreter/library/package state changed or absent")
+    receipt = {
+        "schema": "corebench-creator-r-startup-v1",
+        "capsule": row["id"],
+        "before_image": before["image"],
+        "after_image": after["image"],
+        "source_manifest_sha256": hashlib.sha256(json.dumps(row["medium_file_manifest"], sort_keys=True).encode()).hexdigest(),
+        "command_sha256": hashlib.sha256(CREATOR_R_STARTUP_PROBE.encode()).hexdigest(),
+        "implementation_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "stdout_sha256": hashlib.sha256(before["stdout"].encode()).hexdigest(),
+        "creator_r_startup_equal": True,
+        "scope": "Normal image startup only; project startup, source isolation and scientific workflow remain separate",
+    }
+    _publish(destination / "creator-r-startup.json", receipt)
+    return receipt
