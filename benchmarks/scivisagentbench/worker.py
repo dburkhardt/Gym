@@ -30,7 +30,8 @@ def runtime_identity(output: Path, expected: dict) -> None:
     actual = {
         "source": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
         "interpreter": {
-            "path": str(Path(sys.executable).resolve()),
+            "path": str(Path(sys.executable).absolute()),
+            "resolved_path": str(Path(sys.executable).resolve()),
             "sha256": hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
         },
         "python_version": sys.version,

@@ -119,7 +119,8 @@ def test_runtime_identity_records_actual_imports_and_refuses_stale_source(tmp_pa
     expected = {
         "source": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
         "interpreter": {
-            "path": str(Path(sys.executable).resolve()),
+            "path": str(Path(sys.executable).absolute()),
+            "resolved_path": str(Path(sys.executable).resolve()),
             "sha256": hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
         },
     }
@@ -271,3 +272,32 @@ def test_viewer_workspace_survives_restrictive_umask_without_changing_inputs(tmp
     assert refs.stat().st_mode & 0o777 == 0o700
     with pytest.raises(FileExistsError):
         create_viewer_workspace(tmp_path / "attempt")
+
+
+def test_native_python_preserves_real_virtual_environment(tmp_path):
+    import subprocess
+    import venv
+
+    from benchmarks.scivisagentbench.managed import validate_native_python
+
+    environment = tmp_path / "controller"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(environment)
+    executable = environment / "bin" / "python"
+    assert executable.is_symlink()
+    selected = validate_native_python(executable)
+    assert selected == executable.absolute()
+    assert selected != executable.resolve()
+    site = Path(subprocess.check_output(
+        [str(selected), "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"], text=True,
+    ).strip())
+    (site / "scivis_venv_only.py").write_text("VALUE = 'controller dependency'\n")
+    actual = json.loads(subprocess.check_output(
+        [str(selected), "-c", "import json,sys,scivis_venv_only as dep; print(json.dumps([sys.prefix,dep.VALUE]))"],
+        text=True,
+    ))
+    assert actual == [str(environment), "controller dependency"]
+    bypassed = subprocess.run(
+        [str(executable.resolve()), "-I", "-c", "import scivis_venv_only"], capture_output=True, text=True,
+    )
+    assert bypassed.returncode != 0
+    assert "ModuleNotFoundError" in bypassed.stderr

@@ -21,8 +21,10 @@ from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 
 
-def validate_native_python(interpreter: Path) -> None:
+def validate_native_python(interpreter: Path) -> Path:
     """Reject unsupported controller runtimes before starting a viewer sandbox."""
+    # Preserve the venv entry point: resolving its symlink bypasses pyvenv.cfg.
+    interpreter = interpreter.absolute()
     result = subprocess.run(
         [str(interpreter), "-c", "import json,sys; print(json.dumps(list(sys.version_info[:2])))"],
         capture_output=True, text=True, check=True, timeout=10,
@@ -32,6 +34,7 @@ def validate_native_python(interpreter: Path) -> None:
         raise ValueError("Native controller interpreter returned an invalid Python version")
     if tuple(version) < (3, 11):
         raise ValueError("SciVis native controller requires Python 3.11+; viewer Python is independent")
+    return interpreter
 
 
 def checked_tree(root: Path, hashes: dict) -> None:
@@ -112,7 +115,7 @@ def create_viewer_workspace(output: Path) -> Path:
 
 async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict, dict]:
     """A fresh native attempt; no reconnection or replay is inferred from artifacts."""
-    validate_native_python(Path(config.native_python))
+    interpreter = validate_native_python(Path(config.native_python))
     runtime_cases = json.loads(Path(config.runtime_packet).read_text())["cases"]
     if set(runtime_cases) != {f"case_{i}" for i in range(1, 12)}:
         raise ValueError("Runtime packet must retain all eleven frozen cases")
@@ -144,11 +147,14 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
     if any(not p.is_relative_to(source) for p in imported):
         raise ValueError("Shared runtime imported outside selected Gym source")
     modules.extend(imported)
-    interpreter = Path(config.native_python).resolve()
     native_config = json.loads(Path(config.native_config).read_text())
     identity = {
         "source": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in modules},
-        "interpreter": {"path": str(interpreter), "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest()},
+        "interpreter": {
+            "path": str(interpreter),
+            "resolved_path": str(interpreter.resolve()),
+            "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest(),
+        },
         "runtime_packet": packet,
         "native_config": native_config,
         "task": task,
