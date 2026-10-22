@@ -123,7 +123,7 @@ async def qualify(args):
             endpoint=f"http://127.0.0.1:{port}/ng-rollout/promptbio-control/v1",
             rollout_id="promptbio-control",
             scorer_image=args.image,
-            scorer_memory_mib=2048,
+            scorer_memory_mib=args.scorer_memory_mib,
         )
         if scores != [1.0, 0.0]:
             raise AssertionError(f"Creator paired scores changed: {scores}")
@@ -134,9 +134,10 @@ async def qualify(args):
             args.output / "complete.json",
             {
                 "scores": scores,
-                "scorer_memory_mib": 2048,
+                "scorer_memory_mib": args.scorer_memory_mib,
                 "production_memory_mib": 4096,
                 "production_placement_qualified": False,
+                "production_memory_limit_exercised": args.scorer_memory_mib == 4096,
                 "schema_counts": dict(counts),
                 "local_provider_calls": len(calls),
                 "live_provider_calls": 0,
@@ -158,6 +159,8 @@ def main():
     parser.add_argument("--scorer", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scorer-memory-mib", type=int, choices=(2048, 4096), default=2048,
+                        help="Judge container memory limit; production uses 4096 MiB. This does not qualify solver placement or native model capture.")
     asyncio.run(qualify(parser.parse_args()))
 
 

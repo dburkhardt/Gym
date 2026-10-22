@@ -69,3 +69,5 @@ python -m responses_api_agents.promptbio_bench.qualify_runtime --task /pinned/ta
 Before either command, validate worker identity, available memory/disk, total spending and any existing lease deadline. No image build or runtime control has yet been accepted for this new isolated scorer. The historical host judge environment is not an approved fallback.
 
 Before judge dispatch, candidate outputs and task/reference files are copied into readonly snapshots; their verified content manifests, controller files and shared transport hash bind the logical call configuration. Clean-source preflight rejects ignored files, then projects only committed creator files. The judge verifies this manifest instead of receiving Git configuration or hooks.
+
+The paired qualification command accepts `--scorer-memory-mib 4096` to exercise the production judge memory limit (default: historical 2048 MiB). Its receipt records the chosen limit separately from full production placement, which remains unqualified until the solver and native model-capture path are exercised. The retained 2 GiB control passed with oracle/missing scores `[1, 0]`; it does not establish the 4 GiB runtime.
