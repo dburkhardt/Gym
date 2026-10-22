@@ -90,6 +90,9 @@ def stage_files(row: dict[str, object], source: Path | None, destination: Path) 
 
 # Complete dynamic-input closure used by the original five-script workflow.
 # These are current upstream bytes, not proof of the historical release inputs.
+# Diagnostic only: 2016 column 27 is now SQ_COLIGACAO, but the original helper
+# labels it as nominal votes. This closure is NOT scientifically qualified;
+# do not admit a full workflow merely because all cache/parser probes succeed.
 CLOSURE_VARIANT = "8912293-tse-all-current-v2"
 CLOSURE_INPUTS = {
     "perfil_eleitorado_2016.zip": INPUT_SHA256,
