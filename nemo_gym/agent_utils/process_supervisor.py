@@ -221,6 +221,9 @@ def _supervise(
         if collector_cleanup_reserve is None:
             deadline = time.monotonic() + timeout
         while process.poll() is None and not stopping and time.monotonic() < deadline:
+            if stop_path is not None and stop_path.exists():
+                stopping = True
+                break
             time.sleep(0.05)
         if process.poll() is None:
             forced_stop = True

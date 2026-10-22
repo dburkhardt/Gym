@@ -85,7 +85,7 @@ def test_supervisor_rejects_invalid_deadlines(tmp_path: Path, timeout: str) -> N
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux owner subreaper and /proc are required")
-@pytest.mark.parametrize("ending", ["normal", "crash", "timeout", "cancel", "grace", "stubborn", "killed"])
+@pytest.mark.parametrize("ending", ["normal", "crash", "timeout", "cancel", "stop_file", "grace", "stubborn", "killed"])
 @pytest.mark.parametrize("detached", [False, True])
 def test_only_detached_services_survive_harness_group_termination(tmp_path: Path, ending: str, detached: bool) -> None:
     # The isolated parent emulates the sandbox owner and reaps every test process.
@@ -115,7 +115,7 @@ worker.write_text("import os, pathlib, signal, subprocess, sys, time\n"
                  "    pathlib.Path('checkpoint').write_text('saved before exit')\n"
                  "    raise SystemExit(0)\n"
                  "ending = sys.argv[1]\n"
-                 "if ending in ('timeout', 'cancel', 'grace'): signal.signal(signal.SIGTERM, checkpoint)\n"
+                 "if ending in ('timeout', 'cancel', 'stop_file', 'grace'): signal.signal(signal.SIGTERM, checkpoint)\n"
                  "if ending == 'stubborn': signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
                  "pathlib.Path('worker.pid').write_text(str(os.getpid()))\n"
                  "subprocess.run([sys.executable, 'tool.py'], check=True)\n"
@@ -136,14 +136,17 @@ if timed_out:
 process = None
 try:
     process = subprocess.Popen([*launcher, supervisor, '--timeout', '0.8' if timed_out else '10',
-        '--cleanup-timeout', '0.5', '--receipt', str(root / 'cleanup.json'), '--',
+        '--cleanup-timeout', '0.5', '--receipt', str(root / 'cleanup.json'), '--stop-file', str(root / 'stop'), '--',
         sys.executable, str(worker), ending], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if ending == 'cancel':
+    if ending in ('cancel', 'stop_file'):
         deadline = time.monotonic() + 5
         while not (root / 'ready').exists():
             assert process.poll() is None and time.monotonic() < deadline
             time.sleep(0.01)
-        process.send_signal(signal.SIGTERM)
+        if ending == 'stop_file':
+            (root / 'stop').touch()
+        else:
+            process.send_signal(signal.SIGTERM)
     stdout, stderr = process.communicate(timeout=15)
     assert process.returncode == 0, (stdout, stderr)
     receipt = json.loads((root / 'cleanup.json').read_text())
@@ -152,7 +155,7 @@ try:
     expected = {'normal': 0, 'crash': 7, 'grace': 0, 'stubborn': -signal.SIGKILL, 'killed': -signal.SIGKILL}.get(ending, 0)
     assert receipt['return_code'] == expected, receipt
     assert receipt['error'] is None, receipt
-    if ending == 'grace':
+    if ending in ('grace', 'stop_file'):
         assert (root / 'checkpoint').read_text() == 'saved before exit'
     try:
         os.killpg(int((root / 'worker.pid').read_text()), 0)
