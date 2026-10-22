@@ -37,3 +37,33 @@ def test_external_input_missing_or_changed_bytes_never_published(tmp_path):
 def test_default_context_does_not_add_profile(tmp_path):
     stage_files({}, None, tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_complete_closure_recipe_and_all_or_nothing_staging(tmp_path, monkeypatch):
+    import hashlib
+
+    from benchmarks.corebench import external_inputs as module
+
+    selected = {**row(), "external_input_variant": module.CLOSURE_VARIANT}
+    script = recipe(selected)
+    assert all(name in script for name in module.CLOSURE_INPUTS)
+    assert "party_mun_zone_local" not in module.closure_profile()
+    source = tmp_path / "sources"
+    source.mkdir()
+    destination = tmp_path / "context"
+    destination.mkdir()
+    monkeypatch.setattr(
+        module,
+        "CLOSURE_INPUTS",
+        {"a.zip": hashlib.sha256(b"a").hexdigest(), "b.zip": hashlib.sha256(b"b").hexdigest()},
+    )
+    (source / "a.zip").write_bytes(b"a")
+    (source / "b.zip").write_bytes(b"wrong")
+    with pytest.raises(ValueError):
+        stage_files(selected, source, destination)
+    assert list(destination.iterdir()) == []
+    (source / "b.zip").write_bytes(b"b")
+    stage_files(selected, source, destination)
+    assert (destination / "a.zip").read_bytes() == b"a"
+    assert (destination / "b.zip").read_bytes() == b"b"
+    assert "file.copy" in (destination / "external-input.Rprofile").read_text()

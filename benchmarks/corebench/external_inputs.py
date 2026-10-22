@@ -26,12 +26,23 @@ def recipe(row: dict[str, object]) -> str:
     if row.get("external_input_variant") is None:
         return ""
     if (
-        row["external_input_variant"] != VARIANT
+        row["external_input_variant"] not in (VARIANT, CLOSURE_VARIANT)
         or row["id"] != "capsule-8912293"
         or row["published_image"] != CREATOR_IMAGE
         or row.get("filesystem_layout_variant") != "8912293-relative-data-v1"
     ):
         raise ValueError("Unsupported external input variant")
+    if row["external_input_variant"] == CLOSURE_VARIANT:
+        return (
+            "# explicit current-upstream external input closure; historical identity unverified\n"
+            'RUN test "$HOME" = /root && test ! -e /root/.Rprofile && test ! -L /root/.Rprofile\n'
+            + "".join(
+                f"COPY {name} /opt/corebench-external/{name}\n"
+                f"RUN echo '{sha}  /opt/corebench-external/{name}' | sha256sum -c -\n"
+                for name, sha in CLOSURE_INPUTS.items()
+            )
+            + "COPY external-input.Rprofile /root/.Rprofile\n"
+        )
     profile_sha = hashlib.sha256(PROFILE.encode()).hexdigest()
     return (
         f"# external-input-sha256={INPUT_SHA256}; profile-sha256={profile_sha}\n"
@@ -59,8 +70,46 @@ def stage_files(row: dict[str, object], source: Path | None, destination: Path) 
         return
     if source is None:
         raise ValueError("Explicit variant requires the pinned external input")
+    if row["external_input_variant"] == CLOSURE_VARIANT:
+        if not source.is_dir():
+            raise ValueError("Complete external input variant requires a directory")
+        with TemporaryDirectory(dir=destination.parent) as temporary:
+            verified = Path(temporary)
+            for name, sha in CLOSURE_INPUTS.items():
+                stage_file(source / name, verified / name, expected_sha256=sha)
+            for name in CLOSURE_INPUTS:
+                os.replace(verified / name, destination / name)
+        (destination / "external-input.Rprofile").write_text(closure_profile())
+        return
     with TemporaryDirectory(dir=destination.parent) as temporary:
         checked = Path(temporary) / "checked.zip"
         stage_file(source, checked, expected_sha256=INPUT_SHA256)
         os.replace(checked, destination / "external-input.zip")
     (destination / "external-input.Rprofile").write_text(PROFILE)
+
+
+# Complete dynamic-input closure used by the original five-script workflow.
+# These are current upstream bytes, not proof of the historical release inputs.
+CLOSURE_VARIANT = "8912293-tse-all-current-v2"
+CLOSURE_INPUTS = {
+    "perfil_eleitorado_2016.zip": INPUT_SHA256,
+    "votacao_partido_munzona_2004.zip": "dfc48a3f3a6098b4e0b365bfc71d0699f2d378682fc2b3150efe549b9ee48cc3",
+    "votacao_partido_munzona_2008.zip": "37de8e24af94fb726002fbb6bc3e1bc27fc51d75116573a5be2a25da4c786bb2",
+    "votacao_partido_munzona_2012.zip": "8ccb50040abf361aa451df4b584fa7b0e636cd114026d1f311be18c92d9b7ec1",
+    "votacao_partido_munzona_2016.zip": "7cf2353594ee332b2cc8e2f2edb6c25e1da06f22d8125a2a9278967e264fa8d5",
+}
+
+
+def closure_profile() -> str:
+    """Warm only the creator package's existing filename cache; no parser edits."""
+    return (
+        "local({\n"
+        + "".join(
+            f'  input <- "/opt/corebench-external/{name}"\n'
+            '  checksum <- system2("sha256sum", input, stdout=TRUE)\n'
+            f'  stopifnot(length(checksum) == 1L, substr(checksum, 1L, 64L) == "{sha}")\n'
+            f'  stopifnot(file.copy(input, file.path(tempdir(), "{name}")))\n'
+            for name, sha in CLOSURE_INPUTS.items()
+        )
+        + "})\n"
+    )
