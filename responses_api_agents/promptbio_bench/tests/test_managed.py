@@ -336,3 +336,65 @@ def test_native_request_preserves_rollout_indices():
     assert request.model_dump()["_ng_rollout_index"] == 2
     assert maybe_rollout_id_from_run_body(request) == maybe_rollout_id_from_run_body(raw)
     assert maybe_rollout_id_from_run_body(request) is not None
+
+
+def test_real_assistant_response_round_trip_preserves_science():
+    from pydantic import TypeAdapter
+    from nemo_gym.openai_utils import NeMoGymChatCompletionAssistantMessageParam
+
+    # Exact response-only field shape observed in the first native b-4-3 call.
+    message = {
+        "content": "\n",
+        "refusal": None,
+        "role": "assistant",
+        "annotations": None,
+        "audio": None,
+        "function_call": None,
+        "tool_calls": [
+            {
+                "id": "call-6670ae7d-5f16-4e24-93e6-03c1cbaa3318",
+                "function": {
+                    "arguments": '{"command":"ls -la /workspace && ls -la /workspace/data 2>/dev/null && cat /workspace/task.json 2>/dev/null"}',
+                    "name": "shell",
+                },
+                "type": "function",
+            }
+        ],
+        "reasoning_content": "Let me start by examining the task and the data file.",
+        "provider_specific_fields": {"refusal": None},
+    }
+    import copy
+
+    original = copy.deepcopy(message)
+    result = runtime.assistant_request_message(message)
+    assert message == original
+    assert result["content"] == message["content"]
+    assert result["tool_calls"] == message["tool_calls"]
+    assert result["reasoning_content"] == message["reasoning_content"]
+    assert "annotations" not in result and "provider_specific_fields" not in result
+    assert TypeAdapter(NeMoGymChatCompletionAssistantMessageParam).validate_python(result) == result
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("annotations", [{"type": "citation", "text": "evidence"}]),
+        ("provider_specific_fields", {"refusal": "cannot comply"}),
+        ("unknown_reasoning", "scientific rationale"),
+    ],
+)
+def test_unsupported_assistant_semantics_fail_closed(field, value):
+    with pytest.raises(ValueError, match="Unsupported non-null assistant response field"):
+        runtime.assistant_request_message({"role": "assistant", "content": "answer", field: value})
+
+
+def test_supported_assistant_semantics_are_not_discarded():
+    message = {
+        "role": "assistant",
+        "content": None,
+        "refusal": "Cannot comply",
+        "audio": {"id": "audio123"},
+        "function_call": {"name": "legacy", "arguments": '{"x":1}'},
+        "reasoning_content": "rationale",
+    }
+    assert runtime.assistant_request_message(message) == message

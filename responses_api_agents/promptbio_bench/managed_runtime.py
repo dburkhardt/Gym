@@ -17,6 +17,9 @@ import uuid
 from pathlib import Path
 
 import httpx
+from pydantic import TypeAdapter
+
+from nemo_gym.openai_utils import NeMoGymChatCompletionAssistantMessageParam
 
 from nemo_gym.guarded_chat_transport import GuardedChatTransport
 from nemo_gym.provider_dispatch import configuration_digest
@@ -35,6 +38,30 @@ from responses_api_agents.promptbio_bench.runtime import (
     safe_task_id,
     stage_inputs,
 )
+
+
+def assistant_request_message(message: dict) -> dict:
+    """Preserve assistant semantics while excluding response-only null metadata.
+
+    The durable guarded transport retains the original response. Non-null fields
+    that the request protocol cannot represent must fail rather than disappear.
+    """
+    supported = NeMoGymChatCompletionAssistantMessageParam.__annotations__
+    projected = {}
+    for key, value in message.items():
+        if key in supported:
+            projected[key] = value
+        elif value is None:
+            continue
+        elif (
+            key == "provider_specific_fields"
+            and isinstance(value, dict)
+            and all(item is None for item in value.values())
+        ):
+            continue
+        else:
+            raise ValueError(f"Unsupported non-null assistant response field: {key}")
+    return TypeAdapter(NeMoGymChatCompletionAssistantMessageParam).validate_python(projected)
 
 
 def validate_image(image: str | None) -> None:
@@ -204,7 +231,7 @@ async def solve_managed(
                             response = await client.post("http://gym-internal/v1/chat/completions", json=payload)
                             result = response.json()
                         usage.append(result.get("usage"))
-                        message = result["choices"][0]["message"]
+                        message = assistant_request_message(result["choices"][0]["message"])
                         messages.append(message)
                         _publish(run / "trajectory.json", {"messages": messages})
                         if result["choices"][0].get("finish_reason") == "length":
