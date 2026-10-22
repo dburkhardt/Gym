@@ -94,6 +94,9 @@ def dockerfile(row):
             "RUN ln -s /workspace/capsule-8912293/data /workspace/data"
             " && ln -s /workspace/capsule-8912293/results /workspace/results\n"
         )
+    from benchmarks.corebench.external_inputs import recipe as external_recipe
+
+    external = external_recipe(row)
     env = "\n".join("ENV " + k + "=" + json.dumps(v) for k, v in row["runtime_environment_variant"].items())
     return f"""FROM {row["published_image"]}
 COPY python /opt/corebench-harness
@@ -104,7 +107,7 @@ COPY capsule /workspace/{row["id"]}
 RUN mkdir -p /workspace/{row["id"]}/results
 RUN for name in code data results; do if [ -e "/$name" ] || [ -L "/$name" ]; then rmdir "/$name"; fi; ln -s "/workspace/{row["id"]}/$name" "/$name"; done
 {env}
-{layout}WORKDIR /workspace
+{layout}{external}WORKDIR /workspace
 """
 
 
@@ -140,7 +143,7 @@ def qualification_digest(row):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
-def stage_context(row, medium_root, reference_root, runtime_archive, destination):
+def stage_context(row, medium_root, reference_root, runtime_archive, destination, *, external_input_path=None):
     """Publish a clean checked context; staging locks stay outside COPY trees.
 
     Uses the shared trusted-parent/cooperating-writer lock convention. Original
@@ -163,6 +166,9 @@ def stage_context(row, medium_root, reference_root, runtime_archive, destination
         with TemporaryDirectory(dir=destination.parent) as temporary:
             clean = Path(temporary) / "context"
             _stage_context_tree(row, medium_root, reference_root, runtime_archive, clean)
+            from benchmarks.corebench.external_inputs import stage_files
+
+            stage_files(row, external_input_path, clean)
             for path in clean.rglob("*"):
                 if path.is_file() and not path.is_symlink():
                     with path.open("rb") as handle:
