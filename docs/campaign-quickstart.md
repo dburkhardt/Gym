@@ -24,7 +24,7 @@ Check `results_dispatch_plan.json` and `results_planned_inputs.jsonl` for exact 
 
 The run configuration must set the selected dataset split (for these benchmark datasets, `split: benchmark`, or pass `--split benchmark`). If it sets `dispatch_budget_s`, it must also set a finite `num_samples_in_parallel` (or pass the reviewed `--concurrency` value) or `max_resident_rollout_tasks`; otherwise native validation refuses the run. Keep the same settings in plan, execution and resume.
 
-Before dispatch, verify actual component imports, assets, memory, disk, ports and the complete task-plus-cleanup allowance. Enable the reviewed dispatch guard, captures and owned supervisor configuration described in the operator reference. Keep this campaign within its remaining $500 total compute/storage cap.
+Before dispatch, verify actual component imports, assets, memory, disk, ports and the complete task-plus-cleanup allowance. Enable the reviewed dispatch guard, captures and owned supervisor configuration described in the operator reference. Check the current Brev account credit balance and projected burn, including retained storage and other organization usage. Preserve enough headroom to avoid exhausting account credits and report when a top-up is needed. Earlier $500/$1,000 campaign estimates are historical, not current spending limits. Do not purchase credits or introduce a new paid service without authorization.
 
 ```sh
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl
