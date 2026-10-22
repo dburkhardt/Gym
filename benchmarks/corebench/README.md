@@ -101,3 +101,14 @@ For R images, `auxiliary_controls.qualify_creator_r_startup` supplies an additio
 Capsule 8912293 requires the explicit `filesystem_layout_variant: 8912293-relative-data-v1` when using the workspace overlay. Its unmodified R scripts reference `../../data` and `../../results`; physical resolution of `/code` otherwise misses these paths. The variant adds workspace aliases to the existing data/results directories, is bound to the exact creator image, and changes the recipe identity. Requalify the image and verify relative-path resolution before execution. Historical receipts do not establish this variant's readiness.
 
 For capsule 8912293, `external_input_variant: 8912293-tse-2016-current-v1` explicitly pins the currently retrieved creator-referenced election ZIP (SHA256 `0e511c46a2e22c1766c21dd5d8d5d9f50596e1316cc8243a52af74b384784ddd`). Supply it through `stage_context(..., external_input_path=...)`; missing or changed bytes fail staging. The image adds a root R startup profile that verifies the ZIP and copies it into each R process's temporary cache, using the creator package's existing offline path. The build refuses to overwrite an existing root profile. Scientific scripts remain unchanged. This is a versioned external-input variant, not proof of the original historical data bytes. The layout variant is required. Full scientific execution and startup parity must still be validated; unit tests alone do not establish readiness.
+
+### Saved-output replay
+
+For a completed model trial, use Harbor's native `source_jobs` regrade route.
+Prepare a separate replay task with `benchmarks.corebench.saved_regrade.prepare_task`;
+it changes only the verifier mode and preserves the original scorer/reference
+files. Harbor restores declared `/workspace` artifacts to `/workspace`, so do not
+rewrite the scorer to read `/logs/artifacts/workspace`. Keep the live task and
+original result unchanged. Compare creator components and report hashes, confirm
+no new model captures, and require a successful trial result and cleanup; job
+process exit alone does not prove the verifier succeeded.
