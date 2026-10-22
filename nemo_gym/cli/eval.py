@@ -36,6 +36,7 @@ from nemo_gym.benchmarks import (
     BenchmarkConfig,
     discover_benchmarks,
 )
+from nemo_gym.cli.async_runner import sigterm_cleanup_scope
 from nemo_gym.cli.env import RunHelper
 from nemo_gym.cli.utils import (
     exit_cleanly_on_config_error,
@@ -822,23 +823,28 @@ def e2e_rollout_collection():  # pragma: no cover
 """
     )
     collection_completed = False
-    try:
-        if driver_path:
-            module_name, _, fn_name = driver_path.partition(":")
-            if not module_name or not fn_name:
-                raise ConfigError(f"rollout_collection_driver must be 'module.path:function' (got {driver_path!r}).")
-            driver_fn = getattr(importlib.import_module(module_name), fn_name)
-            resolved_config = OmegaConf.to_container(global_config_dict, resolve=True)
-            asyncio.run(driver_fn(rollout_collection_config, resolved_config))
-        else:
-            asyncio.run(rch.run_from_config(rollout_collection_config))
-        collection_completed = True
-    except KeyboardInterrupt:
-        if rollout_collection_config.require_complete:
-            raise RuntimeError("EVAL FAILED: rollout collection interrupted; partial artifacts retained.") from None
-        pass
-    finally:
-        rh.shutdown()
+    with sigterm_cleanup_scope() as run:
+        try:
+            if driver_path:
+                module_name, _, fn_name = driver_path.partition(":")
+                if not module_name or not fn_name:
+                    raise ConfigError(
+                        f"rollout_collection_driver must be 'module.path:function' (got {driver_path!r})."
+                    )
+                driver_fn = getattr(importlib.import_module(module_name), fn_name)
+                resolved_config = OmegaConf.to_container(global_config_dict, resolve=True)
+                run(driver_fn(rollout_collection_config, resolved_config))
+            else:
+                run(rch.run_from_config(rollout_collection_config))
+            collection_completed = True
+        except KeyboardInterrupt:
+            if rollout_collection_config.require_complete:
+                raise RuntimeError(
+                    "EVAL FAILED: rollout collection interrupted; partial artifacts retained."
+                ) from None
+            pass
+        finally:
+            rh.shutdown()
 
     if health_check_enabled and collection_completed:
         from nemo_gym.rollout_health import format_health_report, run_health_checks
@@ -875,10 +881,11 @@ def collect_rollouts():  # pragma: no cover
     # A standalone driver starts no supervisor, so it sets up its own telemetry for the `gym.job` span and driver metrics.
     configure_telemetry_env(telemetry_config_from_global_config(global_config_dict))
     init_telemetry(server_name="driver", server_type="driver")
-    try:
-        asyncio.run(rch.run_from_config(config))
-    finally:
-        shutdown_telemetry()
+    with sigterm_cleanup_scope() as run:
+        try:
+            run(rch.run_from_config(config))
+        finally:
+            shutdown_telemetry()
 
 
 @exit_cleanly_on_config_error
