@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from benchmarks.bioagentbench.qualify_giab_isolation import IMAGE, check_mounts, setup_only
+from benchmarks.bioagentbench.qualify_giab_isolation import IMAGE, check_mounts, packet_image, setup_only
 
 
 def inspect_fixture(tmp_path):
@@ -201,3 +201,32 @@ async def test_real_runtime_channel_requires_start_handshake(tmp_path, short_soc
     assert events[-1] == "teardown"
     receipts = sorted((tmp_path / "receipts").glob("*.complete.json"))
     assert [json.loads(p.read_text())["method"] for p in receipts] == ["start", "run"]
+
+
+@pytest.mark.parametrize("image", [None, "latest", "repo:tag", "sha256:abc", "sha256:" + "g" * 64])
+def test_qualification_image_must_be_explicit_immutable(image):
+    with pytest.raises(ValueError, match="explicit immutable"):
+        packet_image({"image": image})
+
+
+def test_qualification_image_missing_or_mismatched_native_binding():
+    for runtime in ({}, {"image": "sha256:" + "1" * 64}):
+        with pytest.raises(ValueError, match="identities differ"):
+            packet_image({"image": IMAGE, "native_config": {"harness": {"runtime": runtime}}})
+
+
+def test_reconstructed_image_is_explicitly_observed(tmp_path):
+    image = "sha256:" + "2" * 64
+    packet = {"image": image, "native_config": {"harness": {"runtime": {"image": image}}}}
+    assert packet_image(packet) == image
+    result, workspace, source = inspect_fixture(tmp_path)
+    with pytest.raises(ValueError, match="Actual image differs"):
+        check_mounts(result, workspace=workspace, source=source, expected_image=image)
+    result["Image"] = image
+    assert len(check_mounts(result, workspace=workspace, source=source, expected_image=image)) == 3
+
+
+@pytest.mark.parametrize("native", [None, [], "invalid", {"harness": None}, {"harness": {"runtime": []}}])
+def test_malformed_native_image_binding_is_clear(native):
+    with pytest.raises(ValueError, match="Malformed native"):
+        packet_image({"image": IMAGE, "native_config": native})

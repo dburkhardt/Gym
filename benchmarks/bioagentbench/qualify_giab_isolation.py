@@ -9,9 +9,11 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,7 +21,24 @@ from types import SimpleNamespace
 IMAGE = "sha256:da9808d329a71cb42b2260f91831c3d563597d2afaaf8ff7ac19f325ce5efeb1"
 
 
-def check_mounts(inspected, *, workspace, source):
+def packet_image(packet: Mapping[str, object]) -> str:
+    """Require an explicitly bound immutable identity, including rebuilt variants."""
+    image = packet.get("image")
+    if not isinstance(image, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+        raise ValueError("Qualification requires an explicit immutable image identity")
+    native: object = packet.get("native_config")
+    for key in ("harness", "runtime"):
+        if not isinstance(native, Mapping):
+            raise ValueError("Malformed native runtime image binding")
+        native = native.get(key)
+    if not isinstance(native, Mapping):
+        raise ValueError("Malformed native runtime image binding")
+    if native.get("image") != image:
+        raise ValueError("Packet and native runtime image identities differ")
+    return image
+
+
+def check_mounts(inspected, *, workspace, source, expected_image: str = IMAGE):
     """Check the complete Docker mount list, not just guessed forbidden paths."""
     expected = {
         str(workspace): "/app",
@@ -33,7 +52,7 @@ def check_mounts(inspected, *, workspace, source):
         or {m["Source"] for m in mounts} != set(expected)
     ):
         raise ValueError("Actual mount tree differs from the exact public/workspace allowlist")
-    if inspected["Image"] != IMAGE:
+    if inspected["Image"] != expected_image:
         raise ValueError("Actual image differs")
     host = inspected["HostConfig"]
     if host["NetworkMode"] != "bridge" or host["Memory"] != 8 * 1024**3:
@@ -153,7 +172,8 @@ async def qualify(packet, output):
     from benchmarks.bioagentbench.scorer_environment import child_environment
     from benchmarks.bioagentbench.worker import stage_owned_inputs, validate_identity
 
-    if packet["task_id"] != "giab" or packet["image"] != IMAGE:
+    image = packet_image(packet)
+    if packet["task_id"] != "giab":
         raise ValueError("Qualification requires exact GIAB/image identity")
     taskset = packet["native_config"]["taskset"]
     if (
@@ -165,7 +185,7 @@ async def qualify(packet, output):
     native_runtime = packet["native_config"]["harness"]["runtime"]
     expected_runtime = {
         "type": "docker",
-        "image": IMAGE,
+        "image": image,
         "workdir": "/app",
         "cpu": 2,
         "memory": 8,
@@ -201,12 +221,12 @@ async def qualify(packet, output):
         workspace=workspace,
         source_dir=source,
         receipt=output / "sandbox-lifecycle.json",
-        image=IMAGE,
+        image=image,
         ttl_s=600,
         runtime_types=(Base, SimpleNamespace, SimpleNamespace),
     )
     runtime = cls(
-        Config(type="docker", image=IMAGE, workdir="/app", cpu=2, memory=8, gpu=None, disk=None),
+        Config(type="docker", image=image, workdir="/app", cpu=2, memory=8, gpu=None, disk=None),
         name="giab-isolation-" + secrets.token_hex(8),
     )
     with tempfile.TemporaryDirectory(prefix="giab-isolation-", dir="/tmp") as temporary:
@@ -245,7 +265,7 @@ async def qualify(packet, output):
                 receipt=output / "creator-execution.json",
             )
             inspected = json.loads(await command(["docker", "inspect", runtime.info.id]))[0]
-            mounts = check_mounts(inspected, workspace=workspace, source=source)
+            mounts = check_mounts(inspected, workspace=workspace, source=source, expected_image=image)
             # Store only relevant inspection fields, never environment/credential values.
             (output / "mounts.json").write_text(
                 json.dumps(
