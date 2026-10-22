@@ -4,6 +4,7 @@
 
 import hashlib
 import json
+import re
 import uuid
 from pathlib import Path
 
@@ -17,7 +18,20 @@ from nemo_gym.sandbox.lifecycle import _settle as _settle
 
 
 class RewardKitAgentVerifier(BaseVerifier):
-    def __init__(self, *, image_id: str, gym_model_api_base: str, gym_model_name: str, **kwargs) -> None:
+    def __init__(
+        self,
+        *,
+        image_id: str,
+        gym_model_api_base: str,
+        gym_model_name: str,
+        docker_runtime: str | None = None,
+        **kwargs,
+    ) -> None:
+        if docker_runtime is not None and (
+            not isinstance(docker_runtime, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", docker_runtime) is None
+        ):
+            raise ValueError("docker_runtime must be a nonempty Docker runtime name")
+        self.docker_runtime = docker_runtime
         super().__init__(**kwargs)
         self.image_id = image_id
         if self.task.config.environment.docker_image != image_id:
@@ -30,6 +44,9 @@ class RewardKitAgentVerifier(BaseVerifier):
             raise ValueError("RewardKit judge requires guarded Gym capture URL")
         if not self.image_id.startswith("sha256:") or len(self.image_id) != 71:
             raise ValueError("RewardKit scientific image must be digest pinned")
+
+    def _runtime_args(self) -> list[str]:
+        return [] if self.docker_runtime is None else ["--runtime", self.docker_runtime]
 
     async def verify(self) -> VerifierResult:
         from nemo_gym.provider_dispatch import configuration_digest
@@ -45,6 +62,7 @@ class RewardKitAgentVerifier(BaseVerifier):
             {
                 "task": self.task.config.model_dump(mode="json"),
                 "image": self.image_id,
+                "docker_runtime": self.docker_runtime,
                 "tests": {
                     str(p.relative_to(tests)): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in sorted(tests.rglob("*"))
@@ -93,6 +111,7 @@ class RewardKitAgentVerifier(BaseVerifier):
             {
                 "docker": {
                     "create": {
+                        "extra_run_args": self._runtime_args(),
                         "network": "none",
                         "read_only": True,
                         "cap_drop": ["ALL"],
@@ -124,7 +143,7 @@ class RewardKitAgentVerifier(BaseVerifier):
         async with _owned_sandbox(scientific, out / "scientific-lifecycle.json"):
             descriptor = await scientific.serialize()
             controller = AsyncSandbox(
-                {"docker": {"create": {"network": "host"}}},
+                {"docker": {"create": {"network": "host", "extra_run_args": self._runtime_args()}}},
                 SandboxSpec(
                     image=self.image_id,
                     ttl_s=ttl,
