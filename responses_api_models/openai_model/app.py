@@ -20,7 +20,7 @@ import time
 from contextlib import asynccontextmanager, nullcontext
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Literal, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Literal, Mapping, Optional, TypeVar
 
 from aiohttp import ClientResponseError
 from fastapi import HTTPException
@@ -238,6 +238,16 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
             "timeout. It does not time the provider call itself."
         ),
     )
+    upstream_exhausted_token_cooldown_seconds: Optional[float] = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Opt-in: trust x-ratelimit-remaining-tokens <= 0 on successful provider responses "
+            "and delay future admission by this explicit duration. No inferred quota/reset or resend. "
+            "Requires upstream_rate_limit_cooldown_seconds. Disabled by default."
+        ),
+    )
     propagate_upstream_http_status_codes: frozenset[int] = Field(
         default_factory=frozenset,
         description=(
@@ -260,6 +270,11 @@ class SimpleModelServerConfig(BaseResponsesAPIModelConfig):
     def validate_upstream_controls(self) -> "SimpleModelServerConfig":
         if (self.upstream_rate_limit_shared_directory is None) != (self.upstream_rate_limit_shared_namespace is None):
             raise ValueError("Shared cooldown requires both directory and namespace")
+        if (
+            self.upstream_exhausted_token_cooldown_seconds is not None
+            and self.upstream_rate_limit_cooldown_seconds is None
+        ):
+            raise ValueError("Exhausted-token admission requires upstream_rate_limit_cooldown_seconds")
         if self.upstream_rate_limit_shared_directory is not None and self.upstream_rate_limit_cooldown_seconds is None:
             raise ValueError("Shared cooldown requires upstream_rate_limit_cooldown_seconds")
         if self.upstream_rate_limit_cooldown_seconds is not None and self.upstream_max_num_tries != 1:
@@ -325,6 +340,8 @@ class SimpleModelServer(SimpleResponsesAPIModel):
             connect_timeout_seconds=self.config.upstream_connect_timeout_seconds,
             max_http_attempts=self.config.max_http_attempts,
         )
+        if self.config.upstream_exhausted_token_cooldown_seconds is not None:
+            self._client.set_response_headers_observer(observer=self._observe_quota_headers)
         self._semaphore = (
             asyncio.Semaphore(self.config.max_concurrent_requests)
             if self.config.max_concurrent_requests is not None
@@ -398,6 +415,23 @@ class SimpleModelServer(SimpleResponsesAPIModel):
         if self._shared_cooldown is None:
             return local
         return max(local, await self._shared_cooldown_call(self._shared_cooldown.remaining))
+
+    async def _observe_quota_headers(self, status: int, headers: Mapping[str, str]) -> None:
+        """Publish observed pressure for future calls, never retry an accepted call."""
+        delay = self.config.upstream_exhausted_token_cooldown_seconds
+        if delay is None or not 200 <= status < 300:
+            return
+        value = next((v for k, v in headers.items() if k.lower() == "x-ratelimit-remaining-tokens"), None)
+        try:
+            remaining = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return
+        if not math.isfinite(remaining) or remaining > 0:
+            return
+        self._rate_limit_until = max(self._rate_limit_until, time.monotonic() + delay)
+        if self._shared_cooldown is not None:
+            await self._shared_cooldown_call(self._shared_cooldown.extend, delay)
+        LOG.info("Provider token-pressure cooldown: remaining=%s delay_seconds=%s", remaining, delay)
 
     async def _call_with_cooldown(
         self, operation: Callable[[], Awaitable[ResponseT]], budget: _AdmissionBudget

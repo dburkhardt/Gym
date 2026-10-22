@@ -173,6 +173,11 @@ def resolved_admission_evidence(config):
                 namespace_sha256=_fingerprint(model.upstream_rate_limit_shared_namespace),
                 max_concurrent_requests=model.max_concurrent_requests,
             )
+            if model.upstream_exhausted_token_cooldown_seconds is not None:
+                record["exhausted_token_cooldown_seconds"] = model.upstream_exhausted_token_cooldown_seconds
+                record["trusted_exhaustion_header"] = "x-ratelimit-remaining-tokens"
+            if model.propagate_upstream_http_status_codes:
+                record["propagate_upstream_http_status_codes"] = sorted(model.propagate_upstream_http_status_codes)
             roles.append(record)
     roles.sort(key=lambda row: (row["role"], row["implementation"]))
     evidence = {"version": 2, "roles": roles, "harbor_transport_links": _harbor_transport_links(config, roles)}

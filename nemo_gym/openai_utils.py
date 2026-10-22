@@ -17,9 +17,12 @@ from asyncio import sleep
 from typing import (
     Annotated,
     Any,
+    Awaitable,
+    Callable,
     Dict,
     List,
     Literal,
+    Mapping,
     NotRequired,
     Optional,
     Required,
@@ -1680,6 +1683,16 @@ class NeMoGymAsyncOpenAI(BaseModel):  # pragma: no cover
             raise ValueError("connect_timeout_seconds requires request_timeout_seconds")
         return self
 
+    _response_headers_observer: Optional[Callable[[int, Mapping[str, str]], Awaitable[None]]] = PrivateAttr(
+        default=None
+    )
+
+    def set_response_headers_observer(
+        self, *, observer: Optional[Callable[[int, Mapping[str, str]], Awaitable[None]]]
+    ) -> None:
+        """Install a trusted runtime observer without changing serializable client configuration."""
+        self._response_headers_observer = observer
+
     # Spent-key/auth trip: (status, body, url). Later calls raise a fresh exception.
     _permanent_trip: Optional[tuple[int, bytes, str]] = PrivateAttr(default=None)
 
@@ -1759,6 +1772,9 @@ class NeMoGymAsyncOpenAI(BaseModel):  # pragma: no cover
                     dispatch.persist(dispatch.evidence())
                 elif response.status in RETRY_ERROR_CODES:
                     await raise_for_status(response, await response.content.read())
+
+            if self._response_headers_observer is not None and not self.internal:
+                await self._response_headers_observer(response.status, response.headers)
 
             if response.status in (401, 403):
                 content = await response.content.read()
