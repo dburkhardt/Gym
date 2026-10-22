@@ -1,0 +1,1477 @@
+{
+  "model": "nvidia/nvidia/nemotron-3.5-super-vl",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are an agent - please keep going until the user's query is completely\nresolved, before ending your turn and yielding back to the user. Only terminate\nyour turn when you are sure that the problem is solved, or if you need more\ninfo from the user to solve the problem.\nIf you are not sure about anything pertaining to the user's request, use your\ntools to read files and gather the relevant information: do NOT guess or make\nup an answer.\nYou MUST plan extensively before each function call, and reflect extensively\non the outcomes of the previous function calls. DO NOT do this entire process\nby making function calls only, as this can impair your ability to solve the\nproblem and think insightfully.\n\nIMPORTANT: When you need clarification, additional information, or encounter \nambiguity in the user's request, use the ask_question tool to ask the user \nfor specific details. Do not make assumptions or guess - always ask for \nclarification when needed. And when you ask a question, make sure to use \nthe ask_question tool, otherwise the user will not be able to answer you.\nBut please give responses based on user's answer before you complete the task."
+    },
+    {
+      "role": "user",
+      "content": "Call the clear_all_layers tool to remove all layers from the napari viewer."
+    },
+    {
+      "role": "assistant",
+      "content": "\n",
+      "tool_calls": [
+        {
+          "id": "call-7e7387ec-0816-49df-ad11-d617a41988b2",
+          "type": "function",
+          "function": {
+            "name": "clear_all_layers",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Successfully cleared 0 layer(s) and reset camera.",
+      "name": "clear_all_layers",
+      "tool_calls": null,
+      "tool_call_id": "call-7e7387ec-0816-49df-ad11-d617a41988b2"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "task_complete",
+        "description": "Call this tool when the task given by the user is complete",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "open_file",
+        "description": "Load an image file into napari.\n        \n        Args:\n            file_path: Path to the image file to load. Supports TIFF, PNG, ND2, NPZ, \n                      and other formats supported by napari's built-in readers.\n                      \n        Returns:\n            str: Success message with layer name or error message prefixed with \u274c\n            \n        Note:\n            The file path should be absolute or relative to the current working directory.\n            napari will automatically detect the file format and use the appropriate reader.\n        ",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "title": "File Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "title": "open_fileArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "remove_layer",
+        "description": "Remove a layer by name or index.\n\n        Args:\n            name_or_index: Layer name (str) or positional index (int) of the layer to remove\n\n        Returns:\n            str: Success message or error message prefixed with \u274c\n\n        Note:\n            Use list_layers() to see available layers and their indices.\n            Layer indices are 0-based.\n        ",
+        "parameters": {
+          "properties": {
+            "name_or_index": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Name Or Index"
+            }
+          },
+          "required": [
+            "name_or_index"
+          ],
+          "title": "remove_layerArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "clear_all_layers",
+        "description": "Remove all layers from the viewer and reset to a fresh state.\n\n        This function clears the entire napari viewer, removing all loaded layers\n        and resetting the camera to default view. Use this to start fresh before\n        loading new data.\n\n        Returns:\n            str: Success message indicating number of layers cleared or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "clear_all_layersArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "toggle_view",
+        "description": "Switch between 2D and 3D view.\n        \n        Returns:\n            str: Success message indicating the new view mode or error message prefixed with \u274c\n            \n        Note:\n            Toggles between 2D (ndisplay=2) and 3D (ndisplay=3) rendering modes.\n            Some features like iso-surface rendering require 3D mode.\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "toggle_viewArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "iso_contour",
+        "description": "Enable iso-surface rendering for layers.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to apply iso-surface to. \n                       If None, applies to all compatible layers.\n            threshold: Iso-surface threshold value. If None, uses layer's current threshold.\n                      \n        Returns:\n            str: Success message with number of layers modified or error message prefixed with \u274c\n            \n        Note:\n            Only works with Image layers that support iso-surface rendering.\n            Automatically switches to 3D view if needed.\n            Use this for 3D volume visualization with surface rendering.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Layer Name"
+            },
+            "threshold": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Threshold"
+            }
+          },
+          "title": "iso_contourArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "save_screenshot",
+        "description": "Take a screenshot of the current view and save it to the specified path.\n\n        Args:\n            filename: Path where to save the screenshot (supports .png, .jpg extensions).\n                     IMPORTANT: Always use absolute paths to avoid confusion about working directory.\n\n        Returns:\n            str: Success message with the file path or error message prefixed with \u274c\n\n        Note:\n            The function will create parent directories if they don't exist.\n            Captures only the canvas area by default.\n            Returns the absolute path to the saved screenshot.\n            ALWAYS provide an absolute path (e.g., /full/path/to/file.png) rather than\n            relative paths (e.g., folder/file.png) to ensure the file is saved to the\n            correct location.\n        ",
+        "parameters": {
+          "properties": {
+            "filename": {
+              "title": "Filename",
+              "type": "string"
+            }
+          },
+          "required": [
+            "filename"
+          ],
+          "title": "save_screenshotArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_screenshot",
+        "description": "Get a screenshot of the current napari view for the agent to see.\n\n        Returns:\n            Image: Screenshot image that the agent can view directly\n\n        Note:\n            This function returns the screenshot as an image for display to the agent.\n            Use save_screenshot() if you want to save the screenshot to a specific file path.\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "get_screenshotArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "save_text",
+        "description": "Save text content to a file.\n\n        Args:\n            filename: Path where to save the text file.\n                     IMPORTANT: Always use absolute paths to avoid confusion about working directory.\n            content: Text content to write to the file\n\n        Returns:\n            str: Success message with the file path or error message prefixed with \u274c\n\n        Note:\n            The function will create parent directories if they don't exist.\n            Useful for saving analysis results, answers to questions, or any text data.\n            ALWAYS provide an absolute path (e.g., /full/path/to/file.txt) rather than\n            relative paths (e.g., folder/file.txt) to ensure the file is saved to the\n            correct location.\n        ",
+        "parameters": {
+          "properties": {
+            "filename": {
+              "title": "Filename",
+              "type": "string"
+            },
+            "content": {
+              "title": "Content",
+              "type": "string"
+            }
+          },
+          "required": [
+            "filename",
+            "content"
+          ],
+          "title": "save_textArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_layers",
+        "description": "Get info about all loaded layers.\n        \n        Returns:\n            str: JSON-formatted list of layer information including index, name, type, and visibility\n                 or error message prefixed with \u274c\n                 \n        Note:\n            Each layer entry contains:\n            - index: 0-based layer index\n            - name: Layer name\n            - type: Layer class name (Image, Labels, Points, etc.)\n            - visible: Boolean indicating if layer is visible\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "list_layersArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_colormap",
+        "description": "Change the colormap for a layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            colormap: Colormap name (e.g., 'gray', 'viridis', 'plasma', 'hot', 'cool', etc.)\n                     \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Only works with layers that have a colormap attribute (typically Image layers).\n            Common colormaps include: gray, viridis, plasma, hot, cool, rainbow, etc.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "colormap": {
+              "title": "Colormap",
+              "type": "string"
+            }
+          },
+          "required": [
+            "layer_name",
+            "colormap"
+          ],
+          "title": "set_colormapArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_opacity",
+        "description": "Adjust layer transparency.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            opacity: Opacity value between 0.0 (transparent) and 1.0 (opaque)\n                    \n        Returns:\n            str: Success message or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "opacity": {
+              "title": "Opacity",
+              "type": "number"
+            }
+          },
+          "required": [
+            "layer_name",
+            "opacity"
+          ],
+          "title": "set_opacityArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_blending",
+        "description": "Set how the layer blends with layers below it.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            blending: Blending mode ('opaque', 'translucent', 'additive', 'minimum')\n                     \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Common blending modes:\n            - opaque: Normal blending (default)\n            - translucent: Alpha blending\n            - additive: Add pixel values\n            - minimum: Take minimum of pixel values\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "blending": {
+              "title": "Blending",
+              "type": "string"
+            }
+          },
+          "required": [
+            "layer_name",
+            "blending"
+          ],
+          "title": "set_blendingArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_contrast_limits",
+        "description": "Set the min/max values for contrast scaling.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            contrast_min: Minimum value for contrast scaling\n            contrast_max: Maximum value for contrast scaling\n                         \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Only works with layers that have contrast_limits (typically Image layers).\n            Values outside this range will be clipped to min/max.\n            Use auto_contrast() to automatically set these values.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "contrast_min": {
+              "title": "Contrast Min",
+              "type": "number"
+            },
+            "contrast_max": {
+              "title": "Contrast Max",
+              "type": "number"
+            }
+          },
+          "required": [
+            "layer_name",
+            "contrast_min",
+            "contrast_max"
+          ],
+          "title": "set_contrast_limitsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "auto_contrast",
+        "description": "Automatically adjust contrast to fit the data range.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify. If None, uses active layer.\n                       \n        Returns:\n            str: Success message with new contrast limits or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Layer Name"
+            }
+          },
+          "title": "auto_contrastArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_gamma",
+        "description": "Adjust gamma correction for the layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            gamma: Gamma correction value (typically 0.1 to 10.0)\n                  \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Gamma < 1.0 brightens dark regions, gamma > 1.0 darkens bright regions.\n            Only works with layers that have a gamma attribute.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "gamma": {
+              "title": "Gamma",
+              "type": "number"
+            }
+          },
+          "required": [
+            "layer_name",
+            "gamma"
+          ],
+          "title": "set_gammaArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_interpolation",
+        "description": "Set the interpolation method for zooming.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            interpolation: Interpolation mode ('nearest', 'linear', 'cubic')\n                          \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Common interpolation modes:\n            - nearest: No interpolation (pixelated)\n            - linear: Linear interpolation (smooth)\n            - cubic: Cubic interpolation (very smooth)\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "title": "Layer Name",
+              "type": "string"
+            },
+            "interpolation": {
+              "title": "Interpolation",
+              "type": "string"
+            }
+          },
+          "required": [
+            "layer_name",
+            "interpolation"
+          ],
+          "title": "set_interpolationArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_timestep",
+        "description": "Jump to a specific time point.\n        \n        Args:\n            timestep: Time point index (0-based)\n                     \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Only works if the data has a time dimension.\n            Use get_dims_info() to check available dimensions.\n        ",
+        "parameters": {
+          "properties": {
+            "timestep": {
+              "title": "Timestep",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "timestep"
+          ],
+          "title": "set_timestepArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_dims_info",
+        "description": "Get info about the viewer's dimensions.\n        \n        Returns:\n            str: JSON-formatted dimension information including:\n                 - ndim: Number of dimensions\n                 - nsteps: Number of steps in each dimension\n                 - current_step: Current position in each dimension\n                 - axis_labels: Labels for each dimension\n                 or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "get_dims_infoArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_camera",
+        "description": "Adjust camera position, zoom, and rotation.\n        \n        Args:\n            center: Camera center point as list/tuple of coordinates [x, y, z]\n            zoom: Zoom factor (float)\n            angle: Camera angles as list/tuple [x_angle, y_angle, z_angle] (3D only)\n                  \n        Returns:\n            str: JSON-formatted camera settings or error message prefixed with \u274c\n            \n        Note:\n            In 2D mode, only center and zoom are used.\n            In 3D mode, all parameters are used.\n            Use get_camera() to see current camera settings.\n        ",
+        "parameters": {
+          "properties": {
+            "center": {
+              "default": null,
+              "title": "center",
+              "type": "string"
+            },
+            "zoom": {
+              "default": null,
+              "title": "zoom",
+              "type": "string"
+            },
+            "angle": {
+              "default": null,
+              "title": "angle",
+              "type": "string"
+            }
+          },
+          "title": "set_cameraArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_camera",
+        "description": "Get current camera settings.\n        \n        Returns:\n            str: JSON-formatted camera settings including center, zoom, and angles\n                 or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "get_cameraArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "reset_camera",
+        "description": "Reset camera to default view.\n        \n        Returns:\n            str: JSON-formatted camera settings after reset or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "title": "reset_cameraArguments",
+          "type": "object",
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "add_points",
+        "description": "Add point markers to the viewer.\n        \n        Args:\n            coordinates: List of point coordinates, each as [x, y] or [x, y, z]\n            properties: Optional dict of point properties (e.g., {'label': ['A', 'B', 'C']})\n            name: Optional layer name\n                     \n        Returns:\n            str: Success message with layer name and point count or error message prefixed with \u274c\n            \n        Note:\n            Coordinates should be a list of lists, where each inner list represents one point.\n            For 2D: [[x1, y1], [x2, y2], ...]\n            For 3D: [[x1, y1, z1], [x2, y2, z2], ...]\n        ",
+        "parameters": {
+          "properties": {
+            "coordinates": {
+              "items": {},
+              "title": "Coordinates",
+              "type": "array"
+            },
+            "properties": {
+              "anyOf": [
+                {
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Properties"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "coordinates"
+          ],
+          "title": "add_pointsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "add_shapes",
+        "description": "Add shape overlays (rectangles, circles, etc.).\n        \n        Args:\n            shape_data: List of shape coordinates. For rectangles: [[[x1, y1], [x2, y2], ...]]\n            shape_type: Shape type ('rectangle', 'ellipse', 'line', 'polygon', 'path')\n            name: Optional layer name\n                       \n        Returns:\n            str: Success message with layer name and shape count or error message prefixed with \u274c\n            \n        Note:\n            Shape data format depends on shape type:\n            - rectangle: [[[x1, y1], [x2, y2], [x3, y3], [x4, y4]]] (4 corners)\n            - ellipse: [[[center_x, center_y], [radius_x, radius_y]]]\n            - line: [[[x1, y1], [x2, y2]]]\n            - polygon: [[[x1, y1], [x2, y2], [x3, y3], ...]] (3+ points)\n        ",
+        "parameters": {
+          "properties": {
+            "shape_data": {
+              "items": {},
+              "title": "Shape Data",
+              "type": "array"
+            },
+            "shape_type": {
+              "default": "rectangle",
+              "title": "Shape Type",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "shape_data"
+          ],
+          "title": "add_shapesArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "add_labels",
+        "description": "Add segmentation masks or labeled regions.\n        \n        Args:\n            label_image: 2D or 3D array of integer labels (0 = background, 1+ = regions)\n            name: Optional layer name\n                     \n        Returns:\n            str: Success message with layer name and shape or error message prefixed with \u274c\n            \n        Note:\n            Label image should be a 2D or 3D array where each unique integer represents\n            a different region. 0 is typically used for background.\n            Each region will be displayed with a different color.\n        ",
+        "parameters": {
+          "properties": {
+            "label_image": {
+              "items": {},
+              "title": "Label Image",
+              "type": "array"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "label_image"
+          ],
+          "title": "add_labelsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "add_surface",
+        "description": "Add 3D mesh surface to the viewer.\n        \n        Args:\n            vertices: List of vertex coordinates [[x1, y1, z1], [x2, y2, z2], ...]\n            faces: List of face indices [[v1, v2, v3], [v4, v5, v6], ...] (triangles)\n            name: Optional layer name\n                     \n        Returns:\n            str: Success message with layer name and vertex/face counts or error message prefixed with \u274c\n            \n        Note:\n            Vertices define the 3D points of the mesh.\n            Faces define triangles by referencing vertex indices (0-based).\n            Each face should have exactly 3 vertex indices.\n        ",
+        "parameters": {
+          "properties": {
+            "vertices": {
+              "items": {},
+              "title": "Vertices",
+              "type": "array"
+            },
+            "faces": {
+              "items": {},
+              "title": "Faces",
+              "type": "array"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "vertices",
+            "faces"
+          ],
+          "title": "add_surfaceArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "add_vectors",
+        "description": "Add vector field arrows to the viewer.\n        \n        Args:\n            vectors: 2D or 3D array of vectors [[[x1, y1], [dx1, dy1]], [[x2, y2], [dx2, dy2]], ...]\n            name: Optional layer name\n                     \n        Returns:\n            str: Success message with layer name and shape or error message prefixed with \u274c\n            \n        Note:\n            Vectors format: [[position, direction], ...]\n            For 2D: [[[x, y], [dx, dy]], ...]\n            For 3D: [[[x, y, z], [dx, dy, dz]], ...]\n            Each vector shows direction and magnitude at a specific position.\n        ",
+        "parameters": {
+          "properties": {
+            "vectors": {
+              "items": {},
+              "title": "Vectors",
+              "type": "array"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            }
+          },
+          "required": [
+            "vectors"
+          ],
+          "title": "add_vectorsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "save_layers",
+        "description": "Save one or more layers to disk.\n        \n        Args:\n            file_path: Path where to save the file (supports .tif, .tiff extensions)\n            layer_names: Optional list of layer names to save. If None, saves all layers.\n                        \n        Returns:\n            str: Success message with save count or error message prefixed with \u274c\n            \n        Note:\n            Currently supports saving as TIFF format.\n            For multiple layers, only the first layer is saved to the specified file.\n            Layer data is saved as-is without any transformations.\n        ",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "title": "File Path",
+              "type": "string"
+            },
+            "layer_names": {
+              "anyOf": [
+                {
+                  "items": {},
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Layer Names"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "title": "save_layersArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_layer_data",
+        "description": "Extract the raw data from a layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to extract data from\n            \n        Returns:\n            str: JSON-formatted layer data including shape, dtype, and data array\n                 or error message prefixed with \u274c\n                 \n        Note:\n            Returns the actual data array, shape, and data type.\n            Large arrays may be truncated in the JSON output.\n            Use this to inspect layer data for analysis.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            }
+          },
+          "required": [
+            "layer_name"
+          ],
+          "title": "get_layer_dataArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_scale_bar",
+        "description": "Show or hide the scale bar.\n        \n        Args:\n            visible: Whether to show the scale bar\n            unit: Unit of measurement (e.g., 'um', 'nm', 'mm', 'm')\n                 \n        Returns:\n            str: Success message or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "visible": {
+              "default": true,
+              "title": "Visible",
+              "type": "boolean"
+            },
+            "unit": {
+              "default": "um",
+              "title": "Unit",
+              "type": "string"
+            }
+          },
+          "title": "set_scale_barArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_axis_labels",
+        "description": "Set custom labels for the axes.\n        \n        Args:\n            labels: List of axis labels (e.g., ['t', 'z', 'y', 'x'] for 4D data)\n                   \n        Returns:\n            str: Success message or error message prefixed with \u274c\n            \n        Note:\n            Number of labels must match the number of dimensions in the data.\n            Use get_dims_info() to see the current number of dimensions.\n        ",
+        "parameters": {
+          "properties": {
+            "labels": {
+              "items": {},
+              "title": "Labels",
+              "type": "array"
+            }
+          },
+          "required": [
+            "labels"
+          ],
+          "title": "set_axis_labelsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_view_mode",
+        "description": "Switch between different view modes.\n        \n        Args:\n            mode: View mode ('2d' or '3d')\n                 \n        Returns:\n            str: Success message or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "mode": {
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "title": "set_view_modeArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_layer_visibility",
+        "description": "Show or hide a specific layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to modify\n            visible: Whether the layer should be visible\n                   \n        Returns:\n            str: Success message or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            },
+            "visible": {
+              "title": "Visible",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "layer_name",
+            "visible"
+          ],
+          "title": "set_layer_visibilityArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "measure_distance",
+        "description": "Calculate distance between two points in the data.\n        \n        Args:\n            point1: First point coordinates [x, y] or [x, y, z]\n            point2: Second point coordinates [x, y] or [x, y, z]\n                   \n        Returns:\n            str: JSON-formatted measurement result including distance and point coordinates\n                 or error message prefixed with \u274c\n                 \n        Note:\n            Points should have the same dimensionality (both 2D or both 3D).\n            Distance is calculated using Euclidean distance.\n        ",
+        "parameters": {
+          "properties": {
+            "point1": {
+              "items": {},
+              "title": "Point1",
+              "type": "array"
+            },
+            "point2": {
+              "items": {},
+              "title": "Point2",
+              "type": "array"
+            }
+          },
+          "required": [
+            "point1",
+            "point2"
+          ],
+          "title": "measure_distanceArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_layer_statistics",
+        "description": "Get basic stats (min, max, mean, std) for a layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to analyze\n            \n        Returns:\n            str: JSON-formatted statistics including min, max, mean, std, shape, and dtype\n                 or error message prefixed with \u274c\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            }
+          },
+          "required": [
+            "layer_name"
+          ],
+          "title": "get_layer_statisticsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "crop_layer",
+        "description": "Crop a layer to a specific region.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to crop\n            bounds: Crop bounds as [start_t, end_t, start_z, end_z, start_y, end_y, start_x, end_x]\n                   \n        Returns:\n            str: Success message with new layer name or error message prefixed with \u274c\n                \n        Note:\n            Bounds must be a list of 8 values defining the crop region for each dimension.\n            Creates a new layer with the cropped data.\n            Use get_dims_info() to understand the dimension order.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            },
+            "bounds": {
+              "items": {},
+              "title": "Bounds",
+              "type": "array"
+            }
+          },
+          "required": [
+            "layer_name",
+            "bounds"
+          ],
+          "title": "crop_layerArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_channel",
+        "description": "Switch to a specific channel in multi-channel data.\n        \n        Args:\n            channel_index: Channel index (0-based)\n                          \n        Returns:\n            str: Success message or error message prefixed with \u274c\n                \n        Note:\n            Only works if the data has a channel dimension.\n            Use get_dims_info() to check available dimensions.\n            Channel is typically the second dimension (index 1).\n        ",
+        "parameters": {
+          "properties": {
+            "channel_index": {
+              "title": "Channel Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "channel_index"
+          ],
+          "title": "set_channelArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_z_slice",
+        "description": "Jump to a specific z-slice in 3D data.\n        \n        Args:\n            z_index: Z-slice index (0-based)\n                    \n        Returns:\n            str: Success message or error message prefixed with \u274c\n                \n        Note:\n            Only works if the data has a Z dimension.\n            Use get_dims_info() to check available dimensions.\n            Z is typically the third dimension (index 2).\n        ",
+        "parameters": {
+          "properties": {
+            "z_index": {
+              "title": "Z Index",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "z_index"
+          ],
+          "title": "set_z_sliceArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "play_animation",
+        "description": "Animate through a time series at specified FPS.\n        \n        Args:\n            start_frame: Starting frame index (0-based)\n            end_frame: Ending frame index (0-based)\n            fps: Frames per second for animation (default: 10)\n                       \n        Returns:\n            str: Success message or error message prefixed with \u274c\n                \n        Note:\n            Only works if the data has a time dimension.\n            Use get_dims_info() to check available dimensions.\n            Time is typically the first dimension (index 0).\n            Currently limited functionality - sets animation range but doesn't play continuously.\n        ",
+        "parameters": {
+          "properties": {
+            "start_frame": {
+              "title": "Start Frame",
+              "type": "integer"
+            },
+            "end_frame": {
+              "title": "End Frame",
+              "type": "integer"
+            },
+            "fps": {
+              "default": 10,
+              "title": "Fps",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "start_frame",
+            "end_frame"
+          ],
+          "title": "play_animationArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_channel_info",
+        "description": "Get information about channels in a layer.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to analyze\n            \n        Returns:\n            str: JSON-formatted channel information including shape, channel axis, and number of channels\n                 or error message prefixed with \u274c\n                 \n        Note:\n            Returns detailed information about the layer's channel structure.\n            Useful for understanding how multi-dimensional data is organized.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            }
+          },
+          "required": [
+            "layer_name"
+          ],
+          "title": "get_channel_infoArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "split_channels",
+        "description": "Split a multi-channel layer into separate single-channel layers.\n        \n        Args:\n            layer_name: Layer name (str) or index (int) to split\n                        \n        Returns:\n            str: Success message with list of created layers or error message prefixed with \u274c\n                \n        Note:\n            Automatically detects the channel axis and creates separate layers for each channel.\n            Each new layer will be named with '_ch0', '_ch1', etc. suffix.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Layer Name"
+            }
+          },
+          "required": [
+            "layer_name"
+          ],
+          "title": "split_channelsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "merge_channels",
+        "description": "Merge multiple single-channel layers into one multi-channel layer.\n        \n        Args:\n            layer_names: List of layer names to merge\n            output_name: Optional name for the merged layer (default: auto-generated)\n                        \n        Returns:\n            str: Success message with merged layer name or error message prefixed with \u274c\n                \n        Note:\n            All input layers must have the same spatial dimensions.\n            The merged layer will have channels as the first dimension.\n            Useful for combining separate channel files into one multi-channel dataset.\n        ",
+        "parameters": {
+          "properties": {
+            "layer_names": {
+              "items": {},
+              "title": "Layer Names",
+              "type": "array"
+            },
+            "output_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Output Name"
+            }
+          },
+          "required": [
+            "layer_names"
+          ],
+          "title": "merge_channelsArguments",
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "tail": {
+              "description": "If provided, returns only the last N lines of the file",
+              "type": "number"
+            },
+            "head": {
+              "description": "If provided, returns only the first N lines of the file",
+              "type": "number"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_text_file",
+        "description": "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Operates on the file as text regardless of extension. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "tail": {
+              "description": "If provided, returns only the last N lines of the file",
+              "type": "number"
+            },
+            "head": {
+              "description": "If provided, returns only the first N lines of the file",
+              "type": "number"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_media_file",
+        "description": "Read a file and return it as a base64-encoded content block with its MIME type. Image and audio files are returned as image/audio content; any other file type is returned as an embedded resource. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_multiple_files",
+        "description": "Read the contents of multiple files simultaneously. This is more efficient than reading files one by one when you need to analyze or compare multiple files. Each file's content is returned with its path as a reference. Failed reads for individual files won't stop the entire operation. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "paths": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Array of file paths to read. Each path must be a string pointing to a valid file within allowed directories."
+            }
+          },
+          "required": [
+            "paths"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Create a new file or completely overwrite an existing file with new content. Use with caution as it will overwrite existing files without warning. Handles text content with proper encoding. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "edit_file",
+        "description": "Make line-based edits to a text file. Each edit replaces exact line sequences with new content. Returns a git-style diff showing the changes made. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "edits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "oldText": {
+                    "type": "string",
+                    "description": "Text to search for - must match exactly"
+                  },
+                  "newText": {
+                    "type": "string",
+                    "description": "Text to replace with"
+                  }
+                },
+                "required": [
+                  "oldText",
+                  "newText"
+                ]
+              }
+            },
+            "dryRun": {
+              "default": false,
+              "description": "Preview changes using git-style diff format",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "path",
+            "edits"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "create_directory",
+        "description": "Create a new directory or ensure a directory exists. Can create multiple nested directories in one operation. If the directory already exists, this operation will succeed silently. Perfect for setting up directory structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_directory",
+        "description": "Get a detailed listing of all files and directories in a specified path. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is essential for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_directory_with_sizes",
+        "description": "Get a detailed listing of all files and directories in a specified path, including sizes. Results clearly distinguish between files and directories with [FILE] and [DIR] prefixes. This tool is useful for understanding directory structure and finding specific files within a directory. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sortBy": {
+              "default": "name",
+              "description": "Sort entries by name or size",
+              "type": "string",
+              "enum": [
+                "name",
+                "size"
+              ]
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "directory_tree",
+        "description": "Get a recursive tree view of files and directories as a JSON structure. Each entry includes 'name', 'type' (file/directory), and 'children' for directories. Files have no children array, while directories always have a children array (which may be empty). The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "excludePatterns": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "move_file",
+        "description": "Move or rename files and directories. Can move files between directories and rename them in a single operation. If the destination exists, the operation will fail. Works across different directories and can be used for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "destination"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "search_files",
+        "description": "Recursively search for files and directories matching a pattern. The patterns should be glob-style patterns that match paths relative to the working directory. Use pattern like '*.ext' to match files in current directory, and '**/*.ext' to match files in all subdirectories. Returns full paths to all matching items. Great for finding files when you don't know their exact location. Only searches within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string"
+            },
+            "excludePatterns": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "path",
+            "pattern"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_file_info",
+        "description": "Retrieve detailed metadata about a file or directory. Returns comprehensive information including size, creation time, last modified time, permissions, and type. This tool is perfect for understanding file characteristics without reading the actual content. Only works within allowed directories.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_allowed_directories",
+        "description": "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.",
+        "parameters": {
+          "type": "object",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "properties": {
+            "note": {
+              "type": "string",
+              "description": "Optional note (automatically added to comply with OpenAI requirements)"
+            }
+          },
+          "required": []
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto",
+  "stream": false,
+  "max_tokens": 16384
+}

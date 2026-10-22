@@ -13,7 +13,25 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+
 MODEL = 'nvidia/nvidia/nemotron-3.5-super-vl'
+
+
+def normalize_tool_message_nulls(request: dict) -> dict:
+    """Omit TinyAgent's absent assistant-only field on tool response messages.
+
+    Do not discard non-null or unknown fields: the strict model schema must
+    still reject them. Preserve content, call IDs, names, and all other values.
+    """
+    messages = request.get('messages')
+    if not isinstance(messages, list):
+        return request
+    return {**request, 'messages': [
+        {key: value for key, value in message.items() if key != 'tool_calls'}
+        if isinstance(message, dict) and message.get('role') == 'tool'
+        and 'tool_calls' in message and message['tool_calls'] is None else message
+        for message in messages
+    ]}
 
 
 def validate_response(response: dict) -> None:
@@ -67,10 +85,12 @@ class NativeClient:
         kwargs.pop('stream_options', None)
         kwargs.update(stream=False, max_tokens=self.max_tokens)
         # HF message dataclasses inherit dict; JSON serialization is checked before dispatch.
-        request = json.loads(json.dumps(kwargs))
+        creator_request = json.loads(json.dumps(kwargs))
+        request = normalize_tool_message_nulls(creator_request)
         self.receipt_path.parent.mkdir(parents=True, exist_ok=True)
         with self.receipt_path.open('a') as f:
-            f.write(json.dumps({'phase': 'dispatch', 'time': time.time(), 'request': request}) + '\n')
+            f.write(json.dumps({'phase': 'dispatch', 'time': time.time(), 'request': request,
+                                'creator_request': creator_request}) + '\n')
         try:
             response = await self.sender(request)
         except Exception as exc:
