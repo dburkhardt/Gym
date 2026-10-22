@@ -104,3 +104,75 @@ def test_swallowed_sigterm_cancellation_cannot_succeed():
     with pytest.raises(SystemExit) as error:
         run_with_sigterm_cleanup(swallow())
     assert error.value.code == 143
+
+
+def test_startup_scope_restores_handler_on_error():
+    from nemo_gym.cli.async_runner import sigterm_startup_scope
+
+    previous = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(ValueError, match="startup failure"):
+        with sigterm_startup_scope():
+            raise ValueError("startup failure")
+    assert signal.getsignal(signal.SIGTERM) == previous
+    with sigterm_startup_scope():
+        pass
+    assert signal.getsignal(signal.SIGTERM) == previous
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process signals")
+@pytest.mark.parametrize("ordinary_failure", [False, True])
+def test_actual_runhelper_start_settles_service_on_sigterm(tmp_path: Path, ordinary_failure: bool):
+    script = """
+import subprocess,sys,time,types
+from pathlib import Path
+from nemo_gym.cli.env import RunHelper
+p=Path(sys.argv[1])
+helper=RunHelper.__new__(RunHelper)
+helper._startup=None
+child=None
+def start(self, config):
+    global child
+    child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"],start_new_session=True)
+    (p/"ready").write_text(str(child.pid))
+    if sys.argv[2] == "failure":
+        raise ValueError("ordinary startup failure")
+    time.sleep(60)
+def shutdown(self):
+    (p/"cleaning").write_text("yes")
+    time.sleep(.4)
+    child.terminate()
+    child.wait(timeout=5)
+    (p/"cleaned").write_text("yes")
+helper._start=types.MethodType(start,helper)
+helper.shutdown=types.MethodType(shutdown,helper)
+helper.start(None)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(tmp_path), "failure" if ordinary_failure else "wait"]
+    )
+    child_pid = None
+    try:
+        deadline = time.monotonic() + 30
+        while not (tmp_path / "ready").exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert (tmp_path / "ready").exists()
+        child_pid = int((tmp_path / "ready").read_text())
+        if not ordinary_failure:
+            process.send_signal(signal.SIGTERM)
+        while not (tmp_path / "cleaning").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert (tmp_path / "cleaning").exists()
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=10) == 143
+        assert (tmp_path / "cleaned").exists()
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        if child_pid is not None:
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

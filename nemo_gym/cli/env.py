@@ -39,6 +39,7 @@ from rich.table import Table
 from tqdm.auto import tqdm
 
 from nemo_gym import PARENT_DIR, _resolve_under_cwd_or_install, component_search_roots
+from nemo_gym.cli.async_runner import sigterm_startup_scope
 from nemo_gym.cli.port_ownership import PortOwnership
 from nemo_gym.cli.setup_command import get_venv_path, run_command, setup_env_command, validate_server_launcher
 from nemo_gym.cli.utils import (
@@ -555,14 +556,16 @@ class RunHelper:  # pragma: no cover
         self._head_server = None
         self._h2_ping_sidecar = None
         self._port_ownership = None
-        try:
-            self._start(global_config_dict_parser_config)
-        except BaseException as error:
-            # Before shutdown, which flushes telemetry, so the failed startup's spans are exported.
-            if self._startup is not None:
-                self._startup.abort(_startup_outcome(error), error)
-            self.shutdown()
-            raise
+        with sigterm_startup_scope() as begin_cleanup:
+            try:
+                self._start(global_config_dict_parser_config)
+            except BaseException as error:
+                begin_cleanup()
+                # Before shutdown, which flushes telemetry, so the failed startup's spans are exported.
+                if self._startup is not None:
+                    self._startup.abort(_startup_outcome(error), error)
+                self.shutdown()
+                raise
 
     def _start(self, global_config_dict_parser_config: GlobalConfigDictParserConfig) -> None:
         self._startup = SupervisorStartup()

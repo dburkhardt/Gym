@@ -62,3 +62,29 @@ def run_with_sigterm_cleanup(coroutine: Coroutine[object, object, _Result]) -> _
     """Run a standalone coroutine within a SIGTERM cleanup scope."""
     with sigterm_cleanup_scope() as run:
         return run(coroutine)
+
+
+@contextmanager
+def sigterm_startup_scope() -> Iterator[Callable[[], None]]:
+    """Interrupt synchronous startup once, protecting its existing failure cleanup."""
+    terminated = False
+    cleaning = False
+
+    def begin_cleanup() -> None:
+        nonlocal cleaning
+        cleaning = True
+
+    def terminate(_signum: int, _frame: FrameType | None) -> None:
+        nonlocal terminated
+        if not terminated:
+            terminated = True
+            if not cleaning:
+                raise SystemExit(128 + signal.SIGTERM)
+
+    previous = signal.signal(signal.SIGTERM, terminate)
+    try:
+        yield begin_cleanup
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        if terminated:
+            raise SystemExit(128 + signal.SIGTERM) from None
