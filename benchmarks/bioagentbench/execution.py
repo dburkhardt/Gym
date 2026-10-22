@@ -18,12 +18,45 @@ from aiohttp import web
 
 from benchmarks.bioagentbench.runtime import runtime_class
 from benchmarks.bioagentbench.scorer_environment import child_environment
-from benchmarks.bioagentbench.transport import NativeTransport
+from benchmarks.bioagentbench.transport import NativeDispatchStopped, NativeTransport
 from nemo_gym.sandbox.model_bridge import _settle
 from nemo_gym.server_utils import request
 
 
 _OWNER = threading.Lock()
+
+
+async def relay_model_request(incoming: web.Request, transport: NativeTransport) -> web.StreamResponse:
+    """Return terminal local admission failures without encouraging creator SDK retries."""
+    try:
+        response = await transport.handle_async_request(
+            httpx.Request("POST", "http://native/v1/chat/completions", content=await incoming.read())
+        )
+    except NativeDispatchStopped as error:
+        # 429/5xx invite automatic OpenCode retries. This is a local terminal
+        # decision; the original provider status/body remain in durable receipts.
+        return web.json_response(
+            {
+                "error": {
+                    "message": str(error),
+                    "type": "native_dispatch_stopped",
+                    "upstream_status": error.upstream_status,
+                }
+            },
+            status=422,
+        )
+    try:
+        downstream = web.StreamResponse(
+            status=response.status_code,
+            headers={"Content-Type": response.headers.get("content-type", "application/json")},
+        )
+        await downstream.prepare(incoming)
+        async for chunk in response.aiter_raw():
+            await downstream.write(chunk)
+        await downstream.write_eof()
+        return downstream
+    finally:
+        await response.aclose()
 
 
 @asynccontextmanager
@@ -159,21 +192,7 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
 
         async def model(incoming):
             await authenticated(incoming)
-            response = await transport.handle_async_request(
-                httpx.Request("POST", "http://native/v1/chat/completions", content=await incoming.read())
-            )
-            try:
-                downstream = web.StreamResponse(
-                    status=response.status_code,
-                    headers={"Content-Type": response.headers.get("content-type", "application/json")},
-                )
-                await downstream.prepare(incoming)
-                async for chunk in response.aiter_raw():
-                    await downstream.write(chunk)
-                await downstream.write_eof()
-                return downstream
-            finally:
-                await response.aclose()
+            return await relay_model_request(incoming, transport)
 
         async def start_interception(incoming):
             nonlocal interception, interception_used

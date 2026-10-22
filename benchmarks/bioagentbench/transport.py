@@ -15,6 +15,14 @@ from nemo_gym.sandbox.guarded_chat_transport import publish
 from nemo_gym.server_utils import request
 
 
+class NativeDispatchStopped(RuntimeError):
+    """A terminal native dispatch failure that must not invite an SDK retry."""
+
+    def __init__(self, message: str, *, upstream_status: int | None = None) -> None:
+        super().__init__(message)
+        self.upstream_status = upstream_status
+
+
 class CapturedStream(httpx.AsyncByteStream):
     """Preserve each actual upstream chunk before returning it to the native parser."""
 
@@ -85,7 +93,7 @@ class NativeTransport(httpx.AsyncBaseTransport):
         response = None
         try:
             if self.failed:
-                raise RuntimeError("Prior native dispatch unresolved; fresh retry forbidden")
+                raise NativeDispatchStopped("Prior native dispatch unresolved; fresh retry forbidden")
             body = json.loads(await incoming.aread())
             if incoming.method != "POST" or not incoming.url.path.endswith("/chat/completions"):
                 raise ValueError("Only native chat completions are allowed")
@@ -122,7 +130,9 @@ class NativeTransport(httpx.AsyncBaseTransport):
                 publish(
                     stem.with_suffix(".error.json"), {"status": response.status, "body": raw.decode(errors="replace")}
                 )
-                raise RuntimeError(f"Native endpoint HTTP {response.status}; no automatic retry")
+                raise NativeDispatchStopped(
+                    f"Native endpoint HTTP {response.status}; no automatic retry", upstream_status=response.status
+                )
             stream = CapturedStream(self, response, stem, streaming=bool(body.get("stream")))
             return httpx.Response(response.status, headers=dict(response.headers), stream=stream, request=incoming)
         except BaseException:

@@ -110,3 +110,62 @@ def test_legacy_nodes_do_not_fabricate_provider_calls(tmp_path):
     assert t.tool_calls[0].started_at is None and t.tool_calls[0].completed_at == 2
     assert t.tool_calls[0].status == "unknown"
     assert any(g.code == "native_provider_receipts_unavailable" for g in t.gaps)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("upstream_status", [429, 503, 401])
+async def test_native_relay_terminal_failure_is_not_retryable(tmp_path, monkeypatch, upstream_status):
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from benchmarks.bioagentbench.execution import relay_model_request
+
+    sent = []
+    payload = b'{"error":{"message":"provider rejection"}}'
+
+    class Response:
+        status = upstream_status
+        released = False
+
+        async def read(self):
+            return payload
+
+        def release(self):
+            self.released = True
+
+    raw = Response()
+
+    async def send(*args, **kwargs):
+        sent.append(kwargs)
+        return raw
+
+    monkeypatch.setattr(transport, "request", send)
+    adapter = transport.NativeTransport(
+        endpoint="http://local/ng-rollout/one/v1",
+        lineage="one",
+        digest="digest",
+        model="model",
+        output=tmp_path / "calls",
+    )
+
+    async def handler(incoming):
+        return await relay_model_request(incoming, adapter)
+
+    app = web.Application()
+    app.router.add_post("/v1/chat/completions", handler)
+    async with TestClient(TestServer(app)) as client:
+        response = await client.post("/v1/chat/completions", json={"model": "model", "messages": []})
+        assert response.status == 422  # Local terminal decision, not a fabricated upstream status.
+        error = (await response.json())["error"]
+        assert error["type"] == "native_dispatch_stopped"
+        assert error["upstream_status"] == upstream_status
+        repeated = await client.post("/v1/chat/completions", json={"model": "model", "messages": []})
+        assert repeated.status == 422
+        assert "retry forbidden" in (await repeated.json())["error"]["message"]
+    assert len(sent) == 1 and raw.released and not adapter.lock.locked()
+    assert json.loads((tmp_path / "calls/000000.error.json").read_text()) == {
+        "status": upstream_status,
+        "body": payload.decode(),
+    }
+    assert len(list((tmp_path / "calls").glob("*.intent.json"))) == 1
+    assert not list((tmp_path / "calls").glob("*.complete.json"))
