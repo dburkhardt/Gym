@@ -969,3 +969,40 @@ async def test_connect_rejects_foreign_ownership_without_removal(
     with pytest.raises(RuntimeError, match="ownership mismatch"):
         await provider.connect({"sandbox_id": "x", "ownership_labels": {"nemo-gym.run": "r"}})
     assert len(rec.calls) == 1
+
+
+async def test_exec_timeout_preserves_already_read_stdout_and_stderr(fake_binary, monkeypatch):
+    import sys
+    provider = docker_provider.DockerProvider()
+    real_run = provider._run
+    program = "import sys,time; print('o'*100000,flush=True); print('e'*100000,file=sys.stderr,flush=True); time.sleep(30)"
+
+    async def run(argv, *, timeout_s, stdin=None):
+        return await real_run([sys.executable, '-u', '-c', program], timeout_s=timeout_s)
+
+    monkeypatch.setattr(provider, '_run', run)
+    result = await provider.exec(_make_handle(), 'scientific-command', timeout_s=0.3)
+    assert result.error_type == 'timeout'
+    assert result.return_code == docker_provider.SANDBOX_RUNTIME_RETURN_CODE
+    assert result.stdout == 'o'*100000 + '\n'
+    assert result.stderr.startswith('e'*100000 + '\n')
+    assert 'docker command timed out' in result.stderr
+
+
+async def test_run_cancellation_reaps_owned_client(fake_binary, tmp_path):
+    import asyncio
+    import os
+    import sys
+    provider = docker_provider.DockerProvider()
+    pidfile = tmp_path / 'pid'
+    program = "import os,time,pathlib; pathlib.Path(" + repr(str(pidfile)) + ").write_text(str(os.getpid())); time.sleep(30)"
+    task = asyncio.create_task(provider._run([sys.executable, '-c', program], timeout_s=20))
+    async with asyncio.timeout(5):
+        while not pidfile.exists():
+            await asyncio.sleep(0.01)
+    pid = int(pidfile.read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)

@@ -253,6 +253,15 @@ def _is_missing_container(stderr: str) -> bool:
     return any(marker in low for marker in DOCKER_MISSING_CONTAINER_MARKERS)
 
 
+class _DockerCommandTimeout(TimeoutError):
+    """Timeout metadata plus output captured before the owned client was killed."""
+
+    def __init__(self, message: str, stdout: str, stderr: str):
+        super().__init__(message)
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 class DockerProvider:
     """Sandbox provider backed by the local Docker CLI / daemon."""
 
@@ -283,14 +292,20 @@ class DockerProvider:
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
             )
+            # Preserve bytes already consumed from the pipes across timeout.
+            communication = asyncio.create_task(proc.communicate(input=stdin))
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(input=stdin), timeout=timeout_s)
-            except asyncio.TimeoutError as e:
+                stdout_b, stderr_b = await asyncio.wait_for(asyncio.shield(communication), timeout=timeout_s)
+            except (asyncio.TimeoutError, asyncio.CancelledError) as e:
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                with contextlib.suppress(Exception):
-                    await proc.wait()
-                raise TimeoutError(f"docker command timed out after {timeout_s:g}s: {_redact_argv(argv)}") from e
+                stdout_b, stderr_b = await communication
+                if isinstance(e, asyncio.CancelledError):
+                    raise
+                raise _DockerCommandTimeout(
+                    f"docker command timed out after {timeout_s:g}s: {_redact_argv(argv)}",
+                    stdout_b.decode(errors="replace"), stderr_b.decode(errors="replace"),
+                ) from e
 
             return_code = proc.returncode if proc.returncode is not None else SANDBOX_RUNTIME_RETURN_CODE
             return return_code, stdout_b.decode(errors="replace"), stderr_b.decode(errors="replace")
@@ -532,7 +547,9 @@ class DockerProvider:
             code, out, err = await self._run(argv, timeout_s=effective_timeout, stdin=stdin)
         except TimeoutError as e:
             return SandboxExecResult(
-                stdout=None, stderr=str(e), return_code=SANDBOX_RUNTIME_RETURN_CODE, error_type="timeout"
+                stdout=getattr(e, "stdout", None),
+                stderr="\n".join(filter(None, [getattr(e, "stderr", ""), str(e)])),
+                return_code=SANDBOX_RUNTIME_RETURN_CODE, error_type="timeout"
             )
         if code != 0 and _is_runtime_failure(err):
             return SandboxExecResult(
