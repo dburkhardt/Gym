@@ -160,3 +160,31 @@ async def test_sufficient_worker_budget_preserves_native_success(tmp_path):
     job.run.assert_awaited_once()
     assert result == str(trial.resolve())
     assert (trial / "result.json").read_bytes() == native
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_collect_hooks_are_sequential_and_outside_verifier_budget(tmp_path, disabled):
+    from harbor.models.task.config import VerifierCollectConfig
+
+    config, task = configured(tmp_path, "separate")
+    config.verifier.disable = disabled
+    baseline = resolve_phase_budget(config, task)["declared_phase_sum_seconds"]
+    task.config.verifier.collect = [
+        VerifierCollectConfig(command="snapshot", timeout_sec=60.9),
+        VerifierCollectConfig(command="drain", service="evaluator", timeout_sec=3700),
+    ]
+    report = resolve_phase_budget(config, task)
+    assert report["phases_seconds"]["artifact_collect_hooks"] == 3760
+    assert report["declared_phase_sum_seconds"] == baseline + 3760
+    with pytest.raises(ValueError, match="below declared"):
+        validate_admission_budget(report, drain_seconds=baseline + 100, operational_allowance_seconds=100)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 0.5, float("inf"), float("nan")])
+def test_unbounded_or_zero_effective_collect_hook_refused(tmp_path, timeout):
+    from harbor.models.task.config import VerifierCollectConfig
+
+    config, task = configured(tmp_path)
+    task.config.verifier.collect = [VerifierCollectConfig(command="drain", timeout_sec=timeout)]
+    with pytest.raises(ValueError, match="Collect hooks"):
+        resolve_phase_budget(config, task)

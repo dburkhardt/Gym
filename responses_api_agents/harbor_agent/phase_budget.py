@@ -44,6 +44,15 @@ def resolve_phase_budget(config, task):
         "agent_setup": trial.agent_setup_timeout_sec,
         "agent_execution": trial.agent_timeout_sec,
     }
+    # SingleStepTrial collects before verification (even when verification is
+    # disabled). Main and sidecar hooks run sequentially, using int(timeout_sec).
+    # This is one normal collection pass; interrupted recovery can repeat it.
+    hooks = task.config.verifier.collect
+    if hooks:
+        limits = [hook.timeout_sec for hook in hooks]
+        if any(not math.isfinite(value) or int(value) <= 0 for value in limits):
+            raise ValueError("Collect hooks require finite positive effective timeouts")
+        phases["artifact_collect_hooks"] = sum(int(value) for value in limits)
     mode = resolve_task_verifier_mode(task.config)
     if not config.verifier.disable:
         if mode == VerifierEnvironmentMode.SEPARATE:
@@ -70,6 +79,7 @@ def resolve_phase_budget(config, task):
             "skills/files",
             "artifact transfers",
             "hooks",
+            "repeated artifact collection during recovery",
             "environment stop",
             "result publication",
         ],
