@@ -19,6 +19,7 @@ import math
 import re
 import sys
 from asyncio import Semaphore
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -120,6 +121,8 @@ class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
 
     # Native Harbor custom verifier hook. Model route is injected for guarded judges.
     harbor_verifier_import_path: Optional[str] = None
+    # Optional independent judge transport; absent preserves the solver model route.
+    judge_model_server: ModelServerRef | None = None
     harbor_verifier_kwargs: Optional[dict[str, Any]] = None
     # Required single-step captures; optional diagnostic artifacts remain best-effort.
     harbor_required_artifact_sources: list[str] = Field(default_factory=list)
@@ -459,6 +462,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 raise ValueError("Guarded Harbor runs require a rollout capture identity")
             if capture_id is not None:
                 base_url = base_url.removesuffix("/v1") + rollout_path_prefix(capture_id) + "/v1"
+            judge_route = self._resolve_judge_route(global_config_dict, capture_id)
             run_timestamp = datetime.now(timezone.utc)
             run_id = self._build_run_id(run_timestamp)
 
@@ -483,6 +487,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 jobs_dir=jobs_dir,
                 responses_create_params=responses_create_params,
                 gym_provider_dispatch_guard=global_config_dict.get("provider_dispatch_guard") is True,
+                judge_route=judge_route,
             )
 
             failure_reason = None
@@ -785,6 +790,41 @@ class HarborAgent(SimpleResponsesAPIAgent):
         )
         return f"http://{model_server_config['host']}:{model_server_config['port']}/v1"
 
+    def _resolve_judge_route(self, global_config_dict: dict, capture_id: str | None) -> tuple[str, str] | None:
+        """Resolve an explicit judge service with the same rollout capture attribution."""
+        ref = self.config.judge_model_server
+        if ref is None:
+            return None
+        if not self.config.harbor_verifier_import_path:
+            raise ValueError("judge_model_server requires a custom Harbor verifier")
+        target = global_config_dict.get(ref.name)
+        if not isinstance(target, Mapping) or set(target) != {"responses_api_models"}:
+            raise ValueError("judge_model_server must reference an existing model service")
+        try:
+            service = get_first_server_config_dict(global_config_dict, ref.name)
+        except (KeyError, IndexError, AttributeError, TypeError) as exc:
+            raise ValueError("judge_model_server must reference an existing model service") from exc
+        declared = [service.get(key) for key in ("openai_model", "model") if service.get(key) is not None]
+        if not declared or any(not isinstance(value, str) or not value.strip() for value in declared):
+            raise ValueError("Judge model service needs an explicit model identity")
+        if len(set(declared)) != 1:
+            raise ValueError("Judge model service declares conflicting model identities")
+        host, port = service.get("host"), service.get("port")
+        if (
+            not isinstance(host, str)
+            or not host
+            or not isinstance(port, int)
+            or isinstance(port, bool)
+            or not 0 < port < 65536
+        ):
+            raise ValueError("Judge model service needs a valid host and port")
+        if global_config_dict.get("provider_dispatch_guard") and capture_id is None:
+            raise ValueError("Guarded Harbor judges require a rollout capture identity")
+        from nemo_gym.server_utils import rollout_path_prefix
+
+        prefix = rollout_path_prefix(capture_id) if capture_id is not None else ""
+        return f"http://{host}:{port}{prefix}/v1", declared[0]
+
     def _build_job_config(
         self,
         dataset_alias: str,
@@ -795,6 +835,8 @@ class HarborAgent(SimpleResponsesAPIAgent):
         jobs_dir: Path,
         responses_create_params: Optional[dict[str, Any]] = None,
         gym_provider_dispatch_guard: bool = False,
+        *,
+        judge_route: tuple[str, str] | None = None,
     ) -> dict:
         """Build a Harbor JobConfig dict for a single task."""
         from harbor.models.job.config import DatasetConfig, JobConfig, RetryConfig
@@ -866,8 +908,8 @@ class HarborAgent(SimpleResponsesAPIAgent):
         verifier_kwargs = dict(self.config.harbor_verifier_kwargs or {})
         if self.config.harbor_verifier_import_path:
             verifier_kwargs.update(
-                gym_model_api_base=api_base,
-                gym_model_name=model_name,
+                gym_model_api_base=judge_route[0] if judge_route else api_base,
+                gym_model_name=judge_route[1] if judge_route else model_name,
                 gym_provider_dispatch_guard=gym_provider_dispatch_guard is True,
             )
         verifier_config = VerifierConfig(
