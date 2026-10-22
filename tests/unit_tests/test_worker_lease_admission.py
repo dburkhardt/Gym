@@ -196,8 +196,9 @@ async def test_semaphore_wait_expires_lease(monkeypatch):
     "plan_only,deadline,expect_start,custom_driver",
     [(True, 60, False, False), (False, 60, False, False), (False, 100, True, False), (False, 100, False, True)],
 )
+@pytest.mark.parametrize("interpolated", [False, True])
 def test_runtime_yaml_reaches_e2e_service_admission(
-    tmp_path, monkeypatch, plan_only, deadline, expect_start, custom_driver
+    tmp_path, monkeypatch, plan_only, deadline, expect_start, custom_driver, interpolated
 ):
     import json
 
@@ -222,6 +223,12 @@ worker_lease_cleanup_reserve_s: 10
 worker_lease_startup_reserve_s: 1
 drain_margin_s: 20
 """)
+    if interpolated:
+        monkeypatch.setenv("TEST_WORKER_DEADLINE", str(deadline))
+        runtime.write_text(runtime.read_text().replace(
+            f"worker_lease_deadline_unix_s: {deadline}",
+            "worker_lease_deadline_unix_s: ${oc.env:TEST_WORKER_DEADLINE}",
+        ))
     if custom_driver:
         runtime.write_text(runtime.read_text() + "rollout_collection_driver: forbidden.module:run\n")
     monkeypatch.setattr(collection, "time", SimpleNamespace(time=lambda: 69, monotonic=lambda: 69))
@@ -274,3 +281,29 @@ def test_updated_top_level_and_collector_lease_preserve_restart_binding(tmp_path
             )
             == kwargs["binding_sha256"]
         )
+
+
+@pytest.mark.parametrize("value", ["100", "not-a-number", "0", "nan", None])
+def test_collector_lazy_env_resolution(tmp_path, monkeypatch, value):
+    from omegaconf import OmegaConf
+
+    monkeypatch.delenv("TEST_UNUSED_MODEL_KEY", raising=False)
+    if value is None:
+        monkeypatch.delenv("TEST_WORKER_DEADLINE", raising=False)
+    else:
+        monkeypatch.setenv("TEST_WORKER_DEADLINE", value)
+    runtime = OmegaConf.create(dict(
+        input_jsonl_fpath=str(tmp_path / "in"),
+        output_jsonl_fpath=str(tmp_path / "out"),
+        num_samples_in_parallel=1,
+        worker_lease_deadline_unix_s="${oc.env:TEST_WORKER_DEADLINE}",
+        worker_lease_cleanup_reserve_s=10,
+        drain_margin_s=20,
+        unrelated_server={"api_key": "${oc.env:TEST_UNUSED_MODEL_KEY}"},
+    ))
+    if value == "100":
+        resolved = collection.RolloutCollectionConfig.model_validate(runtime)
+        assert resolved.worker_lease_deadline_unix_s == 100
+    else:
+        with pytest.raises(ValueError):
+            collection.RolloutCollectionConfig.model_validate(runtime)

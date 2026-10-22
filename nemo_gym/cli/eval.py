@@ -697,9 +697,8 @@ def e2e_rollout_collection():  # pragma: no cover
         )
         rollout_collection_config_dict["input_jsonl_fpath"] = str(input_jsonl_fpath)
 
-    rollout_collection_config = RolloutCollectionConfig.model_validate(
-        OmegaConf.to_container(rollout_collection_config_dict)
-    )
+    # Preserve lazy field resolution without resolving unrelated server credentials.
+    rollout_collection_config = RolloutCollectionConfig.model_validate(rollout_collection_config_dict)
 
     # Materialize the exact distribution before launching any service or model call.
     # Old pre-expanded caches cannot safely implement task limits or repeat overrides.
