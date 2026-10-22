@@ -50,6 +50,19 @@ When using a staged checkout with an environment installed from another revision
 
 Before removing `--plan-only`, verify runtime/image availability, actual memory and disk, owned ports, endpoint readiness, full task-plus-cleanup budget, and all prior dispatch identities. Use the existing owned supervisor with an explicit absolute bound; collector admission/drain windows must leave each admitted task its original scientific budget. On qualified Linux hosts, optional `NEMO_GYM_SERVICE_OWNERSHIP_MODE=systemd` scopes apply to new service receipts only.
 
+On a systemd worker without a user session, selecting `systemd` ownership alone is insufficient. The worker administrator must enable a persistent user manager first. For example, the campaign A100 worker was qualified with:
+
+```sh
+sudo loginctl enable-linger shadeform
+sudo systemctl start user@1001.service
+export XDG_RUNTIME_DIR=/run/user/1001
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus
+export NEMO_GYM_SERVICE_OWNERSHIP_MODE=systemd
+systemctl --user show-environment
+```
+
+Replace the account and UID for another worker. Verify a no-inference service startup/shutdown and all dedicated-scope cleanup receipts before live execution. This avoids the process backend's global same-user environment scan, which can encounter inaccessible unrelated processes. Preserve old process-mode receipts and their errors; enabling scopes does not retroactively reconcile them. The A100 control started and cleaned all three Gym services against a closed local model endpoint with zero model calls.
+
 A configured `dispatch_budget_s` also requires `num_samples_in_parallel` (CLI `--concurrency`) or `max_resident_rollout_tasks`. Native validation rejects an unbounded dispatch queue even in plan-only mode. Carry the reviewed concurrency setting into the exact plan, execution and resume commands; do not invent a smaller scientific budget to bypass admission.
 
 For a worker with a scheduled shutdown, carry its **actual worker lease** in the runtime YAML as `worker_lease_deadline_unix_s` (UTC Unix seconds), `worker_lease_cleanup_reserve_s`, and an explicit finite positive `drain_margin_s` covering the full scientific rollout. The service-starting eval path also requires `worker_lease_startup_reserve_s`. Use bounded concurrency. The check before service startup requires startup + one full rollout + cleanup to fit; the collector checks again after startup and refuses an insufficient lease before dispatch. Queued rows recheck after semaphore/checkpoint waits, using the earlier of the worker, supervisor and dispatch deadlines. Resume supplies the new placement lease while preserving scientific settings and old records.
