@@ -202,6 +202,18 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
     monkeypatch.setattr(worker, "runtime_identity", lambda *args: None)
     monkeypatch.setattr(worker, "stage_judge_data", lambda *args: None)
 
+    class Exporter:
+        returncode = 0
+
+        async def communicate(self):
+            return b"", b""
+
+    async def export_process(*args, **kwargs):
+        return Exporter()
+
+    monkeypatch.setattr(worker.asyncio, "create_subprocess_exec", export_process)
+
+
     async def solver(*args):
         return {"success": True}
 
@@ -219,6 +231,7 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
     (tmp_path / "worker-input.json").write_text(
         json.dumps(
             {
+                "artifact_export_python": "unused",
                 "source_root": "unused",
                 "native_config": {},
                 "reference_root": "unused",
