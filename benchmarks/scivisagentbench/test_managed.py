@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -235,3 +236,19 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
         await worker.main(tmp_path)
     assert observed == ["send", "judge-settled", "closed"]
     assert not (tmp_path / "worker-result.json").exists()
+
+
+def test_native_worker_import_does_not_load_sandbox_stack():
+    script = """
+import importlib.abc
+import sys
+class RejectSandbox(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'nemo_gym.sandbox' or fullname.startswith('nemo_gym.sandbox.'):
+            raise ImportError('native worker must not depend on sandbox runtime')
+sys.meta_path.insert(0, RejectSandbox())
+from benchmarks.scivisagentbench.worker import GuardedChatTransport
+from nemo_gym.guarded_chat_transport import GuardedChatTransport as shared
+assert GuardedChatTransport is shared
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, cwd=Path(__file__).resolve().parents[2])

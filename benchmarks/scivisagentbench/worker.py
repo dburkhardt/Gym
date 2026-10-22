@@ -17,7 +17,7 @@ import httpx
 from benchmarks.scivisagentbench.evaluate import evaluate
 from benchmarks.scivisagentbench.native import run_native
 from benchmarks.scivisagentbench.transport import MODEL
-from nemo_gym.sandbox.guarded_chat_transport import GuardedChatTransport, publish
+from nemo_gym.guarded_chat_transport import GuardedChatTransport, publish
 
 
 def runtime_identity(output: Path, expected: dict) -> None:
