@@ -28,6 +28,9 @@ def reviewed_compatibility(row, receipt):
     from benchmarks.corebench import image_controls as controls
     from benchmarks.corebench.prepare import RUNTIME_SHA256
 
+    transition = reviewed_201_after_891(row, receipt)
+    if transition is not None:
+        return transition
     transition = reviewed_313_addition(row, receipt)
     if transition is not None:
         return transition
@@ -100,4 +103,52 @@ def reviewed_313_addition(row, receipt):
         "original_qualification_sha256": prior,
         "original_implementation_sha256": PRE_313_ENGINE,
         "reviewed_implementation_sha256": POST_313_ENGINE,
+    }
+
+
+CORE201_PRIOR_QUALIFICATION = "bf0195888eba838520bdbe612206d1d88fdfbc61f9154a78971193516fda12da"
+CORE201_REVIEWED_ENGINE = "97f2f6c69fe679588073d131fc82bf2ad70d7bec1d177e70fb5662adfe457248"
+
+
+def reviewed_201_after_891(row, receipt):
+    """Exact 201 transition across unrelated opt-in 891 layout/cache additions.
+
+    cee28bc2e -> b098895b2 changes dockerfile/stage_context only. The complete
+    probe, qualification, source/mode and cleanup implementations are unchanged.
+    Reconstruct the historical payload using CURRENT content; an engine hash
+    alone never accepts changed recipes, probes, sources or scoring identities.
+    """
+    from benchmarks.corebench import image_controls as controls
+    from benchmarks.corebench.prepare import RUNTIME_SHA256
+
+    implementation = hashlib.sha256(Path(controls.__file__).read_bytes()).hexdigest()
+    if (
+        row["id"] != "capsule-2011424"
+        or implementation != CORE201_REVIEWED_ENGINE
+        or receipt.get("qualification_sha256") != CORE201_PRIOR_QUALIFICATION
+        or any(row.get(k) is not None for k in (
+            "filesystem_layout_variant", "external_input_variant", "harness_install_variant"
+        ))
+    ):
+        return None
+    payload = {
+        "implementation_sha256": POST_313_ENGINE,
+        "schema": "corebench-image-qualification-v2",
+        "recipe": controls.recipe_digest(row),
+        "source": controls.source_digest(row),
+        "instruction": row["instruction_sha256"],
+        "reference": row["reference_sha256"],
+        "scorer": row["scorer_sha256"],
+        "harness_archive": RUNTIME_SHA256,
+        "scientific_probe": controls.SCIENTIFIC_PROBE,
+        "harness_probe": controls.HARNESS_PROBE,
+    }
+    reconstructed = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    if reconstructed != CORE201_PRIOR_QUALIFICATION:
+        return None
+    return {
+        "review": "core201-unchanged-probes-after-opt-in-891-v1",
+        "original_qualification_sha256": reconstructed,
+        "original_implementation_sha256": POST_313_ENGINE,
+        "reviewed_implementation_sha256": implementation,
     }
