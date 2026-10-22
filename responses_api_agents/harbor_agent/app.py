@@ -54,6 +54,7 @@ from nemo_gym.server_utils import (
 )
 from responses_api_agents.harbor_agent.failure_diagnostics import (
     intent_bound_provider_rejection,
+    terminus_bound_provider_rejection,
     measurement_failure,
     required_artifact_failure,
 )
@@ -514,7 +515,9 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 if self.config.harbor_ray_task_memory_bytes is not None:
                     resource_options["memory"] = self.config.harbor_ray_task_memory_bytes
                 if self.config.harbor_ray_static_resource_preflight:
-                    resource_admission = static_resource_feasibility(await asyncio.to_thread(ray.nodes), resource_options)
+                    resource_admission = static_resource_feasibility(
+                        await asyncio.to_thread(ray.nodes), resource_options
+                    )
                     admission_path = jobs_dir / f"{job_name}.ray-admission.json"
                     admission_path.parent.mkdir(parents=True, exist_ok=True)
                     _publish(admission_path, resource_admission)
@@ -557,12 +560,22 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 if failure_kind == "harbor:unclassified" and global_config_dict.get("provider_dispatch_guard") is True:
                     rejection = await asyncio.to_thread(
                         intent_bound_provider_rejection,
+                        terminus_bound_provider_rejection,
                         trial_result,
                         trial_dir=trial_dir,
                         capture_dir=global_config_dict.get("model_call_capture_dir"),
                         rollout_id=capture_id,
                         endpoint=base_url.rstrip("/") + "/chat/completions",
                     )
+                    if rejection is None:
+                        rejection = await asyncio.to_thread(
+                            terminus_bound_provider_rejection,
+                            trial_result,
+                            trial_dir=trial_dir,
+                            capture_dir=global_config_dict.get("model_call_capture_dir"),
+                            rollout_id=capture_id,
+                            endpoint=base_url.rstrip("/") + "/chat/completions",
+                        )
                     if rejection is not None:
                         failure_kind, failure_reason = rejection
                 if self.config.harbor_required_artifact_sources:
@@ -623,7 +636,9 @@ class HarborAgent(SimpleResponsesAPIAgent):
                         "exception_type": type(e).__name__,
                         "exception_message": str(e),
                         "job_dir": str(jobs_dir / job_name),
-                        "model_execution_status": "not_started" if isinstance(e, StaticRayResourceError) else "unknown",
+                        "model_execution_status": "not_started"
+                        if isinstance(e, StaticRayResourceError)
+                        else "unknown",
                     }
                 }
                 if resource_admission is not None:

@@ -217,3 +217,89 @@ def intent_bound_provider_rejection(trial_result, *, trial_dir, capture_dir, rol
         )
     except (OSError, ValueError, TypeError, AttributeError, KeyError):
         return None
+
+
+def terminus_bound_provider_rejection(trial_result, *, trial_dir, capture_dir, rollout_id, endpoint):
+    """Read the existing durable Terminus cursor; never authorize a retry."""
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from nemo_gym.base_responses_api_model import CaptureStore
+    from responses_api_agents.harbor_agent.custom_agents.llms.nemo_gym_llm import NemoGymLLM
+
+    error = trial_result.get("exception_info")
+    expected = (
+        f"Server error '500 Internal Server Error' for url '{endpoint}'\n"
+        "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+    )
+    if not isinstance(error, Mapping) or error.get("exception_type") != "HTTPStatusError":
+        return None
+    if error.get("exception_message") != expected or not isinstance(rollout_id, str) or not rollout_id:
+        return None
+    if not capture_dir:
+        return None
+    try:
+        agent = Path(trial_dir) / "agent"
+        path = agent / "gym-call-state.json"
+        if agent.is_symlink() or path.is_symlink() or not path.is_file() or path.stat().st_size > 32 * 1024 * 1024:
+            return None
+        state = json.loads(path.read_text())
+        NemoGymLLM._validate_dispatch_state(state)
+        calls = list(state["calls"].values())
+        if not 1 <= len(calls) <= 60 or calls[-1]["completed"] or any(not c["completed"] for c in calls[:-1]):
+            return None
+        root = Path(capture_dir)
+        if not root.is_dir():
+            return None
+        store = CaptureStore(root)
+        if store.has_pending(rollout_id) or store.is_incomplete(rollout_id):
+            return None
+        capture_path = store.path_for(rollout_id)
+        if capture_path.is_symlink() or not capture_path.is_file() or capture_path.stat().st_size > 64 * 1024 * 1024:
+            return None
+        records = store.read(rollout_id)
+        if len(records) != len(calls):
+            return None
+        seen_attempts = set()
+        seen_calls = set()
+        for index, (call, record) in enumerate(zip(calls, records)):
+            binding = record.get("provider_binding", {})
+            if binding.get("logical_rollout") != rollout_id or binding.get("logical_call") != call["logical_call_id"]:
+                return None
+            if binding.get("agent_config") != call["configuration_sha256"]:
+                return None
+            request = record.get("request")
+            if (
+                not isinstance(request, dict)
+                or hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest() != call["request_sha256"]
+            ):
+                return None
+            model_call = record.get("model_call_id")
+            if not isinstance(model_call, str) or not model_call or model_call in seen_calls:
+                return None
+            seen_calls.add(model_call)
+            attempts = record.get("provider_attempts")
+            if not isinstance(attempts, list) or not attempts:
+                return None
+            final = index == len(calls) - 1
+            if record.get("status_code") != (429 if final else 200) or record.get("error_category") != (
+                "rate_limit" if final else None
+            ):
+                return None
+            for n, attempt in enumerate(attempts):
+                ident = attempt.get("attempt_id")
+                if not isinstance(ident, str) or not ident or ident in seen_attempts:
+                    return None
+                seen_attempts.add(ident)
+                success = not final and n == len(attempts) - 1
+                if attempt.get("status_code") != (200 if success else 429) or attempt.get("outcome") != (
+                    "captured" if success else "rejected"
+                ):
+                    return None
+        return (
+            PROVIDER_QUOTA_EXHAUSTED,
+            "Exact durable Terminus call cursor matches terminal captured HTTP429 rejection",
+        )
+    except (OSError, ValueError, TypeError, AttributeError, KeyError, RuntimeError):
+        return None
