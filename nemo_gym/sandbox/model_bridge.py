@@ -4,6 +4,7 @@
 
 import asyncio
 import hmac
+import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -39,6 +40,7 @@ def application(
     namespace: str = "blade",
     allow_stream: bool = False,
     expected_model: str = MODEL,
+    request_timeout_s: float | None = None,
 ) -> web.Application:
     """Expose only this trial's exact model endpoint and dispatch identities."""
     if "/ng-rollout/" not in endpoint or not endpoint.endswith("/v1"):
@@ -47,6 +49,10 @@ def application(
         raise ValueError("Bridge requires explicit model identity")
     if not namespace.isidentifier():
         raise ValueError("Invalid bridge call namespace")
+    if request_timeout_s is None:
+        request_timeout_s = REQUEST_TIMEOUT_S
+    if isinstance(request_timeout_s, bool) or not math.isfinite(request_timeout_s) or request_timeout_s <= 0:
+        raise ValueError("Bridge request timeout must be finite and positive")
     app = web.Application(client_max_size=MAX_BODY)
 
     async def forward(incoming: web.Request) -> web.Response:
@@ -68,7 +74,7 @@ def application(
         ):
             raise web.HTTPBadRequest()
         headers = {"x-nemo-gym-logical-call-id": call_id, "x-nemo-gym-call-config-sha256": digest}
-        async with asyncio.timeout(REQUEST_TIMEOUT_S):
+        async with asyncio.timeout(request_timeout_s):
             response = await request(
                 "POST",
                 endpoint + "/chat/completions",
@@ -111,8 +117,11 @@ async def bridge(
     namespace: str = "blade",
     allow_stream: bool = False,
     expected_model: str = MODEL,
+    request_timeout_s: float | None = None,
 ):
     """Clean up only this owned socket after active forwarding handlers settle."""
+    if request_timeout_s is None:
+        request_timeout_s = REQUEST_TIMEOUT_S
     runner = web.AppRunner(
         application(
             endpoint=endpoint,
@@ -122,8 +131,9 @@ async def bridge(
             namespace=namespace,
             allow_stream=allow_stream,
             expected_model=expected_model,
+            request_timeout_s=request_timeout_s,
         ),
-        shutdown_timeout=610,
+        shutdown_timeout=request_timeout_s + 10,
     )
     await runner.setup()
     try:

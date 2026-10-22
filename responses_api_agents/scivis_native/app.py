@@ -41,6 +41,7 @@ class Config(BaseResponsesAPIAgentConfig):
     )
     max_tokens: int = 16384
     timeout_s: int = 7200
+    request_timeout_s: float = Field(default=600, gt=0, allow_inf_nan=False)
     inference_enabled: bool = False
     judge_command: list[str] = Field(default_factory=list)
 

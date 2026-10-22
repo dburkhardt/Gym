@@ -144,6 +144,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
         "model": MODEL,
         "max_tokens": config.max_tokens,
         "timeout_s": config.timeout_s,
+        "request_timeout_s": config.request_timeout_s,
     }
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     _publish(output / "identity.json", identity)
@@ -159,7 +160,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
                     or hashlib.sha256((creator / relative).read_bytes()).hexdigest() != sha
                 ):
                     raise ValueError("Solver source mount differs from pinned creator src tree")
-    spec = viewer_spec(packet, workspace, lineage, 2 * config.timeout_s + 660)
+    spec = viewer_spec(packet, workspace, lineage, 2 * config.timeout_s + config.request_timeout_s + 60)
     sandbox = AsyncSandbox(
         {
             "docker": {
@@ -237,11 +238,12 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
                 digest=digest,
                 namespace="scivis",
                 expected_model=MODEL,
+                request_timeout_s=config.request_timeout_s,
             ):
                 result = await provider.exec(
                     handle,
                     shlex.join([str(interpreter), "-m", "benchmarks.scivisagentbench.worker", str(output)]),
-                    timeout_s=2 * config.timeout_s + 660,
+                    timeout_s=2 * config.timeout_s + config.request_timeout_s + 60,
                     env={
                         "PYTHONPATH": str(source),
                         "NEMO_GYM_EXTRA_ROOTS": str(source),

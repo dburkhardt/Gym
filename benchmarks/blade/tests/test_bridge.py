@@ -118,3 +118,48 @@ async def test_cancellation_waits_for_active_forwarder_and_removes_socket(monkey
         with pytest.raises(asyncio.CancelledError):
             await task
         assert not socket.exists()
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), True])
+def test_bridge_rejects_invalid_request_deadline(value):
+    with pytest.raises(ValueError, match="finite and positive"):
+        scoped_bridge.application(endpoint="http://localhost/ng-rollout/exact/v1", token="t", lineage="l",
+                                  digest="d", request_timeout_s=value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("deadline,success", [(0.02, False), (0.5, True)])
+async def test_configured_deadline_bounds_one_dispatch_without_resend(monkeypatch, deadline, success):
+    calls = []
+    settled = []
+
+    class Reply:
+        status = 200
+        async def read(self):
+            return b'{"ok":true}'
+        def release(self):
+            settled.append("released")
+
+    async def send(*args, **kwargs):
+        calls.append(kwargs)
+        try:
+            await asyncio.sleep(0.08)
+            return Reply()
+        except asyncio.CancelledError:
+            settled.append("cancelled")
+            raise
+
+    monkeypatch.setattr(scoped_bridge, "request", send)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="bridge-deadline-") as directory:
+        socket = Path(directory) / "model.sock"
+        async with scoped_bridge.bridge(socket, endpoint="http://localhost/ng-rollout/exact/v1",
+                                        token="t", lineage="l", digest="d", request_timeout_s=deadline):
+            async with aiohttp.ClientSession(connector=aiohttp.UnixConnector(path=str(socket))) as client:
+                async with client.post("http://scoped/chat/completions", json={"model": MODEL}, headers={
+                    "Authorization": "Bearer t", "x-nemo-gym-logical-call-id": "blade:l:0",
+                    "x-nemo-gym-call-config-sha256": "d"}) as reply:
+                    assert (reply.status == 200) is success
+        assert not socket.exists()
+    assert len(calls) == 1
+    assert calls[0]["_max_num_tries"] == 1 and not calls[0]["_resend_after_disconnect"]
+    assert settled == (["released"] if success else ["cancelled"])

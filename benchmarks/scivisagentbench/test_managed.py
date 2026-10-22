@@ -189,6 +189,7 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
             self.failed = False
 
         async def handle_async_request(self, request):
+            assert request.extensions["timeout"]["read"] == 0.4
             observed.append("send")
             await asyncio.sleep(0.12)
             return httpx.Response(200, json={"model": worker.MODEL, "choices": []}, request=request)
@@ -213,7 +214,7 @@ async def test_judge_deadline_settles_accepted_call_and_blocks_later_dispatch(tm
         return {}
 
     monkeypatch.setattr(worker, "evaluate", evaluate)
-    (tmp_path / "identity.json").write_text(json.dumps({"timeout_s": 0.03, "max_tokens": 16384}))
+    (tmp_path / "identity.json").write_text(json.dumps({"timeout_s": 0.03, "max_tokens": 16384, "request_timeout_s": 0.4}))
     (tmp_path / "worker-input.json").write_text(
         json.dumps(
             {

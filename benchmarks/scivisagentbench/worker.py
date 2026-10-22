@@ -83,7 +83,8 @@ async def main(output: Path) -> None:
     )
     # Shared transport persists the raw terminal body before handing it to native adapters.
     stopped = False
-    async with httpx.AsyncClient(transport=transport, timeout=600, follow_redirects=False) as client:
+    request_timeout_s = identity.get("request_timeout_s", 600)
+    async with httpx.AsyncClient(transport=transport, timeout=request_timeout_s, follow_redirects=False) as client:
 
         async def sender(body):
             if stopped:
@@ -112,7 +113,7 @@ async def main(output: Path) -> None:
             loop = asyncio.get_running_loop()
 
             def sync_sender(body):
-                return asyncio.run_coroutine_threadsafe(sender(body), loop).result(timeout=610)
+                return asyncio.run_coroutine_threadsafe(sender(body), loop).result(timeout=request_timeout_s + 10)
 
             # Native evaluator stays synchronous internally; only its execution thread changes.
             judging = asyncio.create_task(
