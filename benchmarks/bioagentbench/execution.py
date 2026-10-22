@@ -144,7 +144,9 @@ async def run_native(*, config: dict, packet: dict, output: Path) -> list[dict]:
         os.chmod(bridge, 0o700)
         public_bridge = bridge / "container"
         public_bridge.mkdir()
-        shutil.copyfile(Path(__file__).with_name("relay.py"), public_bridge / "relay.py")
+        from nemo_gym.sandbox import http_unix_relay
+
+        shutil.copyfile(Path(http_unix_relay.__file__), public_bridge / "relay.py")
         workspace = output / "workspace"
         workspace.mkdir(exist_ok=False)
 

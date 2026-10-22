@@ -8,6 +8,7 @@ import json
 import secrets
 import sys
 import uuid
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 import aiohttp
@@ -22,13 +23,16 @@ MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
 
 
 class NatureBenchVerifier(Verifier):
-    def __init__(self, *, gym_model_api_base, gym_model_name, bridge_host, **kwargs):
+    def __init__(self, *, gym_model_api_base, gym_model_name, bridge_host, bridge_transport="tcp", **kwargs):
         super().__init__(**kwargs)
         if gym_model_name != MODEL or "/ng-rollout/" not in gym_model_api_base:
             raise ValueError("NatureBench judge requires exact model and guarded rollout route")
         if self.task.config.verifier.environment_mode != "separate":
             raise ValueError("NatureBench judge must remain in separate verifier environment")
         self.endpoint = gym_model_api_base.rstrip("/") + "/responses"
+        if bridge_transport not in {"tcp", "unix"}:
+            raise ValueError("Unsupported NatureBench bridge transport")
+        self.bridge_transport = bridge_transport
         self.bridge_host = bridge_host
         self.lock = asyncio.Lock()
 
@@ -96,14 +100,31 @@ class NatureBenchVerifier(Verifier):
         runner = web.AppRunner(app, shutdown_timeout=1205)
         await runner.setup()
         try:
-            site = web.TCPSite(runner, self.bridge_host, 0)
-            await site.start()
-            port = site._server.sockets[0].getsockname()[1]
-            base = f"http://{self.bridge_host}:{port}/v1"
-            self.override_env.update(
-                JUDGE_MODEL=MODEL, JUDGE_API_KEY=token, JUDGE_BASE_URL=base, CAMPAIGN_JUDGE_BASE_URL=base
-            )
-            return await super().verify()
+            async with AsyncExitStack() as stack:
+                if getattr(self, "bridge_transport", "tcp") == "unix":
+                    from benchmarks.naturebench.unix_bridge import verifier_unix_bridge
+
+                    base = await stack.enter_async_context(
+                        verifier_unix_bridge(runner, environment=self.environment, directory=out)
+                    )
+                else:
+                    site = web.TCPSite(runner, self.bridge_host, 0)
+                    await site.start()
+                    port = site._server.sockets[0].getsockname()[1]
+                    base = f"http://{self.bridge_host}:{port}/v1"
+                self.override_env.update(
+                    JUDGE_MODEL=MODEL, JUDGE_API_KEY=token, JUDGE_BASE_URL=base, CAMPAIGN_JUDGE_BASE_URL=base
+                )
+                try:
+                    return await super().verify()
+                finally:
+                    # Drain handlers before tearing down the container relay/socket.
+                    primary = sys.exc_info()[1]
+                    try:
+                        await _settle(asyncio.create_task(runner.cleanup()))
+                    except BaseException:
+                        if primary is None:
+                            raise
         finally:
             original = sys.exc_info()[1]
             try:
