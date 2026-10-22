@@ -560,7 +560,6 @@ class HarborAgent(SimpleResponsesAPIAgent):
                 if failure_kind == "harbor:unclassified" and global_config_dict.get("provider_dispatch_guard") is True:
                     rejection = await asyncio.to_thread(
                         intent_bound_provider_rejection,
-                        terminus_bound_provider_rejection,
                         trial_result,
                         trial_dir=trial_dir,
                         capture_dir=global_config_dict.get("model_call_capture_dir"),
