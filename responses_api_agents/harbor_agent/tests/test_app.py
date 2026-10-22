@@ -366,6 +366,15 @@ class TestApp:
         assert response.failure_kind is None
         assert response.model_dump()["ng_agent_observations"]["gaps"][0]["detail"] == type(error).__name__
 
+    async def test_observation_cancellation_still_propagates(self):
+        import asyncio
+        server = _make_server()
+        with _harbor_run_mocks(trajectory=DEFAULT_TRAJECTORY), patch(
+            "responses_api_agents.harbor_agent.app.read_terminus_observations", side_effect=asyncio.CancelledError()
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await server.run(_make_run_request())
+
     async def test_run_with_token_details(self):
         server = _make_server()
         with _harbor_run_mocks(trajectory=DEFAULT_TRAJECTORY):
