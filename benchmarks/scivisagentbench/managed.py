@@ -76,6 +76,7 @@ def viewer_spec(packet: dict, workspace: Path, lineage: str, timeout: float) -> 
         f"{workspace.resolve()}:/workspace",
         f"{controls / 'viewer.py'}:/control/viewer.py:ro",
         f"{controls / 'mcp_bootstrap.py'}:/control/mcp_bootstrap.py:ro",
+        f"{controls / 'start_viewer.sh'}:/control/start_viewer.sh:ro",
     ]
     return SandboxSpec(
         image=packet["image"],
@@ -130,6 +131,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
             "evaluate.py",
             "viewer.py",
             "mcp_bootstrap.py",
+            "start_viewer.sh",
         )
     ]
     modules.append(source / "responses_api_agents/scivis_native/app.py")
