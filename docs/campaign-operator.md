@@ -86,6 +86,8 @@ Schema v2 also reports `harbor_transport_links` for the supported managed text/i
 
 The shared [peer-safe profile](../configs/eval/rate_limit_peer_safe.yaml) configures `policy_model`; it does not automatically configure a separate judge or helper. Check each role's resolved configuration. An expired cooldown means only that an observed wait has elapsed, not that provider capacity is available. With `max_attempts: 1`, a rejected call stays failed, but its cooldown still delays later distinct calls. A longer provider `Retry-After` can exhaust the cumulative queue allowance before the next send; retain that as a zero-send infrastructure failure. A 504 or interrupted response remains uncertain and is not a safe rejected retry. Host-local cooldown state does not establish shared quota scope across workers.
 
+For a no-inference service-health control that replaces the provider endpoint with a dummy endpoint, also use a separate test cooldown directory and namespace. Model-server initialization binds a cooldown namespace to its endpoint/model before the first request, so even a zero-call health control can make a production namespace unusable. Keep the control's captures, jobs and ownership receipts separate as well. A namespace mismatch should fail preflight; preserve and inspect the state before repair, and never reset genuine production cooldown history to bypass an observed wait.
+
 Read a supervisor receipt's child `return_code`, not only the supervisor command's exit status. Successful cleanup can coexist with a failed child evaluation. Confirm scored, failed, unstarted and unresolved counts from the native records before calling the attempt successful.
 
 ## Harbor cancellation and retry ownership
