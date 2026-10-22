@@ -118,3 +118,23 @@ def test_3137115_exact_signed_variant():
     assert (
         select_sources(ubuntu + "\ndeb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran40/") == ubuntu + "\n"
     )
+
+
+def test_8912293_layout_is_explicit_and_bound():
+    import json
+    from pathlib import Path
+
+    rows = json.loads((Path(__file__).parents[1] / "frozen20.json").read_text())["rows"]
+    row = next(r for r in rows if r["id"] == "capsule-8912293")
+    variant = dict(row, filesystem_layout_variant="8912293-relative-data-v1")
+    assert recipe_digest(variant) != recipe_digest(row)
+    assert "ln -s /workspace/capsule-8912293/data /workspace/data" in dockerfile(variant)
+    assert "ln -s /workspace/capsule-8912293/results /workspace/results" in dockerfile(variant)
+    for key, value in [
+        ("id", "capsule-other"),
+        ("published_image", "other"),
+        ("filesystem_layout_variant", "unknown"),
+    ]:
+        with pytest.raises(ValueError, match="filesystem layout"):
+            dockerfile(dict(variant, **{key: value}))
+    assert "filesystem_layout_variant" not in row

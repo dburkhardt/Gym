@@ -77,6 +77,23 @@ def dockerfile(row):
             "COPY harness_install.py /opt/corebench-harness-install.py\n"
             "RUN /opt/corebench-harness/bin/python3 /opt/corebench-harness-install.py"
         )
+    layout = ""
+    if row.get("filesystem_layout_variant") is not None:
+        if (
+            row["filesystem_layout_variant"] != "8912293-relative-data-v1"
+            or row["id"] != "capsule-8912293"
+            or row["published_image"]
+            != (
+                "registry.codeocean.com/published/2a0bef51-a61e-4c00-82c5-c79023c606d3"
+                "@sha256:e72a3d557a31640b2340714199641b1674925aa5039ceb3e36ef717126654fca"
+            )
+        ):
+            raise ValueError("Unsupported capsule filesystem layout variant")
+        # R resolves /code physically; retain the creator's relative paths.
+        layout = (
+            "RUN ln -s /workspace/capsule-8912293/data /workspace/data"
+            " && ln -s /workspace/capsule-8912293/results /workspace/results\n"
+        )
     env = "\n".join("ENV " + k + "=" + json.dumps(v) for k, v in row["runtime_environment_variant"].items())
     return f"""FROM {row["published_image"]}
 COPY python /opt/corebench-harness
@@ -87,7 +104,7 @@ COPY capsule /workspace/{row["id"]}
 RUN mkdir -p /workspace/{row["id"]}/results
 RUN for name in code data results; do if [ -e "/$name" ] || [ -L "/$name" ]; then rmdir "/$name"; fi; ln -s "/workspace/{row["id"]}/$name" "/$name"; done
 {env}
-WORKDIR /workspace
+{layout}WORKDIR /workspace
 """
 
 
