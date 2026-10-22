@@ -8,6 +8,7 @@ import inspect
 import json
 import secrets
 import shlex
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -18,6 +19,19 @@ from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
 from nemo_gym.sandbox.model_bridge import bridge
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
+
+
+def validate_native_python(interpreter: Path) -> None:
+    """Reject unsupported controller runtimes before starting a viewer sandbox."""
+    result = subprocess.run(
+        [str(interpreter), "-c", "import json,sys; print(json.dumps(list(sys.version_info[:2])))"],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    version = json.loads(result.stdout)
+    if not isinstance(version, list) or len(version) != 2 or any(type(n) is not int for n in version):
+        raise ValueError("Native controller interpreter returned an invalid Python version")
+    if tuple(version) < (3, 11):
+        raise ValueError("SciVis native controller requires Python 3.11+; viewer Python is independent")
 
 
 def checked_tree(root: Path, hashes: dict) -> None:
@@ -86,6 +100,7 @@ def viewer_spec(packet: dict, workspace: Path, lineage: str, timeout: float) -> 
 
 async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict, dict]:
     """A fresh native attempt; no reconnection or replay is inferred from artifacts."""
+    validate_native_python(Path(config.native_python))
     runtime_cases = json.loads(Path(config.runtime_packet).read_text())["cases"]
     if set(runtime_cases) != {f"case_{i}" for i in range(1, 12)}:
         raise ValueError("Runtime packet must retain all eleven frozen cases")
