@@ -98,6 +98,17 @@ def viewer_spec(packet: dict, workspace: Path, lineage: str, timeout: float) -> 
     )
 
 
+def create_viewer_workspace(output: Path) -> Path:
+    """Create a fresh writable bind for the capability-stripped viewer UID."""
+    output.mkdir(parents=True, exist_ok=False)
+    workspace = output / "workspace"
+    workspace.mkdir()
+    # Container UID may differ from the host and has no DAC_OVERRIDE. Only this
+    # task-owned scratch bind is writable; source/data remain separate ro binds.
+    workspace.chmod(0o777)
+    return workspace
+
+
 async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict, dict]:
     """A fresh native attempt; no reconnection or replay is inferred from artifacts."""
     validate_native_python(Path(config.native_python))
@@ -105,9 +116,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
     if set(runtime_cases) != {f"case_{i}" for i in range(1, 12)}:
         raise ValueError("Runtime packet must retain all eleven frozen cases")
     packet = runtime_cases[task["case_name"]]
-    output.mkdir(parents=True, exist_ok=False)
-    workspace = output / "workspace"
-    workspace.mkdir()
+    workspace = create_viewer_workspace(output)
     lineage = uuid.uuid4().hex
     source = Path(__file__).resolve().parents[2]
     modules = [

@@ -253,3 +253,21 @@ from nemo_gym.guarded_chat_transport import GuardedChatTransport as shared
 assert GuardedChatTransport is shared
 """
     subprocess.run([sys.executable, "-c", script], check=True, cwd=Path(__file__).resolve().parents[2])
+
+
+def test_viewer_workspace_survives_restrictive_umask_without_changing_inputs(tmp_path):
+    import os
+
+    from benchmarks.scivisagentbench.managed import create_viewer_workspace
+
+    refs = tmp_path / "references"
+    refs.mkdir(mode=0o700)
+    previous = os.umask(0o077)
+    try:
+        workspace = create_viewer_workspace(tmp_path / "attempt")
+    finally:
+        os.umask(previous)
+    assert workspace.stat().st_mode & 0o777 == 0o777
+    assert refs.stat().st_mode & 0o777 == 0o700
+    with pytest.raises(FileExistsError):
+        create_viewer_workspace(tmp_path / "attempt")
