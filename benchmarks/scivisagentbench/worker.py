@@ -105,8 +105,24 @@ async def main(output: Path) -> None:
             )
         evaluation = {}
         if solver.get("success"):
+            judge_started = asyncio.get_running_loop().time()
+            exporter = await asyncio.create_subprocess_exec(
+                payload["artifact_export_python"], "-m", "benchmarks.scivisagentbench.artifacts", str(output),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(exporter.communicate(), 120)
+            except BaseException:
+                if exporter.returncode is None:
+                    exporter.kill()
+                await exporter.communicate()
+                raise
+            (output / "artifact-export.stdout").write_bytes(stdout)
+            (output / "artifact-export.stderr").write_bytes(stderr)
+            if exporter.returncode:
+                raise RuntimeError("Owned artifact export failed")
             stage_judge_data(
-                output / "workspace",
+                output / "exported-artifacts",
                 Path(task["judge_data_dir"]),
                 Path(payload["reference_root"]),
                 payload["reference_sha256"],
@@ -133,7 +149,10 @@ async def main(output: Path) -> None:
                 )
             )
             try:
-                evaluation = await asyncio.wait_for(asyncio.shield(judging), identity["timeout_s"])
+                evaluation = await asyncio.wait_for(
+                    asyncio.shield(judging),
+                    max(0, identity["timeout_s"] - (loop.time() - judge_started)),
+                )
             except BaseException:
                 # Stop fresh dispatch, then settle an already accepted response/thread.
                 stopped = True

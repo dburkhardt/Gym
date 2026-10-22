@@ -9,6 +9,7 @@ import json
 import secrets
 import shlex
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -127,6 +128,7 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
         Path(__file__).with_name(n)
         for n in (
             "managed.py",
+            "artifacts.py",
             "worker.py",
             "native.py",
             "transport.py",
@@ -237,6 +239,8 @@ async def execute(config, task: dict, output: Path, endpoint: str) -> tuple[dict
             raise ValueError("Exact frozen case reference files required")
         payload = {
             "task": native_task,
+            "viewer_descriptor": descriptor,
+            "artifact_export_python": str(Path(sys.executable).absolute()),
             "native_config": native_config,
             "source_root": config.source_root,
             "reference_root": packet["reference_root"],
