@@ -6,3 +6,11 @@ bioagent_importer:
       entrypoint: importer.py
       trace_path: ${oc.env:BIOAGENT_NATIVE_TRACE}
       provider_trace: ${oc.env:BIOAGENT_PROVIDER_TRACE}
+
+bioagent_importer_environment_server:
+  environment_servers:
+    legacy_agent:
+      entrypoint: app.py
+      agent_server:
+        type: responses_api_agents
+        name: bioagent_importer
