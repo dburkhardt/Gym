@@ -50,3 +50,32 @@ def test_extra_and_symlink_inputs_refused(tmp_path, monkeypatch):
     (source / "link").symlink_to("/etc/passwd")
     with pytest.raises(ValueError):
         model_cache.stage(source, tmp_path / "dest")
+
+
+def test_existing_destination_and_late_bad_file_unchanged(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "first").write_bytes(b"good")
+    (source / "second").write_bytes(b"bad")
+    monkeypatch.setattr(
+        model_cache,
+        "FILES",
+        {
+            "first": hashlib.sha256(b"good").hexdigest(),
+            "second": hashlib.sha256(b"expected").hexdigest(),
+        },
+    )
+    dest = tmp_path / "context"
+    dest.mkdir()
+    existing = dest / "model-cache"
+    existing.mkdir()
+    (existing / "stale").write_bytes(b"preserve")
+    with pytest.raises(ValueError, match="existing"):
+        model_cache.stage(source, dest)
+    assert (existing / "stale").read_bytes() == b"preserve"
+    assert len(list(existing.iterdir())) == 1
+    (existing / "stale").unlink()
+    existing.rmdir()
+    with pytest.raises(Exception):
+        model_cache.stage(source, dest)
+    assert not existing.exists()

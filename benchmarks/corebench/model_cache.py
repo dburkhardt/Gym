@@ -51,10 +51,19 @@ def stage(source: Path, destination: Path) -> None:
     actual = {str(p.relative_to(source)) for p in source.rglob("*") if p.is_file() or p.is_symlink()}
     if actual != set(FILES) or any(p.is_symlink() for p in source.rglob("*")):
         raise ValueError("Pinned model cache tree differs")
+    published = destination / "model-cache"
+    if published.exists() or published.is_symlink():
+        raise ValueError("Refusing existing model cache destination")
     with TemporaryDirectory(dir=destination.parent) as temporary:
-        for name, sha in FILES.items():
-            checked = Path(temporary) / name
+        temporary = Path(temporary)
+        clean = temporary / "clean"
+        clean.mkdir()
+        for index, (name, sha) in enumerate(FILES.items()):
+            checked = temporary / "checked" / str(index)
             stage_file(source / name, checked, expected_sha256=sha)
-            target = destination / "model-cache" / name
+            target = clean / name
             target.parent.mkdir(parents=True, exist_ok=True)
             os.replace(checked, target)
+        # Caller owns the surrounding stage_context lock. Publish only after all
+        # files verify, so an interrupted or rejected input cannot leave leftovers.
+        os.rename(clean, published)
