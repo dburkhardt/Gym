@@ -13,7 +13,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from benchmarks.moosechem.native import MODEL, append_durable
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
@@ -30,12 +30,20 @@ from responses_api_agents.moosechem_native.artifacts import admit_attempt
 from responses_api_agents.moosechem_native.trajectory import observations
 
 
+class SettledRecovery(BaseModel):
+    task_id: int
+    saved: Path
+    evidence: Path
+    gateway: Path
+
+
 class Config(BaseResponsesAPIAgentConfig):
     native_python: Path
     upstream_repo: Path
     output_root: Path
     frozen_tasks: Path
     import_existing: bool = False
+    settled_recovery: SettledRecovery | None = None
     model_server: ModelServerRef = Field(
         default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model")
     )
@@ -92,6 +100,16 @@ class Agent(SimpleResponsesAPIAgent):
     async def execute_native(self, task_id: int, body: RunRequest) -> Path:
         if task_id in self.config.blocked_task_ids:
             raise ValueError("Task has an unresolved historical attempt; reconcile before execution")
+        recovery = self.config.settled_recovery
+        if recovery and (recovery.task_id != task_id or self.config.import_existing):
+            raise ValueError("Recovery task identity or mode mismatch")
+        sequence = None
+        if recovery:
+            from benchmarks.moosechem.qualify_settled_tail import SettledSequence
+
+            sequence = SettledSequence(recovery.saved, recovery.evidence, recovery.gateway, self.config.upstream_repo)
+            if sequence.tail["request"]["max_tokens"] != self.config.output_token_budget:
+                raise ValueError("Historical continuation budget mismatch")
         global_config = get_global_config_dict()
         if not global_config.get("provider_dispatch_guard") or global_config.get("policy_model_name") != MODEL:
             raise ValueError("MOOSE-Chem requires guarded exact-model inference")
@@ -112,6 +130,10 @@ class Agent(SimpleResponsesAPIAgent):
         lineage = capture_id
         files = [source / "benchmarks/moosechem" / name for name in ("native.py", "guarded.py", "source-sha256.json")]
         files.extend([Path(__file__).resolve(), Path(__file__).with_name("artifacts.py").resolve()])
+        if recovery:
+            files.extend(
+                source / "benchmarks/moosechem" / name for name in ("qualify_replay.py", "qualify_settled_tail.py")
+            )
         interpreter = self.config.native_python.resolve()
         identity = {
             "task": task_id,
@@ -123,6 +145,12 @@ class Agent(SimpleResponsesAPIAgent):
             "interpreter": {"path": str(interpreter), "sha256": hashlib.sha256(interpreter.read_bytes()).hexdigest()},
         }
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+        base_digest = digest
+        if recovery:
+            from benchmarks.moosechem.guarded import continuation_binding
+
+            binding, digest = continuation_binding(sequence, recovery.evidence, base_digest)
+            identity["settled_continuation"] = binding
         append_durable(out / "execution-identity.jsonl", {"config_sha256": digest, **identity})
         provider = LocalProvider(concurrency=1, workspace_root="/tmp")
         async with scoring_workspace(provider) as handle:
@@ -152,6 +180,17 @@ class Agent(SimpleResponsesAPIAgent):
                         str(self.config.output_token_budget),
                     ]
                 )
+                if recovery:
+                    command += " " + shlex.join(
+                        [
+                            "--settled-saved",
+                            str(recovery.saved),
+                            "--settlement-evidence",
+                            str(recovery.evidence),
+                            "--settlement-gateway",
+                            str(recovery.gateway),
+                        ]
+                    )
                 result = await provider.exec(
                     handle,
                     command,
@@ -164,6 +203,7 @@ class Agent(SimpleResponsesAPIAgent):
                         "MOOSE_SOCKET_TOKEN": token,
                         "MOOSE_LINEAGE": lineage,
                         "MOOSE_CONFIG_SHA256": digest,
+                        "MOOSE_BASE_CONFIG_SHA256": base_digest,
                     },
                 )
                 append_durable(

@@ -55,3 +55,17 @@ Network calls are denied by a Python audit hook. The terminal receipt reports
 replayed calls, exact rejected request and zero new model calls, never a scientific
 score. This is an offline compatibility check, not authorization or an implementation
 of live continuation. Existing full saved-loop qualification remains unchanged.
+
+A reviewed continuation can be configured through the native agent's optional
+`settled_recovery` object (`task_id`, `saved`, `evidence`, `gateway`). This does not
+clear `blocked_task_ids`: the operator must first review settlement and select a
+new attempt. The saved trace, gateway ledger, proof, creator hashes, implementation
+hashes and unchanged historical token budget are composed with the execution
+configuration into the shared bridge digest. The child verifies that same digest
+and all four actual maintained imports before entering the creator loop.
+Successful saved requests replay locally; only the exactly matching rejected tail
+can enter `GuardedTransport`, as new ordinal0 in a new lineage. Subsequent calls
+use normal guarded capture and failure latching. An exclusive continuation claim
+and the normal run-intent prevent output reuse. Replay counts are recorded apart
+from new calls; historical records are never replaced. Qualification does not
+itself authorize this mode or prove a complete scientific result.
