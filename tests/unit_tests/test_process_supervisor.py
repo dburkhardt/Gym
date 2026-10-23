@@ -85,7 +85,9 @@ def test_supervisor_rejects_invalid_deadlines(tmp_path: Path, timeout: str) -> N
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux owner subreaper and /proc are required")
-@pytest.mark.parametrize("ending", ["normal", "crash", "timeout", "cancel", "stop_file", "grace", "stubborn", "killed"])
+@pytest.mark.parametrize(
+    "ending", ["normal", "crash", "timeout", "cancel", "stop_file", "grace", "stubborn", "killed"]
+)
 @pytest.mark.parametrize("detached", [False, True])
 def test_only_detached_services_survive_harness_group_termination(tmp_path: Path, ending: str, detached: bool) -> None:
     # The isolated parent emulates the sandbox owner and reaps every test process.
@@ -668,3 +670,89 @@ assert 'Cannot identify pre-stop adopted children' in receipt['error'], receipt
         timeout=5,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_explicit_grace_is_reserved_separately() -> None:
+    supervisor = runpy.run_path(str(SUPERVISOR))
+    assert supervisor["exec_timeout"](timeout=60, cleanup_timeout=2, graceful_shutdown_timeout=120) == 214
+
+
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
+def test_invalid_explicit_grace_is_rejected(value: float) -> None:
+    supervisor = runpy.run_path(str(SUPERVISOR))
+    with pytest.raises(ValueError, match="finite and positive"):
+        supervisor["exec_timeout"](timeout=60, graceful_shutdown_timeout=value)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Actual Linux subreaper and process-group boundary")
+@pytest.mark.parametrize("grace, expected_cleanup", [(2, True), (0.1, False)])
+def test_explicit_grace_allows_owned_detached_cleanup(tmp_path: Path, grace: float, expected_cleanup: bool) -> None:
+    """A harness needs longer than hard reap timeout to close its own detached service."""
+    child = tmp_path / "child.pid"
+    ready = tmp_path / "ready"
+    cleaned = tmp_path / "cleaned"
+    stop = tmp_path / "stop"
+    receipt_path = tmp_path / "receipt.json"
+    harness = tmp_path / "harness.py"
+    harness.write_text(
+        "import pathlib,subprocess,sys,time,signal\n"
+        "root=pathlib.Path(sys.argv[1])\n"
+        "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],start_new_session=True)\n"
+        "(root/'child.pid').write_text(str(p.pid))\n"
+        "def stop(*args):\n"
+        " time.sleep(0.5)\n"
+        " p.terminate();p.wait(timeout=2)\n"
+        " (root/'cleaned').touch();sys.exit(143)\n"
+        "signal.signal(signal.SIGTERM,stop)\n"
+        "(root/'ready').touch()\n"
+        "while True:time.sleep(0.05)\n"
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-I",
+            str(SUPERVISOR),
+            "--timeout",
+            "10",
+            "--cleanup-timeout",
+            "0.2",
+            "--graceful-shutdown-timeout",
+            str(grace),
+            "--receipt",
+            str(receipt_path),
+            "--stop-file",
+            str(stop),
+            "--",
+            sys.executable,
+            str(harness),
+            str(tmp_path),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists()
+        stop.touch()
+        stdout, stderr = process.communicate(timeout=8)
+        assert process.returncode == 0, (stdout, stderr)
+        receipt = json.loads(receipt_path.read_text())
+        assert receipt["cleanup_confirmed"] is True
+        assert receipt["detached_resources_verified"] is False  # Supervisor alone cannot certify Docker/systemd.
+        assert receipt["cleanup_scope"] == "harness_process_group_and_newly_adopted_children"
+        assert receipt["harness_forced_kill"] is (not expected_cleanup)
+        assert receipt["return_code"] == (143 if expected_cleanup else -signal.SIGKILL)
+        assert cleaned.exists() is expected_cleanup
+        assert not Path(f"/proc/{child.read_text()}").exists()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        if child.exists():
+            try:
+                os.kill(int(child.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass

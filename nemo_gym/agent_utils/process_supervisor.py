@@ -102,15 +102,25 @@ class CleanupReceipt(TypedDict):
     return_code: int | None
     error: str | None
     timed_out: bool
+    cleanup_scope: str
+    detached_resources_verified: bool
+    # Only the direct harness; group children can still require SIGKILL after it exits.
+    harness_forced_kill: bool
+    graceful_shutdown_seconds: float
 
 
-def exec_timeout(*, timeout: float, cleanup_timeout: float = DEFAULT_CLEANUP_TIMEOUT) -> float:
-    """Reserve TERM grace, direct-process reaping, and process-group reaping.
+def exec_timeout(
+    *, timeout: float, cleanup_timeout: float = DEFAULT_CLEANUP_TIMEOUT, graceful_shutdown_timeout: float | None = None
+) -> float:
+    """Reserve independently bounded TERM grace and both hard-reaping phases.
 
     The extra 30 seconds cover startup, polling, and receipt I/O beyond those
     bounded cleanup phases. Keep their count shared with the controller budget.
     """
-    return timeout + CLEANUP_PHASE_COUNT * cleanup_timeout + 30
+    grace = cleanup_timeout if graceful_shutdown_timeout is None else graceful_shutdown_timeout
+    if not math.isfinite(grace) or grace <= 0:
+        raise ValueError("Graceful shutdown timeout must be finite and positive")
+    return timeout + grace + (CLEANUP_PHASE_COUNT - 1) * cleanup_timeout + 30
 
 
 def _child_pids() -> set[int]:
@@ -177,15 +187,28 @@ def _supervise(
     timeout: float,
     cleanup_timeout: float = DEFAULT_CLEANUP_TIMEOUT,
     stop_path: Path | None = None,
+    graceful_shutdown_timeout: float | None = None,
     collector_cleanup_reserve: float | None = None,
 ) -> CleanupReceipt:
     """Stop the harness and forced-stop tools; preserve earlier detached services."""
+    grace = cleanup_timeout if graceful_shutdown_timeout is None else graceful_shutdown_timeout
+    if not math.isfinite(grace) or grace <= 0:
+        raise ValueError("Graceful shutdown timeout must be finite and positive")
     process = None
     launch_attempted = False
     stopping = False
     forced_stop = False
     preserved_children = None
-    receipt: CleanupReceipt = {"cleanup_confirmed": False, "return_code": None, "error": None, "timed_out": False}
+    receipt: CleanupReceipt = {
+        "cleanup_confirmed": False,
+        "return_code": None,
+        "error": None,
+        "timed_out": False,
+        "cleanup_scope": "harness_process_group_and_newly_adopted_children",
+        "detached_resources_verified": False,
+        "harness_forced_kill": False,
+        "graceful_shutdown_seconds": grace,
+    }
 
     def interrupt(*_: object) -> None:
         nonlocal stopping
@@ -234,7 +257,7 @@ def _supervise(
             # Let the harness checkpoint before the bounded hard cleanup.
             process.send_signal(signal.SIGTERM)
             try:
-                process.wait(timeout=cleanup_timeout)
+                process.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 pass
     except Exception as exc:
@@ -248,6 +271,7 @@ def _supervise(
                 # on forced stop; audit service-launching task recipes.
                 # Natural exit has no pre-stop boundary for detached processes.
                 try:
+                    receipt["harness_forced_kill"] = process.poll() is None
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
@@ -276,6 +300,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", type=_positive_seconds, required=True)
     parser.add_argument("--cleanup-timeout", type=_positive_seconds, default=DEFAULT_CLEANUP_TIMEOUT)
+    parser.add_argument(
+        "--graceful-shutdown-timeout",
+        type=_positive_seconds,
+        help="Bound for harness-owned service/container teardown after TERM; defaults to cleanup-timeout. "
+        "Reserve this independently in the outer execution deadline.",
+    )
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--stop-file", type=Path)
     parser.add_argument(
@@ -293,6 +323,7 @@ def main() -> int:
         timeout=args.timeout,
         cleanup_timeout=args.cleanup_timeout,
         stop_path=args.stop_file,
+        graceful_shutdown_timeout=args.graceful_shutdown_timeout,
         collector_cleanup_reserve=args.collector_cleanup_reserve,
     )
     temporary = args.receipt.with_suffix(".tmp")
