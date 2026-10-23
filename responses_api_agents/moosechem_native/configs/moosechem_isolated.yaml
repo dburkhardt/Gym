@@ -1,0 +1,19 @@
+# Load alongside moosechem.yaml. Qualified public export and immutable runtime required.
+moosechem_agent:
+  responses_api_agents:
+    moosechem_native:
+      isolated_runtime_image: ${oc.env:MOOSE_RUNTIME_IMAGE}
+      public_input_root: ${oc.env:MOOSE_PUBLIC_INPUT}
+      public_manifest_sha256: ${oc.env:MOOSE_PUBLIC_MANIFEST_SHA256}
+      verifier_server:
+        type: resources_servers
+        name: moosechem_verifier
+moosechem_verifier:
+  resources_servers:
+    moosechem_verifier:
+      entrypoint: app.py
+      output_root: ${oc.env:MOOSE_OUTPUT}
+      upstream_repo: ${oc.env:MOOSE_SOURCE}
+      isolated_runtime_image: ${oc.env:MOOSE_RUNTIME_IMAGE}
+      output_token_budget: 8192
+      native_timeout_seconds: 14400

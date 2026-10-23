@@ -96,6 +96,11 @@ def continuation_binding(sequence, evidence: Path, base_digest: str) -> tuple[di
             for path in (native.__file__, __file__, qualify_replay.__file__, qualify_settled_tail.__file__)
         },
     }
+    if hasattr(sequence, "public_identity"):
+        from benchmarks.moosechem import isolated
+
+        identity["public_export"] = sequence.public_identity
+        identity["module_sha256"]["isolated.py"] = hashlib.sha256(Path(isolated.__file__).read_bytes()).hexdigest()
     return identity, hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 

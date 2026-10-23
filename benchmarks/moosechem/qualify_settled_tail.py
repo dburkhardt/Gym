@@ -28,9 +28,7 @@ class SettledSequence:
         expected = json.loads(Path(__file__).with_name("source-sha256.json").read_text())
         if proof["creator_sha256"] != expected:
             raise ReplayRefused("Creator source provenance mismatch")
-        for name, digest in expected.items():
-            if sha(Path(repo) / name) != digest:
-                raise ReplayRefused("Creator source changed")
+        self.verify_creator(Path(repo), expected)
         self.rows = [json.loads(line) for line in Path(saved).read_text().splitlines()]
         if len(self.rows) < 2:
             raise ReplayRefused("Missing successful prefix")
@@ -78,6 +76,36 @@ class SettledSequence:
                 ):
                     raise ReplayRefused("Corrupt or unsuccessful saved response")
         self.index = 0
+
+    def verify_creator(self, repo, expected):
+        for name, digest in expected.items():
+            if sha(repo / name) != digest:
+                raise ReplayRefused("Creator source changed")
+
+
+class PublicSettledSequence(SettledSequence):
+    """Explicit public-only path, bound to the trusted export's exact manifest/task.
+
+    The original full-repository constructor remains strict. The caller binds the
+    public manifest hash in the execution identity after trusted full-source validation.
+    """
+
+    def __init__(self, saved, evidence, gateway, repo, *, manifest_sha256, task_id):
+        self.public_identity = {"manifest_sha256": manifest_sha256, "task_id": task_id}
+        super().__init__(saved, evidence, gateway, repo)
+        if any(row["stage"] not in ("inspiration_screening", "hypothesis_generation") for row in self.rows):
+            raise ReplayRefused("Reference-bearing verifier traces cannot enter public solver")
+
+    def verify_creator(self, repo, expected):
+        from benchmarks.moosechem.isolated import validate_public
+
+        if sha(repo / "public-manifest.json") != self.public_identity["manifest_sha256"]:
+            raise ReplayRefused("Public export binding mismatch")
+        task = validate_public(
+            repo, repo / "task.json", expected_manifest_sha256=self.public_identity["manifest_sha256"]
+        )
+        if task["original_task_id"] != self.public_identity["task_id"]:
+            raise ReplayRefused("Public task identity mismatch")
 
 
 class SettledClient(StrictSavedClient):

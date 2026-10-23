@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from benchmarks.moosechem.native import MODEL, append_durable
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
-from nemo_gym.config_types import ModelServerRef
+from nemo_gym.config_types import ModelServerRef, ResourcesServerRef
 from nemo_gym.global_config import get_first_server_config_dict, get_global_config_dict
 from nemo_gym.openai_utils import NeMoGymResponse, NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.rollout_correlation import current_rollout_id, maybe_rollout_id_from_run_body
@@ -44,12 +44,43 @@ class Config(BaseResponsesAPIAgentConfig):
     frozen_tasks: Path
     import_existing: bool = False
     settled_recovery: SettledRecovery | None = None
+    isolated_runtime_image: str | None = None
+    public_input_root: Path | None = None
+    public_manifest_sha256: str | None = None
+    verifier_server: ResourcesServerRef | None = None
     model_server: ModelServerRef = Field(
         default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model")
     )
     blocked_task_ids: list[int] = Field(default_factory=list)
     output_token_budget: Literal[8192, 16384] = 8192
     native_timeout_seconds: float = Field(default=14400, gt=0)
+
+
+def require_isolated_live(config, global_config):
+    """Reject incomplete or mismatched phase configuration before any solver dispatch."""
+    if not all(
+        (
+            config.isolated_runtime_image,
+            config.public_input_root,
+            config.public_manifest_sha256,
+            config.verifier_server,
+        )
+    ):
+        raise ValueError("New MOOSE runs require isolated runtime, public manifest and separate verifier")
+    verifier = get_first_server_config_dict(global_config, config.verifier_server.name)
+    expected = {
+        "isolated_runtime_image": config.isolated_runtime_image,
+        "output_token_budget": config.output_token_budget,
+        "native_timeout_seconds": config.native_timeout_seconds,
+        "output_root": str(config.output_root),
+        "upstream_repo": str(config.upstream_repo),
+    }
+    for key, value in expected.items():
+        actual = verifier.get(key)
+        if key in ("output_root", "upstream_repo"):
+            actual = str(actual)
+        if actual != value:
+            raise ValueError(f"MOOSE solver/verifier configuration mismatch: {key}")
 
 
 class RunRequest(BaseRunRequest):
@@ -100,6 +131,7 @@ class Agent(SimpleResponsesAPIAgent):
     async def execute_native(self, task_id: int, body: RunRequest) -> Path:
         if task_id in self.config.blocked_task_ids:
             raise ValueError("Task has an unresolved historical attempt; reconcile before execution")
+        require_isolated_live(self.config, get_global_config_dict())
         recovery = self.config.settled_recovery
         if recovery and (recovery.task_id != task_id or self.config.import_existing):
             raise ValueError("Recovery task identity or mode mismatch")
@@ -126,6 +158,30 @@ class Agent(SimpleResponsesAPIAgent):
             raise ValueError("MOOSE-Chem requires an existing durable capture store")
         out, artifact_identity = admit_attempt(self.config.output_root, task_id, capture_id, Path(capture_root))
         out.mkdir(parents=True, exist_ok=False)
+        if self.config.isolated_runtime_image:
+            if (
+                self.config.verifier_server is None
+                or self.config.public_input_root is None
+                or self.config.public_manifest_sha256 is None
+            ):
+                raise ValueError("Isolated solver requires a separate verifier resource")
+            from benchmarks.moosechem.isolated_execution import solver
+            from nemo_gym.server_utils import get_response_json, raise_for_status
+
+            identity_sha = await solver(self.config, task_id, out, endpoint, capture_id, artifact_identity)
+            verification = await self.server_client.post(
+                server_name=self.config.verifier_server.name,
+                url_path="/verify_native",
+                json={"artifact_dir": str(out), "identity_sha256": identity_sha},
+                _max_num_tries=1,
+                _max_connection_retries=0,
+                _resend_after_disconnect=False,
+            )
+            await raise_for_status(verification)
+            confirmed = await get_response_json(verification)
+            if confirmed != {"artifact_dir": str(out), "verifier_complete": True}:
+                raise RuntimeError("Separate verifier did not confirm the owned result")
+            return out
         source = Path(__file__).resolve().parents[2]
         lineage = capture_id
         files = [source / "benchmarks/moosechem" / name for name in ("native.py", "guarded.py", "source-sha256.json")]

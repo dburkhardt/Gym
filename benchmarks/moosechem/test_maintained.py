@@ -98,8 +98,12 @@ async def test_unresolved_task_rejected_before_work(tmp_path):
 
 @pytest.mark.asyncio
 async def test_native_cancellation_settles_child_before_bridge_cleanup(tmp_path, monkeypatch):
+    from nemo_gym.base_responses_api_model import CaptureStore
     from nemo_gym.sandbox.providers.local.provider import LocalProvider
 
+    # Exercise the retained historical process cleanup helper, never a new-live configuration.
+    monkeypatch.setattr(app, "require_isolated_live", lambda *args: None)
+    CaptureStore(tmp_path / "captures", provider_dispatch_guard=True).identity()
     pidfile = tmp_path / "child.pid"
     original_exec = LocalProvider.exec
 
@@ -123,11 +127,19 @@ async def test_native_cancellation_settles_child_before_bridge_cleanup(tmp_path,
 
     monkeypatch.setattr(app, "bridge", bridge)
     monkeypatch.setattr(
-        app, "get_global_config_dict", lambda: {"provider_dispatch_guard": True, "policy_model_name": MODEL}
+        app,
+        "get_global_config_dict",
+        lambda: {
+            "provider_dispatch_guard": True,
+            "policy_model_name": MODEL,
+            "model_call_capture_dir": str(tmp_path / "captures"),
+        },
     )
     monkeypatch.setattr(app, "get_first_server_config_dict", lambda *args: {"host": "127.0.0.1", "port": 1})
     monkeypatch.setattr(app, "current_rollout_id", lambda: "fixture")
     config = SimpleNamespace(
+        settled_recovery=None,
+        isolated_runtime_image=None,
         blocked_task_ids=[],
         output_root=tmp_path / "outputs",
         native_python=Path(sys.executable),
@@ -244,3 +256,33 @@ def test_runtime_import_receipt_rejects_drift_before_dispatch(tmp_path, monkeypa
     with pytest.raises(RuntimeError, match="identity mismatch"):
         guarded.record_runtime_identity(tmp_path)
     assert not (tmp_path / "dispatch-intents.jsonl").exists()
+
+
+@pytest.mark.parametrize("image,budget", [(None, 8192), ("sha256:" + "a" * 64, 16384)])
+def test_live_isolation_and_cross_phase_budget_fail_before_dispatch(image, budget, monkeypatch):
+    config = SimpleNamespace(
+        isolated_runtime_image=image,
+        public_input_root=Path("public"),
+        public_manifest_sha256="a" * 64,
+        verifier_server=SimpleNamespace(name="verifier"),
+        output_token_budget=budget,
+        native_timeout_seconds=14400,
+        output_root=Path("out"),
+        upstream_repo=Path("creator"),
+    )
+    monkeypatch.setattr(
+        app,
+        "get_first_server_config_dict",
+        lambda *args: {
+            "isolated_runtime_image": "sha256:" + "a" * 64,
+            "output_token_budget": 8192,
+            "native_timeout_seconds": 14400,
+            "output_root": "out",
+            "upstream_repo": "creator",
+        },
+    )
+    with pytest.raises(ValueError, match="require isolated|mismatch: output_token_budget"):
+        app.require_isolated_live(config, {})
+    config.isolated_runtime_image = "sha256:" + "a" * 64
+    config.output_token_budget = 8192
+    app.require_isolated_live(config, {})
