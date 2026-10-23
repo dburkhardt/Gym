@@ -52,6 +52,8 @@ class Config(BaseResponsesAPIAgentConfig):
     asset_manifest: Path
     image: str
     output_root: Path
+    # Operational asset validation/copy time; never changes creator scientific phase limits.
+    staging_allowance_seconds: float = Field(default=0, ge=0, allow_inf_nan=False)
     blocked_task_ids: list[str] = Field(default_factory=list)
     model_server: ModelServerRef = Field(
         default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model")
@@ -161,6 +163,7 @@ class Agent(SimpleResponsesAPIAgent):
         packet = {
             "giab_scorer_binding": binding(task_id, self.config.giab_scorer_manifest),
             "task_id": task_id,
+            "operational_worker_timeout_seconds": 25980 + self.config.staging_allowance_seconds,
             "model": MODEL,
             "image": self.config.image,
             "endpoint": endpoint,
@@ -189,7 +192,7 @@ class Agent(SimpleResponsesAPIAgent):
                             str(out / "packet.json"),
                         ]
                     ),
-                    timeout_s=25980,
+                    timeout_s=packet["operational_worker_timeout_seconds"],
                     terminate_background_children=True,
                     env={
                         "PYTHONPATH": str(root),
