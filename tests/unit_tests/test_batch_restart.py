@@ -553,3 +553,44 @@ def test_ray_migration_requires_valid_digest_map(old):
     from nemo_gym.batch_restart import _ray_placement_compatible
 
     assert not _ray_placement_compatible({"global_option_digests": old}, {"global_option_digests": {}})
+
+
+@pytest.mark.parametrize("mutation", [None, "missing", "tampered", "extra_file", "science"])
+def test_explicit_ray_source_transition(tmp_path, mutation):
+    from nemo_gym.batch_restart import _admit_ray_source_transition
+
+    old = {"/snapshot/nemo_gym/batch_restart.py": "a" * 64, "/snapshot/agent.py": "b" * 64}
+    new = dict(old, **{"/snapshot/nemo_gym/batch_restart.py": "c" * 64})
+    prior = {
+        "implementation_sha256": digest(old),
+        "global_options_sha256": "d" * 64,
+        "global_option_digests": {"ray_head_node_address": "e" * 64, "temperature": "f" * 64},
+        "manifest_sha256": "task",
+    }
+    current = dict(
+        prior,
+        implementation_sha256=digest(new),
+        global_options_sha256="0" * 64,
+        global_option_digests={"temperature": "f" * 64},
+    )
+    receipt = {
+        "kind": "ray-placement-normalization-v1",
+        "prior_binding_sha256": digest(prior),
+        "old_source_manifest": old,
+        "new_source_manifest": new,
+    }
+    if mutation == "tampered":
+        receipt["prior_binding_sha256"] = "wrong"
+    if mutation == "extra_file":
+        new["/snapshot/agent.py"] = "1" * 64
+        current["implementation_sha256"] = digest(new)
+    if mutation == "science":
+        current["manifest_sha256"] = "other-task"
+    path = tmp_path / "transition.json"
+    if mutation != "missing":
+        path.write_text(json.dumps(receipt))
+    if mutation:
+        with pytest.raises(ConfigError, match="Invalid Ray source transition"):
+            _admit_ray_source_transition(prior, current, new, path)
+    else:
+        assert _admit_ray_source_transition(prior, current, new, path) == receipt

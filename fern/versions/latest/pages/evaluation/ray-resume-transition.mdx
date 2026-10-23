@@ -1,0 +1,9 @@
+# Resuming a batch after Ray endpoint normalization
+
+New batch identities omit only the top-level `ray_head_node_address`, which describes the local Ray cluster. Model, harness, inputs, dependencies, runtime and other scientific options remain bound.
+
+An old receipt can retain its original identity when only this operational field differs. A changed implementation still fails closed. For an operator-reviewed deployment of this fix to an already-bound batch, supply `ray_source_transition_receipt_fpath` in the resolved global config. Its JSON must contain exactly `kind` (`ray-placement-normalization-v1`), `prior_binding_sha256`, `old_source_manifest`, and `new_source_manifest`. Both manifests map every original absolute Python source path to its SHA256. Their aggregates must reproduce the old and current implementation identities, respectively; paths must be identical, and only `nemo_gym/batch_restart.py` may differ. All other execution identities and non-Ray global option digests must match.
+
+Review the exact old/new file diff before authorizing the receipt. The mechanism verifies supplied identities, not the semantic safety of arbitrary code edits. It cannot migrate a relocated source tree, unrelated implementation changes, missing digest maps, changed scientific configuration or unknown model requests. Preserve the original source bytes separately before deploying the reviewed single-file change. Do not edit existing status or result rows.
+
+Successful validation writes an immutable adjacent `.accepted.json` record and returns the original batch binding digest. A conflicting acceptance record fails closed. This enables unstarted-row continuation only under the collector's existing resume rules; it does not authorize retries or alter prior scores.

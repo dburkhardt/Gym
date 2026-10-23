@@ -61,6 +61,30 @@ def _ray_placement_compatible(prior: dict, current: dict) -> bool:
     }
 
 
+def _admit_ray_source_transition(prior, current, source_hashes, receipt_path):
+    """Validate an explicit operator-reviewed, single-file operational transition."""
+    try:
+        receipt = json.loads(Path(receipt_path).read_text())
+        if set(receipt) != {"kind", "prior_binding_sha256", "old_source_manifest", "new_source_manifest"}:
+            raise ValueError("unexpected receipt fields")
+        if receipt["kind"] != "ray-placement-normalization-v1" or receipt["prior_binding_sha256"] != digest(prior):
+            raise ValueError("wrong prior binding")
+        old, new = receipt["old_source_manifest"], receipt["new_source_manifest"]
+        if not isinstance(old, dict) or not isinstance(new, dict) or set(old) != set(new) or new != source_hashes:
+            raise ValueError("source manifest mismatch")
+        changed = [p for p in old if old[p] != new[p]]
+        if len(changed) != 1 or not changed[0].endswith("/nemo_gym/batch_restart.py"):
+            raise ValueError("transition must change only batch_restart.py")
+        if digest(old) != prior["implementation_sha256"] or digest(new) != current["implementation_sha256"]:
+            raise ValueError("source aggregate mismatch")
+        candidate = dict(current, implementation_sha256=prior["implementation_sha256"])
+        if not _ray_placement_compatible(prior, candidate):
+            raise ValueError("non-Ray execution identity changed")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ConfigError(f"Invalid Ray source transition receipt: {error}") from error
+    return receipt
+
+
 def bind_execution(
     tracker,
     global_config,
@@ -191,6 +215,7 @@ def bind_execution(
         "worker_lease_startup_reserve_s",
         "disallowed_ports",
         "ray_head_node_address",
+        "ray_source_transition_receipt_fpath",
     ):
         global_science.pop(key, None)
     scientific_closure = None
@@ -275,6 +300,27 @@ def bind_execution(
         raise ConfigError(
             "Explicit restart requires a previously bound native batch; old unbound runs cannot be relabeled"
         )
+    transition_path = config.get("ray_source_transition_receipt_fpath")
+    if transition_path:
+        if not resume or prior is None:
+            raise ConfigError("Ray source transition requires an existing bound resumed batch")
+        transition = _admit_ray_source_transition(prior, binding, source_hashes, transition_path)
+        # Sidecar is append-only evidence; status and existing row digests stay intact.
+        record_path = Path(str(transition_path) + ".accepted.json")
+        record = {
+            "receipt_sha256": hashlib.sha256(Path(transition_path).read_bytes()).hexdigest(),
+            "prior_binding_sha256": digest(prior),
+            "observed_binding_sha256": digest(binding),
+            "transition": transition,
+        }
+        encoded = json.dumps(record, sort_keys=True, indent=2)
+        if record_path.exists():
+            if record_path.read_text() != encoded:
+                raise ConfigError("Ray source transition acceptance record changed")
+        else:
+            with record_path.open("x") as stream:
+                stream.write(encoded)
+        return digest(prior)
     if prior is not None and prior != binding and _ray_placement_compatible(prior, binding):
         # Preserve existing row and restart-receipt digests; never rewrite history.
         return digest(prior)
