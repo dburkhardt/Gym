@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from benchmarks.corebench.generated_cache import cache_source
+
 
 REQUIRED = {
     "admission.json",
@@ -25,7 +27,7 @@ def validate_gpu_placement(row, qualification, limits, evidence):
         raise ValueError("GPU execution requires separate placement evidence")
     root = Path(evidence["root"])
     hashes = evidence["sha256"]
-    if not isinstance(hashes, dict) or set(hashes) != REQUIRED:
+    if not isinstance(hashes, dict) or set(hashes) not in (REQUIRED, REQUIRED | {"generated-cache.json"}):
         raise ValueError("Incomplete GPU placement evidence")
     for name, expected in hashes.items():
         path = root / name
@@ -36,9 +38,13 @@ def validate_gpu_placement(row, qualification, limits, evidence):
     expected_sources = {f["path"]: f["sha256"] for f in row["medium_file_manifest"]}
     if read("manifest.json") != expected_sources:
         raise ValueError("GPU placement source differs")
-    for name in ("before-source.json", "after-source.json"):
-        if read(name) != {"files": len(expected_sources), "changed": []}:
+    if read("before-source.json") != {"files": len(expected_sources), "changed": []}:
+        raise ValueError("GPU placement source integrity failed")
+    after = read("after-source.json")
+    if after != {"files": len(expected_sources), "changed": []}:
+        if "generated-cache.json" not in hashes:
             raise ValueError("GPU placement source integrity failed")
+        validate_generated_cache(expected_sources, after, read("generated-cache.json"))
     expected = {
         "image": qualification["final_image"],
         "cpus": limits["cpus"],
@@ -72,3 +78,48 @@ def validate_gpu_placement(row, qualification, limits, evidence):
     ):
         raise ValueError("GPU workflow or exact owned cleanup incomplete")
     return {"sha256": dict(hashes), "image": qualification["final_image"], "resources": dict(limits)}
+
+
+def validate_generated_cache(original: dict, after: dict, proof: dict) -> None:
+    """Validate hash-bound isolated-interpreter evidence without loading bytecode here."""
+    changed = after.get("changed")
+    observed = proof.get("observed_sha256")
+    if (
+        after.get("files") != len(original)
+        or not isinstance(changed, list)
+        or not changed
+        or len(set(changed)) != len(changed)
+        or proof.get("schema") != "core-generated-cache/v1"
+        or proof.get("original_sha256") != original
+        or proof.get("changed") != sorted(changed)
+        or not isinstance(observed, dict)
+        or set(observed) != set(original)
+        or sorted(k for k in original if observed[k] != original[k]) != sorted(changed)
+        or not isinstance(proof.get("cache_tag"), str)
+        or not proof.get("python")
+        or not proof.get("magic_hex")
+    ):
+        raise ValueError("Generated-cache proof does not bind original integrity evidence")
+    records = proof.get("caches")
+    if not isinstance(records, list) or len(records) != len(changed):
+        raise ValueError("Incomplete generated-cache proof")
+    seen = set()
+    for record in records:
+        name = record.get("path")
+        if name not in changed or name in seen:
+            raise ValueError("Duplicate or unrelated cache proof")
+        seen.add(name)
+        source, optimization = cache_source(name, proof["cache_tag"])
+        if (
+            source not in original
+            or observed[source] != original[source]
+            or record.get("source") != source
+            or record.get("original_sha256") != original[name]
+            or record.get("generated_sha256") != observed[name]
+            or record.get("source_sha256") != original[source]
+            or record.get("optimization") != optimization
+            or record.get("code_equivalent") is not True
+            or not isinstance(record.get("compile_filename"), str)
+            or not record["compile_filename"].startswith("/")
+        ):
+            raise ValueError("Unproven generated-cache equivalence")

@@ -144,3 +144,25 @@ probes establish image parity, not scientific workflow success. Staging any GPU
 execution, including GPUs inherited from the qualification receipt, additionally
 requires the separate full-workflow placement evidence described above. CPU
 probe defaults and the explicit OOM-review requirement remain unchanged.
+
+### Generated Python caches during scientific controls
+
+Keep every frozen input hash, including supplied `.pyc` files. A successful original
+workflow can regenerate caches without changing scientific source or data. Retain the
+raw before/after receipt and any initial strict assertion failure; do not label it
+unchanged or rerun the workflow to hide the difference.
+
+For canonical `__pycache__/<module>.cpython-<version>[.opt-N].pyc` changes only,
+`generated_cache.py` runs inside the same owned, network-disabled scientific
+interpreter. Supply the frozen manifest, post-workflow workspace, and explicit original
+absolute compilation filenames from the reviewed layout. It verifies every other
+frozen file, maps each cache to unchanged frozen Python source, checks interpreter
+magic/optimization, and compares decoded code to a fresh compilation without executing
+it. Never load benchmark bytecode on the controller. Missing sources, noncanonical
+caches, changed source/data, or non-equivalent code fail closed.
+
+GPU placement evidence may additionally bind this receipt as `generated-cache.json`.
+The original `after-source.json` stays unchanged; all original and generated hashes
+remain. This is a cache-integrity exception, not scientific validation or permission to
+reuse a creator-image workflow as final harness-image qualification. Final image
+identity and separate workflow requirements still apply.
