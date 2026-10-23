@@ -1956,6 +1956,15 @@ class RolloutCollectionConfig(SharedRolloutCollectionConfig):
     @model_validator(mode="after")
     def _validate_dispatch_concurrency(self) -> "RolloutCollectionConfig":
         if (
+            self.dispatch_budget_s is not None
+            and self.drain_margin_s is not None
+            and self.drain_margin_s > 0
+            and self.dispatch_budget_s <= self.drain_margin_s
+        ):
+            raise ValueError(
+                "dispatch_budget_s must exceed an explicit positive drain_margin_s to leave time for dispatch"
+            )
+        if (
             (self.dispatch_budget_s is not None or self.worker_lease_deadline_unix_s is not None)
             and self.num_samples_in_parallel is None
             and self.max_resident_rollout_tasks is None

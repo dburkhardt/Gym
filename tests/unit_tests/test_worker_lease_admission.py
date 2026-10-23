@@ -307,3 +307,46 @@ def test_collector_lazy_env_resolution(tmp_path, monkeypatch, value):
     else:
         with pytest.raises(ValueError):
             collection.RolloutCollectionConfig.model_validate(runtime)
+
+
+@pytest.mark.parametrize("budget,margin", [(720, 900), (900, 900), (0, 900)])
+@pytest.mark.parametrize("plan_only", [False, True])
+def test_impossible_dispatch_window_refused_before_services(tmp_path, monkeypatch, budget, margin, plan_only):
+    from omegaconf import OmegaConf
+
+    from nemo_gym.cli import eval as eval_cli
+
+    prepared = tmp_path / "result" / "preprocessed_datasets" / "benchmark.jsonl"
+    prepared.parent.mkdir(parents=True)
+    prepared.write_text("{}\n")
+    values = OmegaConf.create(
+        {
+            "split": "benchmark",
+            "output_jsonl_fpath": str(tmp_path / "result.jsonl"),
+            "num_samples_in_parallel": 1,
+            "plan_only": plan_only,
+            "reuse_existing_data_preparation": True,
+            "dispatch_budget_s": budget,
+            "drain_margin_s": margin,
+        }
+    )
+    monkeypatch.setattr(eval_cli, "get_global_config_dict", lambda: values)
+    monkeypatch.setattr(eval_cli, "validate_eval_compatibility", lambda _: None)
+    monkeypatch.setattr(eval_cli, "_validate_split_datasets_declared", lambda *_: None)
+    monkeypatch.setattr(eval_cli.RunHelper, "start", lambda *_: pytest.fail("services started"))
+    with pytest.raises(ValueError, match="must exceed an explicit positive drain_margin_s"):
+        eval_cli.e2e_rollout_collection()
+    assert not (tmp_path / "result_dispatch_plan.json").exists()
+
+
+@pytest.mark.parametrize("budget,margin", [(901, 900), (900, None), (None, 900), (0, 0), (0, None)])
+def test_dispatch_window_valid_and_explicit_zero_budget_compatibility(tmp_path, budget, margin):
+    value = collection.RolloutCollectionConfig(
+        input_jsonl_fpath=str(tmp_path / "in.jsonl"),
+        output_jsonl_fpath=str(tmp_path / "out.jsonl"),
+        num_samples_in_parallel=1,
+        dispatch_budget_s=budget,
+        drain_margin_s=margin,
+    )
+    assert value.dispatch_budget_s == budget
+    assert value.drain_margin_s == margin
