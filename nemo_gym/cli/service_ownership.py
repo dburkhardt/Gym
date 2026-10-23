@@ -23,6 +23,30 @@ TOKEN = "NEMO_GYM_SERVICE_OWNER_TOKEN"
 MODE_ENV = "NEMO_GYM_SERVICE_OWNERSHIP_MODE"
 
 
+def _preflight_systemd_user_manager() -> None:
+    """Require an accessible user manager before any native services start."""
+    message = (
+        "Systemd service ownership requires a reachable user manager before native startup. "
+        "Check `systemctl --user show --property=SystemState --value` in the same launch environment "
+        "and explicitly configure the correct XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS for that user. "
+        "Gym does not infer bus addresses, start a manager, or fall back to process ownership."
+    )
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "show", "--property=SystemState", "--value"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(message) from error
+    # `is-system-running` exits nonzero for degraded managers, even though they
+    # can manage scopes. Query the manager property instead of system health.
+    if result.returncode != 0 or result.stdout.strip() not in {"running", "degraded"}:
+        raise RuntimeError(message)
+
+
 def _unit(value):
     return f"nemogym-{value['token']}.scope"
 
@@ -213,6 +237,8 @@ class ServiceOwnership:
             raise RuntimeError("Unsupported native service ownership mode")
         if self.mode == "systemd" and sys.platform != "linux":
             raise RuntimeError("Systemd ownership requires Linux user scopes")
+        if self.mode == "systemd":
+            _preflight_systemd_user_manager()
         self.directory = checked_directory(directory)
         self.binding = binding
         self.published = []

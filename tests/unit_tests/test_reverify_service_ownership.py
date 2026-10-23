@@ -134,6 +134,22 @@ def test_invalid_config_never_constructs_runtime(config, monkeypatch):
         cli.reverify_rollouts()
 
 
+def test_unavailable_systemd_manager_prevents_runtime_construction(config, monkeypatch):
+    from types import SimpleNamespace
+
+    from nemo_gym.cli import service_ownership
+
+    monkeypatch.setenv("NEMO_GYM_SERVICE_OWNERSHIP_MODE", "systemd")
+    monkeypatch.setattr(service_ownership.sys, "platform", "linux")
+    monkeypatch.setattr(
+        service_ownership.subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
+    )
+    monkeypatch.setattr(cli, "get_global_config_dict", lambda: config)
+    monkeypatch.setattr(cli, "RunHelper", lambda: pytest.fail("runtime constructed with inaccessible user manager"))
+    with pytest.raises(RuntimeError, match="reachable user manager before native startup"):
+        cli.reverify_rollouts()
+
+
 def test_real_runhelper_startup_failure_closes_attached_lease(config, monkeypatch):
     lease = owner(config)
     runner = cli.RunHelper()

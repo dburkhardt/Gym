@@ -3,6 +3,7 @@
 
 import json
 import os
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +15,54 @@ from tests.unit_tests.test_service_ownership import receipt
 @pytest.fixture
 def linux(monkeypatch):
     monkeypatch.setattr(ownership.sys, "platform", "linux")
+    monkeypatch.setattr(ownership, "_preflight_systemd_user_manager", lambda: None)
     monkeypatch.setattr(ownership, "owned_members", lambda *_: pytest.fail("global process census forbidden"))
+
+
+@pytest.mark.parametrize("state", ["running", "degraded"])
+def test_manager_preflight_accepts_reachable_states_before_ownership(tmp_path, monkeypatch, state):
+    monkeypatch.setattr(ownership.sys, "platform", "linux")
+    directory = tmp_path / "new-owner"
+    calls = []
+
+    def query(argv, **kwargs):
+        assert not directory.exists()
+        assert kwargs == {"capture_output": True, "text": True, "errors": "replace", "timeout": 5}
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=state + "\n")
+
+    monkeypatch.setattr(ownership.subprocess, "run", query)
+    owner = ownership.ServiceOwnership(directory, {}, mode="systemd")
+    owner.close()
+    assert calls == [["systemctl", "--user", "show", "--property=SystemState", "--value"]]
+
+
+@pytest.mark.parametrize("failure", ["bus", "empty", "stopping", "unknown", "timeout", "missing_binary"])
+def test_manager_preflight_fails_before_files_or_reconciliation(tmp_path, monkeypatch, failure):
+    monkeypatch.setattr(ownership.sys, "platform", "linux")
+    directory = tmp_path / "new-owner"
+    before = {name: os.environ.get(name) for name in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")}
+
+    def query(argv, **kwargs):
+        assert kwargs["timeout"] == 5
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        if failure == "missing_binary":
+            raise FileNotFoundError("systemctl")
+        return SimpleNamespace(returncode=1 if failure == "bus" else 0, stdout="" if failure == "empty" else failure)
+
+    monkeypatch.setattr(ownership.subprocess, "run", query)
+    monkeypatch.setattr(ownership.ServiceOwnership, "reconcile", lambda *_: pytest.fail("must not reconcile"))
+    with pytest.raises(RuntimeError, match="reachable user manager before native startup"):
+        ownership.ServiceOwnership(directory, {}, mode="systemd")
+    assert not directory.exists()
+    assert before == {name: os.environ.get(name) for name in before}
+
+
+def test_process_mode_does_not_probe_systemd(tmp_path, monkeypatch):
+    monkeypatch.setattr(ownership.subprocess, "run", lambda *_a, **_k: pytest.fail("systemd probe in process mode"))
+    owner = ownership.ServiceOwnership(tmp_path / "process-owner", {}, mode="process")
+    owner.close()
 
 
 def properties(value):
