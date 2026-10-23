@@ -155,6 +155,8 @@ Regrade supported saved response records with a separately reviewed scorer confi
 
 For supported response records:
 
+SciCode requires an additional reconstruction step: its final response contains only the last generation, while verification needs the accumulated programs for every generated substep. Use the maintained [saved-generation preparation command](../benchmarks/scicode/README.md#regrade-saved-generations-without-another-model-call) with the original materialized task and ordered captures. It checks the original prompts and settings and rejects missing evidence. A successful reconstruction is not a completed regrade; verify through the resource with the original H5, scientific environment and timeouts, then compare the new results by task identity.
+
 ```sh
 gym eval reverify --config /absolute/regrade.yaml \
   --inputs /absolute/attempt/materialized-inputs.jsonl \
