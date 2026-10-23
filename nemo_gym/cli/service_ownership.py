@@ -71,6 +71,16 @@ def _unit_properties(unit):
     )
     props = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
     if props.get("LoadState") == "not-found":
+        # Missing-unit stdout alone is not cleanup evidence: failed or partial
+        # manager responses must not turn an unresolved scope into an absence.
+        if (
+            result.returncode not in {0, 4}
+            or props.get("Id") != unit
+            or props.get("ActiveState") != "inactive"
+            or props.get("SubState") != "dead"
+            or props.get("ControlGroup")
+        ):
+            raise RuntimeError("Cannot establish absence of dedicated systemd ownership unit")
         return None
     if result.returncode or not props:
         raise RuntimeError("Cannot inspect dedicated systemd ownership unit")

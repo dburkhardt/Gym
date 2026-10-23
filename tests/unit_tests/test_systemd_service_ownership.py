@@ -176,3 +176,52 @@ def test_stopped_scope_cannot_hide_surviving_root(tmp_path, linux, monkeypatch):
     monkeypatch.setattr(ownership.subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=0))
     with pytest.raises(RuntimeError, match="outlived"):
         ownership._stop_scope(value)
+
+
+@pytest.mark.parametrize("returncode", [0, 4])
+def test_missing_unit_requires_complete_inactive_identity(monkeypatch, returncode):
+    unit = "nemogym-" + "a" * 32 + ".scope"
+    text = f"Id={unit}\nLoadState=not-found\nActiveState=inactive\nSubState=dead\nControlGroup=\n"
+    monkeypatch.setattr(
+        ownership.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=returncode, stdout=text)
+    )
+    assert ownership._unit_properties(unit) is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["command_failure", "activating", "active", "missing_state", "wrong_unit", "populated_path", "wrong_substate"],
+)
+def test_uncertain_missing_unit_cannot_certify_reconciliation(tmp_path, linux, monkeypatch, change):
+    path = receipt(tmp_path, mode="systemd", systemd=None)
+    value = json.loads(path.read_text())
+    before = path.read_bytes()
+    unit = ownership._unit(value)
+    props = {"Id": unit, "LoadState": "not-found", "ActiveState": "inactive", "SubState": "dead", "ControlGroup": ""}
+    code = 4
+    if change == "command_failure":
+        code = 1
+    elif change in {"activating", "active"}:
+        props["ActiveState"] = change
+    elif change == "missing_state":
+        del props["ActiveState"]
+    elif change == "wrong_unit":
+        props["Id"] = "other.scope"
+    elif change == "populated_path":
+        props["ControlGroup"] = "/user.slice/unresolved.scope"
+    else:
+        props["SubState"] = "running"
+    calls = []
+
+    def query(argv, **kwargs):
+        calls.append(argv)
+        assert argv[:3] == ["systemctl", "--user", "show"]
+        assert kwargs["timeout"] == 15
+        return SimpleNamespace(returncode=code, stdout="\n".join(f"{k}={v}" for k, v in props.items()))
+
+    monkeypatch.setattr(ownership.subprocess, "run", query)
+    monkeypatch.setattr(ownership, "matching", lambda _: None)
+    with pytest.raises(RuntimeError, match="Cannot establish absence"):
+        ownership.ServiceOwnership(tmp_path, value["binding"], mode="systemd")
+    assert path.read_bytes() == before
+    assert len(calls) == 1  # No stop/kill command and no successful cleanup publication.

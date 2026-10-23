@@ -113,3 +113,10 @@ result prefix, failure sidecar and capture bytes before accepting cleanup.
 Its saved responses and short control timeouts establish bounded operational
 recovery, not model performance, live-provider throughput, or restoration of a
 running scientific container.
+
+A systemd unit reported as missing is accepted as absent only when the bounded
+query returns code 0 or 4, identifies the exact owned unit, and reports
+`LoadState=not-found`, `ActiveState=inactive`, `SubState=dead`, and no control group.
+Partial, failed, or contradictory queries keep reconciliation unresolved and do
+not publish successful cleanup. The existing root-process and cgroup checks still
+apply; a missing unit alone is not proof that its owned work has stopped.
