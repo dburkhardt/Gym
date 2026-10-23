@@ -190,7 +190,16 @@ def test_missing_unit_requires_complete_inactive_identity(monkeypatch, returncod
 
 @pytest.mark.parametrize(
     "change",
-    ["command_failure", "activating", "active", "missing_state", "wrong_unit", "populated_path", "wrong_substate"],
+    [
+        "command_failure",
+        "activating",
+        "active",
+        "missing_state",
+        "wrong_unit",
+        "populated_path",
+        "wrong_substate",
+        "missing_group",
+    ],
 )
 def test_uncertain_missing_unit_cannot_certify_reconciliation(tmp_path, linux, monkeypatch, change):
     path = receipt(tmp_path, mode="systemd", systemd=None)
@@ -205,6 +214,8 @@ def test_uncertain_missing_unit_cannot_certify_reconciliation(tmp_path, linux, m
         props["ActiveState"] = change
     elif change == "missing_state":
         del props["ActiveState"]
+    elif change == "missing_group":
+        del props["ControlGroup"]
     elif change == "wrong_unit":
         props["Id"] = "other.scope"
     elif change == "populated_path":

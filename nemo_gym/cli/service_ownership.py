@@ -78,7 +78,7 @@ def _unit_properties(unit):
             or props.get("Id") != unit
             or props.get("ActiveState") != "inactive"
             or props.get("SubState") != "dead"
-            or props.get("ControlGroup")
+            or props.get("ControlGroup") != ""
         ):
             raise RuntimeError("Cannot establish absence of dedicated systemd ownership unit")
         return None
