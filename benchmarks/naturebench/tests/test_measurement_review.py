@@ -66,3 +66,45 @@ def test_malformed_measurements_are_unresolved(tmp_path: Path, raw: object) -> N
     )
     assert kind == "harbor:scientific_measurement_invalid"
     assert revised["measurement_review"]["metrics"]["reward"]["status"] == "unresolved"
+
+
+@pytest.mark.parametrize("value", [float("nan"), None, True])
+def test_complete_schema_rejects_invalid_metric(tmp_path: Path, value: object) -> None:
+    from benchmarks.naturebench.measurement_review import review
+
+    state = tmp_path / "artifacts/state"
+    state.mkdir(parents=True)
+    fixture = json.loads((Path(__file__).parent / "fixtures/evaluator-best-score.json").read_text())
+    fixture["best_raw_scores"] = {
+        group: {key: 0.0 for key in metrics if key != "error"} for group, metrics in fixture["best_raw_scores"].items()
+    }
+    path = state / "best_score.json"
+    path.write_text(json.dumps(fixture))
+    args = dict(
+        trial_dir=tmp_path,
+        instance_id="naturebench::s42256-024-00916-5",
+        trial_result={"verifier_result": {"rewards": {"reward": -1.0}}},
+    )
+    assert review(**args)["metrics"]["reward"]["status"] == "valid"
+    fixture["best_raw_scores"]["drd2_qed"]["SR@0.4"] = value
+    path.write_text(json.dumps(fixture))
+    assert review(**args)["metrics"]["reward"]["status"] == "unresolved"
+
+
+def test_missing_and_unsupported_task_are_unresolved(tmp_path: Path) -> None:
+    from benchmarks.naturebench.measurement_review import review
+
+    args = dict(
+        trial_dir=tmp_path,
+        instance_id="naturebench::unsupported",
+        trial_result={"verifier_result": {"rewards": {"reward": 1.0}}},
+    )
+    assert review(**args)["metrics"]["reward"]["status"] == "unresolved"
+    state = tmp_path / "artifacts/state"
+    state.mkdir(parents=True)
+    fixture = json.loads((Path(__file__).parent / "fixtures/evaluator-best-score.json").read_text())
+    fixture["best_raw_scores"] = {
+        group: {key: 0.0 for key in metrics if key != "error"} for group, metrics in fixture["best_raw_scores"].items()
+    }
+    (state / "best_score.json").write_text(json.dumps(fixture))
+    assert review(**args)["metrics"]["reward"]["status"] == "unresolved"
