@@ -206,3 +206,18 @@ def test_exact_native_intent_rejection_attribution(tmp_path, mutation):
     )
     assert (answer[0] if answer else None) == ("provider_quota_exhausted" if mutation is None else None)
     assert result["verifier_result"] == before["verifier_result"]
+
+
+def test_ainstein_iteration_limit_is_unscored_agent_outcome():
+    # Projection of native-v7: creator loop exhausted30 iterations; verifier never ran.
+    result = {
+        "reward_valid": False,
+        "failure_cause": "unclassified",
+        "exception_info": {"exception_type": "NativeIterationLimitError",
+                           "exception_message": "Agent did not produce a solution within iteration limit"},
+        "verifier_result": None,
+    }
+    before = copy.deepcopy(result)
+    assert measurement_failure(result)[0] == "harbor:agent_outcome_unscored"
+    assert result == before
+    assert measurement_failure(result, llm_failure={"exception_type": "APIConnectionError"})[0] == "transport_peer_drop"
