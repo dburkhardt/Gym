@@ -352,3 +352,76 @@ async def test_grader_timeout_is_failure_without_second_scoring_attempt(tmp_path
             python="python3",
         )
     calls.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["model", "params", "runtime", "none", "later_resume"])
+async def test_settled_error_resume_binding_and_new_lineage(setup, monkeypatch, change):
+    """Restore validation is tested separately; exercise real dispatch ordering."""
+    from pathlib import Path
+
+    agent, body, client, container, scorer = setup
+    monkeypatch.setattr(app, "execution_identity", AsyncMock(return_value={"image": "same"}))
+    root = Path(agent.config.work_root)
+    old = root / "old-checkpoint.json"
+    history = [{"role": "user", "content": "original"}]
+    params = body.responses_create_params.model_dump(exclude_none=True)
+    params.update(tools=[app.SHELL_TOOL], parallel_tool_calls=False, temperature=0)
+    retained = {**params, "input": history, "model": "original-model"}
+    state = {
+        "task": dict(body.verifier_metadata),
+        "paths": {
+            name: str(root / "shared" / name) for name in ("public", "prediction", "workspace", "reference", "grading")
+        },
+        "history": history,
+        "trajectory": [],
+        "next_step": 2,
+        "elapsed_seconds": 10,
+        "pending": None,
+        "pending_calls": [],
+        "solver_done": False,
+        "runtime_identity": {"image": "same"},
+        "settled_model_errors": [{"action_id": "failed-old-action", "request": retained}],
+    }
+    if change == "runtime":
+        state["runtime_identity"] = {"image": "changed"}
+    if change == "later_resume":
+        # A historical settlement must not constrain an unrelated later resume.
+        state["history"] = history + [{"role": "assistant", "content": "advanced"}]
+    old.write_text(json.dumps(state))
+    original = old.read_bytes()
+    monkeypatch.setattr(app, "restore_checkpoint", lambda *a, **k: json.loads(old.read_text()))
+    monkeypatch.setattr(
+        app,
+        "get_global_config_dict",
+        lambda: {"policy_model_name": "changed" if change == "model" else "original-model"},
+    )
+    body.verifier_metadata["resume_checkpoint"] = str(old)
+    if change != "later_resume":
+        body.verifier_metadata["resume_resolution"] = {"outcome": "settled_error"}
+    if change == "params":
+        body.responses_create_params.max_output_tokens = 123
+    dispatched_ids = []
+
+    async def observed_dispatch(*args, **kwargs):
+        checkpoints = [p for p in root.glob("*/checkpoint.json") if p != old]
+        live = json.loads(checkpoints[-1].read_text())
+        dispatched_ids.append(live["pending"]["action_id"])
+        return response([])
+
+    client.post.side_effect = observed_dispatch
+    result = await agent.run(body)
+    assert old.read_bytes() == original
+    if change in ("model", "params", "runtime"):
+        assert result.mask_sample
+        client.post.assert_not_awaited()
+    else:
+        assert not result.mask_sample
+        client.post.assert_awaited_once()
+        assert len(dispatched_ids) == 1 and dispatched_ids[0] != "failed-old-action"
+        derived = json.loads((Path(result.artifact_dir) / "checkpoint.json").read_text())
+        assert derived["settled_model_errors"][0]["action_id"] == "failed-old-action"
+        assert Path(result.artifact_dir) != old.parent
+        assert derived["next_step"] == 3
+        assert derived["elapsed_seconds"] >= 10
+    container.shell.assert_not_awaited()

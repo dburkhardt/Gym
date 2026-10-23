@@ -111,3 +111,19 @@ missing and malformed outputs, source/reference separation, and path/symlink rej
 Tests using upstream scoring require the pinned checkout plus the grading dependencies.
 Unit tests do not certify a model rollout or reproduce published results. TCGA-backed problems
 and the remaining benchmark are intentionally not yet implemented by this pilot preparation.
+
+An explicitly reviewed `resume_resolution` with `outcome: settled_error` can
+resolve a retained model error using a SHA-bound version-1 evidence packet. The
+packet declares `wire_encoding: python-json-dumps-default-utf8-v1` and binds the
+checkpoint/action to local request, response, start and receipt artifacts plus
+one matching gateway start/finished HTTP-error pair. It does not establish that
+the upstream provider performed no computation. This is a new physical attempt
+under the remaining original task budget, with a new action ID and output
+lineage; the failed attempt remains recorded in `settled_model_errors`.
+
+No error is retried automatically. Unsettled requests, pending tools, mismatched
+model/parameters, or absent/mismatched runtime and guarded configuration identity
+remain blocked. The historical step-74 checkpoint lacks these identity fields
+and is **not** made resumable by this extension. The existing `not_forwarded`
+contract is unchanged. Evidence-validation fixtures are not live continuation
+qualification.

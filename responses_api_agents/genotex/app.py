@@ -102,7 +102,10 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
                     if not selected_checkpoint.is_relative_to(work_root):
                         raise ValueError("Checkpoint outside configured work root")
                     saved_state = json.loads(selected_checkpoint.read_text())
-                    if saved_state.get("pending"):
+                    if (
+                        saved_state.get("pending")
+                        and (body.verifier_metadata.get("resume_resolution") or {}).get("outcome") != "settled_error"
+                    ):
                         raise ValueError(
                             "Guarded pending action requires durable ledger reconciliation; caller assertion is insufficient"
                         )
@@ -156,6 +159,16 @@ class GenoTEXAgent(SimpleResponsesAPIAgent):
             persist()
             params = body.responses_create_params.model_dump(exclude_none=True)
             params.update(tools=[SHELL_TOOL], parallel_tool_calls=False, temperature=0)
+            if (
+                resume_path
+                and (body.verifier_metadata.get("resume_resolution") or {}).get("outcome") == "settled_error"
+            ):
+                retained = state["settled_model_errors"][-1]["request"]
+                expected = {**params, "input": history}
+                # The gateway wire adds model at the model-server boundary.
+                expected["model"] = get_global_config_dict().get("policy_model_name")
+                if retained != expected:
+                    raise ValueError("Settled-error continuation request/configuration differs")
             guarded = bool(get_global_config_dict().get("provider_dispatch_guard"))
             dispatch_digest = configuration_digest(
                 {
