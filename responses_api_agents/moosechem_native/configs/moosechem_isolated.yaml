@@ -12,6 +12,9 @@ moosechem_verifier:
   resources_servers:
     moosechem_verifier:
       entrypoint: app.py
+      domain: agent
+      verified: false
+      description: Separate pinned creator MOOSE reference evaluation
       output_root: ${oc.env:MOOSE_OUTPUT}
       upstream_repo: ${oc.env:MOOSE_SOURCE}
       isolated_runtime_image: ${oc.env:MOOSE_RUNTIME_IMAGE}
