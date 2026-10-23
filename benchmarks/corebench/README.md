@@ -177,3 +177,18 @@ projection of `after-source.json.after_hashes`. New files remain in that raw
 record. All residual changes still require the separate generated-cache proof;
 missing or inconsistent evidence fails closed. This records expected output
 mutation, not evidence of a fresh hyperparameter search or LLM performance.
+
+Capsule 8912293 can separately opt into
+`external_input_variant: 8912293-tse-historical2016-v3`. This replaces only the
+2016 party-vote ZIP in the complete cache closure with the authentic June 3,
+2021 capture of the original TSE URL (SHA256
+`abce7d06389d481674d371915e9e7c38201f664e14e525bafd70eb9c1425af45`).
+Its 28-column schema matches the unchanged electionsBR helper's selected
+municipality, office and nominal-vote fields. The other four assets remain the
+previously bound upstream versions. Exact identity with the creator's downloads
+is unproven; report this as a source-recovered variant. Staging verifies all five
+files before publication and derives the startup integrity profile from the same
+hash mapping. Earlier variants and their incompatible 2016 bytes remain unchanged.
+This option does not itself establish scientific readiness: require image/source
+isolation, original full-workflow qualification and native runtime controls for
+the selected final image before model admission.

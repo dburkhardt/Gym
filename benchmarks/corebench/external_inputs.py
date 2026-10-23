@@ -30,20 +30,26 @@ def recipe(row: dict[str, object]) -> str:
     if row.get("external_input_variant") is None:
         return ""
     if (
-        row["external_input_variant"] not in (VARIANT, CLOSURE_VARIANT)
+        row["external_input_variant"] not in (VARIANT, CLOSURE_VARIANT, HISTORICAL_VARIANT)
         or row["id"] != "capsule-8912293"
         or row["published_image"] != CREATOR_IMAGE
         or row.get("filesystem_layout_variant") != "8912293-relative-data-v1"
     ):
         raise ValueError("Unsupported external input variant")
-    if row["external_input_variant"] == CLOSURE_VARIANT:
-        return (
+    if row["external_input_variant"] in (CLOSURE_VARIANT, HISTORICAL_VARIANT):
+        inputs = _closure_inputs(str(row["external_input_variant"]))
+        provenance = (
             "# explicit current-upstream external input closure; historical identity unverified\n"
-            'RUN test "$HOME" = /root && test ! -e /root/.Rprofile && test ! -L /root/.Rprofile\n'
+            if row["external_input_variant"] == CLOSURE_VARIANT
+            else "# archived 2021 TSE 2016 schema recovery; exact creator download identity unverified\n"
+        )
+        return (
+            provenance
+            + 'RUN test "$HOME" = /root && test ! -e /root/.Rprofile && test ! -L /root/.Rprofile\n'
             + "".join(
                 f"COPY {name} /opt/corebench-external/{name}\n"
                 f"RUN echo '{sha}  /opt/corebench-external/{name}' | sha256sum -c -\n"
-                for name, sha in CLOSURE_INPUTS.items()
+                for name, sha in inputs.items()
             )
             + "COPY external-input.Rprofile /root/.Rprofile\n"
         )
@@ -79,16 +85,19 @@ def stage_files(row: dict[str, object], source: Path | None, destination: Path) 
     if row["external_input_variant"] == model_cache.VARIANT:
         model_cache.stage(source, destination)
         return
-    if row["external_input_variant"] == CLOSURE_VARIANT:
+    if row["external_input_variant"] in (CLOSURE_VARIANT, HISTORICAL_VARIANT):
+        inputs = _closure_inputs(str(row["external_input_variant"]))
         if not source.is_dir():
             raise ValueError("Complete external input variant requires a directory")
         with TemporaryDirectory(dir=destination.parent) as temporary:
             verified = Path(temporary)
-            for name, sha in CLOSURE_INPUTS.items():
+            for name, sha in inputs.items():
                 stage_file(source / name, verified / name, expected_sha256=sha)
-            for name in CLOSURE_INPUTS:
+            for name in inputs:
                 os.replace(verified / name, destination / name)
-        (destination / "external-input.Rprofile").write_text(closure_profile())
+        (destination / "external-input.Rprofile").write_text(
+            closure_profile(variant=str(row["external_input_variant"]))
+        )
         return
     with TemporaryDirectory(dir=destination.parent) as temporary:
         checked = Path(temporary) / "checked.zip"
@@ -112,7 +121,24 @@ CLOSURE_INPUTS = {
 }
 
 
-def closure_profile() -> str:
+HISTORICAL_VARIANT = "8912293-tse-historical2016-v3"
+# Authentic archived TSE bytes with the original helper's 28-column schema.
+# The other four assets remain current-upstream; exact creator download parity is unproven.
+HISTORICAL_INPUTS = {
+    **CLOSURE_INPUTS,
+    "votacao_partido_munzona_2016.zip": "abce7d06389d481674d371915e9e7c38201f664e14e525bafd70eb9c1425af45",
+}
+
+
+def _closure_inputs(variant: str) -> dict[str, str]:
+    if variant == CLOSURE_VARIANT:
+        return CLOSURE_INPUTS
+    if variant == HISTORICAL_VARIANT:
+        return HISTORICAL_INPUTS
+    raise ValueError("Unsupported external input closure")
+
+
+def closure_profile(*, variant: str = CLOSURE_VARIANT) -> str:
     """Warm only the creator package's existing filename cache; no parser edits."""
     return (
         "local({\n"
@@ -121,7 +147,7 @@ def closure_profile() -> str:
             '  checksum <- system2("sha256sum", input, stdout=TRUE)\n'
             f'  stopifnot(length(checksum) == 1L, substr(checksum, 1L, 64L) == "{sha}")\n'
             f'  stopifnot(file.copy(input, file.path(tempdir(), "{name}")))\n'
-            for name, sha in CLOSURE_INPUTS.items()
+            for name, sha in _closure_inputs(variant).items()
         )
         + "})\n"
     )
