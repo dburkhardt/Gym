@@ -14,6 +14,8 @@ Read the chosen benchmark's README and select its pinned data, frozen sample and
 
 Select model and harness through the configuration, preserving the benchmark's scoring protocol and budgets. For this campaign, explicitly bind **every LLM role** to `nvidia/nvidia/nemotron-3.5-super-vl`, including judges and helpers. A solver override does not change a separate judge. Supply credentials through the approved environment mechanism.
 
+Check generation settings in a captured no-inference fixture request before live execution. Bare top-level temperature/token settings may not reach the provider; use the supported request parameters or model `extra_body` and verify the actual payload against the benchmark protocol.
+
 ## Plan, then run
 
 ```sh
@@ -25,6 +27,8 @@ Check `results_dispatch_plan.json` and `results_planned_inputs.jsonl` for exact 
 The run configuration must set the selected dataset split (for these benchmark datasets, `split: benchmark`, or pass `--split benchmark`). If it sets `dispatch_budget_s`, it must also set a finite `num_samples_in_parallel` (or pass the reviewed `--concurrency` value) or `max_resident_rollout_tasks`; otherwise native validation refuses the run. Keep the same settings in plan, execution and resume.
 
 Before dispatch, verify actual component imports, assets, memory, disk, ports and the complete task-plus-cleanup allowance. Enable the reviewed dispatch guard, captures and owned supervisor configuration described in the operator reference. Check the current Brev account credit balance and projected burn, including retained storage and other organization usage. Preserve enough headroom to avoid exhausting account credits and report when a top-up is needed. Earlier $500/$1,000 campaign estimates are historical, not current spending limits. Do not purchase credits or introduce a new paid service without authorization.
+
+The maintained sandbox process supervisor requires Linux. Verify that requirement on the execution worker before admission or credential access; a successful local macOS service fixture does not qualify this supervised execution path. See the [supervisor implementation](../nemo_gym/agent_utils/process_supervisor.py).
 
 ```sh
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl
