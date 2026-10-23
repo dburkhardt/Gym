@@ -94,7 +94,16 @@ def validate_qualification(row, receipt):
     return limits
 
 
-def stage(medium_root, reference_root, qualifications, destination, *, manifest=MANIFEST, execution_resources=None):
+def stage(
+    medium_root,
+    reference_root,
+    qualifications,
+    destination,
+    *,
+    manifest=MANIFEST,
+    execution_resources=None,
+    placement_evidence=None,
+):
     rows = json.loads(manifest.read_text())["rows"]
     if len({r["id"] for r in rows}) != len(rows):
         raise ValueError("Duplicate capsules")
@@ -117,17 +126,32 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
     execution_resources = {} if execution_resources is None else execution_resources
     if not isinstance(execution_resources, dict) or set(execution_resources) - set(qualifications):
         raise ValueError("Execution resources require a qualified capsule")
+    placement_evidence = {} if placement_evidence is None else placement_evidence
+    if not isinstance(placement_evidence, dict) or set(placement_evidence) - set(qualifications):
+        raise ValueError("Placement evidence requires a qualified capsule")
+    placement_reviews = {}
     resolved_resources = {}
     for cid, q in qualifications.items():
         limits = dict(q["resources"])
         override = execution_resources.get(cid, {})
-        if not isinstance(override, dict) or set(override) - {"memory_mb"}:
-            raise ValueError("Only execution memory increases are supported")
+        if not isinstance(override, dict) or set(override) - {"memory_mb", "gpus"}:
+            raise ValueError("Only memory increases and evidence-bound GPU placement are supported")
         if "memory_mb" in override:
             memory = override["memory_mb"]
             if type(memory) is not int or memory < limits["memory_mb"]:
                 raise ValueError("Execution memory must be an integer no smaller than qualification memory")
             limits["memory_mb"] = memory
+        if "gpus" in override:
+            gpu = override["gpus"]
+            if type(gpu) is not int or gpu <= 0:
+                raise ValueError("GPU count must be a positive integer")
+            limits["gpus"] = gpu
+            from benchmarks.corebench.placement_evidence import validate_gpu_placement
+
+            row = next(r for r in rows if r["id"] == cid)
+            placement_reviews[cid] = validate_gpu_placement(row, q, limits, placement_evidence.get(cid))
+        elif cid in placement_evidence:
+            raise ValueError("Unused GPU placement evidence")
         resolved_resources[cid] = limits
     template = Path(__file__).parent / "templates"
     published = []
@@ -195,6 +219,7 @@ def stage(medium_root, reference_root, qualifications, destination, *, manifest=
                     "qualification_compatibility_reviews": compatibility,
                     "execution_resources": resolved_resources,
                     "execution_resource_overrides": execution_resources,
+                    "execution_placement_reviews": placement_reviews,
                     "blocked": [{"id": r["id"], "status": r["status"]} for r in rows if r["id"] not in qualifications],
                 },
                 indent=2,
@@ -211,6 +236,7 @@ def prepare():
         json.loads(Path(os.environ["COREBENCH20_QUALIFICATIONS"]).read_text()),
         Path(__file__).parent / "data20",
         execution_resources=json.loads(os.environ.get("COREBENCH20_EXECUTION_RESOURCES", "{}")),
+        placement_evidence=json.loads(os.environ.get("COREBENCH20_PLACEMENT_EVIDENCE", "{}")),
     )
 
 

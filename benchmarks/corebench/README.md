@@ -112,3 +112,12 @@ rewrite the scorer to read `/logs/artifacts/workspace`. Keep the live task and
 original result unchanged. Compare creator components and report hashes, confirm
 no new model captures, and require a successful trial result and cleanup; job
 process exit alone does not prove the verifier succeeded.
+
+GPU placement may be added to an otherwise CPU-qualified image without rewriting
+its qualification receipt. Pass an execution `gpus` override with separate
+`placement_evidence` (CLI preparation: `COREBENCH20_PLACEMENT_EVIDENCE`). The
+hash-bound owned workflow receipts must match the frozen source manifest,
+immutable final image, CPU/memory/GPU resources and original agent deadline, with
+successful execution, fresh stdout and exact container cleanup. The original
+image qualification remains unchanged in preparation metadata. This attests
+execution placement, not model performance or absence of historical outputs.

@@ -388,3 +388,104 @@ def test_execution_resources_reject_invalid_before_publication(tmp_path, options
     with pytest.raises(ValueError):
         stage(medium, refs, {row["id"]: q}, tmp_path / "out", manifest=manifest, execution_resources=options)
     assert not (tmp_path / "out").exists()
+
+
+def gpu_evidence(tmp_path, row, q):
+    from benchmarks.corebench.placement_evidence import REQUIRED
+
+    root = tmp_path / "gpu-control"
+    root.mkdir()
+    records = {
+        "admission.json": {
+            "image": q["final_image"],
+            "cpus": 2,
+            "memory_mib": 8192,
+            "gpu": 1,
+            "scientific_timeout_s": 3600,
+            "no_model_calls": True,
+        },
+        "container.json": {
+            "Image": q["final_image"],
+            "Name": "/owned",
+            "HostConfig": {
+                "NanoCpus": 2 * 10**9,
+                "Memory": 8192 * 1024**2,
+                "NetworkMode": "none",
+                "DeviceRequests": [{"Count": 1, "Capabilities": [["gpu"]], "DeviceIDs": None}],
+            },
+        },
+        "manifest.json": {f["path"]: f["sha256"] for f in row["medium_file_manifest"]},
+        "before-source.json": {"files": len(row["medium_file_manifest"]), "changed": []},
+        "after-source.json": {"files": len(row["medium_file_manifest"]), "changed": []},
+        "execution.json": {"return_code": 0, "error_type": None},
+        "independent-cleanup.json": {"sandbox_id": "owned", "absent": True},
+    }
+    for name, value in records.items():
+        (root / name).write_text(json.dumps(value))
+    (root / "stdout.txt").write_text("fresh scientific output")
+    return {"root": str(root), "sha256": {n: hashlib.sha256((root / n).read_bytes()).hexdigest() for n in REQUIRED}}
+
+
+def test_gpu_execution_retains_cpu_qualification(tmp_path):
+    import copy
+    import tomllib
+
+    medium, refs, row, q, manifest = fixture(tmp_path)
+    original = copy.deepcopy(q)
+    evidence = gpu_evidence(tmp_path, row, q)
+    stage(
+        medium,
+        refs,
+        {row["id"]: q},
+        tmp_path / "out",
+        manifest=manifest,
+        execution_resources={row["id"]: {"memory_mb": 8192, "gpus": 1}},
+        placement_evidence={row["id"]: evidence},
+    )
+    task = tomllib.loads((tmp_path / "out/tasks" / row["id"] / "task.toml").read_text())
+    assert task["environment"]["gpus"] == 1 and task["environment"]["memory_mb"] == 8192
+    assert q == original and not q["resources"].get("gpus")
+    receipt = json.loads((tmp_path / "out/preparation.json").read_text())
+    assert receipt["qualification_receipts"][row["id"]] == original
+    assert receipt["execution_placement_reviews"][row["id"]]["sha256"] == evidence["sha256"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "bytes", "image", "sources", "gpu", "timeout", "failed", "cleanup"])
+def test_gpu_execution_rejects_unqualified_placement(tmp_path, mutation):
+    from pathlib import Path
+
+    medium, refs, row, q, manifest = fixture(tmp_path)
+    evidence = gpu_evidence(tmp_path, row, q)
+    root = Path(evidence["root"])
+    if mutation == "missing":
+        evidence = None
+    elif mutation == "bytes":
+        (root / "stdout.txt").write_text("changed")
+    else:
+        name, field, value = {
+            "image": ("admission.json", "image", "sha256:" + "c" * 64),
+            "sources": ("manifest.json", "unexpected", "a" * 64),
+            "gpu": (
+                "container.json",
+                "HostConfig",
+                {"NanoCpus": 2 * 10**9, "Memory": 8192 * 1024**2, "NetworkMode": "none", "DeviceRequests": []},
+            ),
+            "timeout": ("admission.json", "scientific_timeout_s", 7200),
+            "failed": ("execution.json", "return_code", 1),
+            "cleanup": ("independent-cleanup.json", "sandbox_id", "unrelated"),
+        }[mutation]
+        record = json.loads((root / name).read_text())
+        record[field] = value
+        (root / name).write_text(json.dumps(record))
+        evidence["sha256"][name] = hashlib.sha256((root / name).read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        stage(
+            medium,
+            refs,
+            {row["id"]: q},
+            tmp_path / "out",
+            manifest=manifest,
+            execution_resources={row["id"]: {"memory_mb": 8192, "gpus": 1}},
+            placement_evidence={row["id"]: evidence},
+        )
+    assert not (tmp_path / "out").exists()
