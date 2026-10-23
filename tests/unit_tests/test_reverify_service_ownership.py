@@ -163,3 +163,39 @@ def test_real_runhelper_startup_failure_closes_attached_lease(config, monkeypatc
         runner.start(None)
     assert lease.lock.closed
     assert runner._service_ownership is None
+
+
+@pytest.mark.parametrize("score_fails", [False, True])
+def test_reverify_shutdown_failure_preserves_primary_and_publishes_receipt(config, monkeypatch, score_fails):
+    from pathlib import Path
+
+    from nemo_gym.rollout_reverification import RolloutReverificationHelper
+
+    monkeypatch.setattr(cli, "get_global_config_dict", lambda: config)
+
+    class Helper:
+        def start(self, arg):
+            pass
+
+        def shutdown(self):
+            self._service_ownership.close()
+            self._service_ownership = None
+            raise RuntimeError("shutdown failure")
+
+    async def score(self, cfg):
+        if score_fails:
+            raise ValueError("original verifier failure")
+        return []
+
+    monkeypatch.setattr(cli, "RunHelper", Helper)
+    monkeypatch.setattr(RolloutReverificationHelper, "run_from_config", score)
+    expected = ValueError if score_fails else RuntimeError
+    message = "original verifier failure" if score_fails else "shutdown failure"
+    with pytest.raises(expected, match=message):
+        cli.reverify_rollouts()
+    receipt = Path(config.output_jsonl_fpath).with_suffix("") / "native-service-cleanup.json"
+    result = json.loads(receipt.read_text())
+    assert result["status"] == "unknown"
+    assert result["scope"] == "native_services_only"
+    assert result["external_containers_checked"] is False
+    assert result["reason"] == "No service ownership records"

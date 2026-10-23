@@ -1026,7 +1026,7 @@ def reverify_rollouts():  # pragma: no cover
         rrh = RolloutReverificationHelper()
         asyncio.run(rrh.run_from_config(config))
     finally:
-        rh.shutdown()
+        _shutdown_native_services(rh)
 
 
 @exit_cleanly_on_config_error

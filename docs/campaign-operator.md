@@ -164,7 +164,8 @@ Command syntax was checked against the current CLI's `--help` for all seven comm
 
 ### Native service cleanup receipt
 
-Guarded native `gym eval run` writes `native-service-cleanup.json` next to its
+Guarded native `gym eval run` and native `gym eval reverify` write
+`native-service-cleanup.json` next to their
 `native_services/` ownership directory after shutdown. This read-only inspection
 reports `clean`, `live`, or `unknown` at `observed_at_unix_s`, using only recorded
 service roots and dedicated systemd identities/cgroups. A live coordinator can
