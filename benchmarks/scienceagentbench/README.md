@@ -27,3 +27,9 @@ The receipt deliberately remains `required_paths_present_not_runtime_or_archive_
 `gpt4_visual_judge.py` requests three GPT-4o visual samples at0.2/top_p0.95/max_tokens1000 and averages parsed scores. All-Nemotron substitution must preserve three distinct samples and the exact prompt/parser and be labeled a judge-model adaptation. `calculate_metrics.py`/creator README describe selecting the best of three independent runs; a one-run control cannot claim that aggregate protocol. No native config is published until the guarded creator bridge, isolated verifier and their meaningful local-provider controls exist.
 
 Tests in `tests/unit_tests/test_scienceagentbench_prepare.py` use real frozen metadata plus clearly synthetic prerequisite files: all50 identity checks, exact creator `format_task_dict` parity for both knowledge modes, missing enumerated file/refusal before output, source tampering, externally pinned asset checksum tampering, symlink refusal and historical output preservation. Synthetic files do not qualify any scientific dataset or scorer.
+
+Legacy metadata hashes serialized nullable Parquet cells as `NaN`. After exact
+Parquet-byte and creator-source verification, the loader also compares a
+`None`-to-`NaN` representation solely for legacy digest compatibility. Returned
+rows and formatted prompts retain their actual loaded values. This does not
+accept changed finite values or relax archive/runtime qualification.

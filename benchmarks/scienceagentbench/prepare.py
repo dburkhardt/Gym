@@ -56,6 +56,13 @@ def load_frozen(source, parquet):
     for selected in manifest["tasks"]:
         row = frame.iloc[selected["row_index"]].to_dict()
         actual = hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        if actual != selected["metadata_sha256"]:
+            # The byte-pinned Parquet's nullable string cells were originally
+            # serialized as NaN. Some pandas/Arrow versions expose them as None.
+            # Compare the legacy representation only; never alter source values
+            # returned to formatting or accept a changed non-null value.
+            legacy = {key: float("nan") if value is None else value for key, value in row.items()}
+            actual = hashlib.sha256(json.dumps(legacy, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         if actual != selected["metadata_sha256"] or row["instance_id"] != selected["instance_id"]:
             raise ValueError("Frozen task identity changed")
         rows.append((selected, row))

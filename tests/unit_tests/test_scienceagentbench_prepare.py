@@ -122,3 +122,47 @@ def test_enumerated_missing_file_and_expected_checksum_rejection(tmp_path, froze
     with pytest.raises(ValueError, match="Asset checksum changed"):
         prepare(SOURCE, PARQUET, assets, tmp_path / "out", asset_manifest=expected, asset_manifest_sha256=expected_sha)
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("null_value", [None, float("nan")])
+def test_legacy_nullable_digest_preserves_values_and_all_frozen_ids(monkeypatch, frozen, null_value):
+    import math
+
+    import pandas as pd
+
+    frame = pd.read_parquet(PARQUET).astype(object)
+    nullable = [(i, col) for col in frame.columns for i in frame.index if pd.isna(frame.at[i, col])]
+    for i, col in nullable:
+        frame.at[i, col] = null_value
+    monkeypatch.setattr(pd, "read_parquet", lambda _: frame)
+    manifest, rows = load_frozen(SOURCE, PARQUET)
+    assert [row["instance_id"] for _, row in rows] == [x["instance_id"] for x in manifest["tasks"]]
+    observed = 0
+    for selection, row in rows:
+        for i, col in nullable:
+            if i != selection["row_index"]:
+                continue
+            observed += 1
+            assert row[col] is None if null_value is None else math.isnan(row[col])
+            if col == "dataset_preview":
+                value = format_task(row)[col]
+                assert value is None if null_value is None else math.isnan(value)
+    assert observed > 0
+
+
+@pytest.mark.parametrize("replacement", ["changed real value", "NaN", 0.0, float("inf"), {"null": None}])
+def test_nullable_compatibility_does_not_bypass_real_value_change(monkeypatch, frozen, replacement):
+    import pandas as pd
+
+    frame = pd.read_parquet(PARQUET).astype(object)
+    frame.at[52, "src_file_or_path"] = replacement
+    monkeypatch.setattr(pd, "read_parquet", lambda _: frame)
+    with pytest.raises(ValueError, match="Frozen task identity changed"):
+        load_frozen(SOURCE, PARQUET)
+
+
+def test_nullable_compatibility_requires_exact_parquet_bytes(tmp_path, frozen):
+    changed = tmp_path / "changed.parquet"
+    changed.write_bytes(PARQUET.read_bytes() + b"modified")
+    with pytest.raises(ValueError, match="parquet changed"):
+        load_frozen(SOURCE, changed)
