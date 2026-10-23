@@ -29,6 +29,8 @@ Preparation may download data; prefetch may install dependencies. Perform these 
 
 For this campaign, every LLM role—including solver, judge, helper, and tool-side models—must explicitly use `nvidia/nvidia/nemotron-3.5-super-vl` at the authorized endpoint. A solver CLI model override alone does not bind judges. Preserve each benchmark's temperature, token/context limits, interaction count, scientific timeouts, scorer, and harness protocol; there is no universal temperature override. Supply credentials through the approved environment mechanism, never literal YAML, arguments, or reports.
 
+Verify generation settings in the captured provider request. Bare top-level `temperature` or `max_output_tokens` configuration does not guarantee that a simple-agent request contains them. For `openai_model`, use the task's `responses_create_params` or the model's supported `extra_body` configuration; explicitly supplied request fields take precedence over `extra_body`. Check the final wire payload against the benchmark protocol before live admission. A successful fixture response alone does not establish this parity.
+
 Start from the benchmark's maintained configuration and compatible [model](../fern/versions/latest/pages/model-server) and [agent](../fern/versions/latest/pages/agent-server) settings. Require declared capabilities where relevant; do not override unsupported pairings to obtain a passing plan. Enable observability, `provider_dispatch_guard: true`, and durable captures in the reviewed runtime configuration. Record source commit, actual import hashes, input hashes, and resolved non-secret settings.
 
 ```sh
