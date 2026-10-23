@@ -1,31 +1,37 @@
-# First review: testing the integration process
+# First stage gate: review the integration process
 
-We reviewed all **63 benchmark candidates**, then tested the integration process on **three worked examples**. We started with 59 configurations; the goal was to establish a reliable process for completing the integrations.
+The goal of this stage was to assess readiness across **63 candidates** and test the process on **three representative benchmarks** before expanding. We reviewed all 63 and completed the three worked examples.
 
-**Current checkpoint: review the three examples before applying the process across the inventory.** One meets its declared acceptance criteria; two need follow-up.
+## Overall expansion stages
 
-## Stages and current position
+| Stage | Goal |
+|---|---|
+| **1. Qualify the process — current review gate** | **Review the inventory, test three representative workflows, and agree on the process for expansion.** |
+| 2. Complete benchmark setup | Confirm each benchmark’s scope and dependencies, finish its Gym integration, and test its scorer. |
+| 3. Run validation samples | Run fixed samples with Nemotron and retain every task’s outputs and outcome. |
+| 4. Independently verify results | Reproduce scores from saved outputs, inspect trajectories, and resolve execution problems. |
+| 5. Publish the completed inventory | Give each of the 63 candidates a verified result or a documented blocker. |
 
-| Stage | Goal | Where we are |
-|---|---|---|
-| 1. Define the benchmark | Identify the dataset, supported tasks, dependencies, and scoring procedure. | Sources and scope reviewed for all 63; some access and protocol questions remain. |
-| 2. Test the integration | Confirm setup works and the scorer handles correct, incorrect, and malformed outputs. | Tested direct answers, scientific coding, and a tool-using agent. |
-| 3. Run a fixed sample | Run Nemotron with saved prompts, responses, tool activity, and outcomes. | Used 50 ScienceQA questions, 30 SciCode problems, and one CompChem task. |
-| 4. Verify the results | Rescore saved outputs and inspect examples to check that execution and scoring behaved as intended. | Reproduced scores for all three examples; identified remaining issues below. |
-| 5. Publish and accept | Document what ran, its results, and its limitations. | Three reports published. ScienceQA’s named 50-question sample is accepted. |
+Stages 2–5 will overlap across benchmarks as ready work advances.
 
 ## What we did and found
 
-- **[ScienceQA](benchmarks/scienceqa.md):** Reviewed 50 retained Nemotron responses, tested a fresh local setup, and reproduced every score. Accuracy was **47/50**. This text-only sample is accepted as an engineering integration; only five questions are biology. Linux deployment still needs verification.
-- **[SciCode](benchmarks/scicode.md):** Reran the same 30 scientific coding problems with a larger output allowance. **Five complete problems passed**, and rescoring the saved programs reproduced every result. One generation still exhausted its allowance. A subsequent larger-allowance run scored 29 problems; a recording-system bug stopped one.
-- **[CompChem](benchmarks/compchem.md):** Ran one molecular-descriptor task through Gym–Harbor. The agent generated the required files, passed the creator’s tests, and passed again when we restored and rescored its saved workspace. The planned 20-task sample remains to be run.
+- **[ScienceQA](benchmarks/scienceqa.md):** Reviewed 50 retained Nemotron responses, tested a fresh local setup, and reproduced every score: **47/50 correct**. The declared text-only sample meets its engineering acceptance criteria. Only five questions are biology; Linux deployment remains to be checked.
+- **[SciCode](benchmarks/scicode.md):** Ran 30 scientific coding problems with a larger output allowance. **Five complete problems passed**, and rescoring the saved programs reproduced every result. One generation still exhausted its allowance. A subsequent larger-allowance run scored 29 problems; a recording-system bug stopped one.
+- **[CompChem](benchmarks/compchem.md):** Ran one molecular-descriptor task through Gym–Harbor. The agent produced the required files and passed the creator’s tests. Restoring and rescoring its saved workspace reproduced the passing result.
 
-All three paths ran and reproduced scores. Scientific validity still needs separate assessment.
+All three execution paths ran and reproduced scores. Scientific validity still needs separate assessment.
 
-## Recommendation and decision
+## What remains to pass this gate?
 
-**Continue across the 63 candidates, starting with three parallel assignments:** fix and verify SciCode’s recovery, expand CompChem to 20 tasks, and verify ScienceQA on a Linux worker. Reuse existing machines initially. As each path passes review, continue with the next ready benchmark.
+**The technical work for this first review is finished. The remaining step is your decision on whether to use this process across the inventory.**
 
-The decision now is whether this process is sufficient to proceed with that next wave. Execution remains stopped pending review.
+SciCode’s recording bug, CompChem’s larger 20-task sample, and ScienceQA’s Linux check are follow-up work for the next stages. They prevent claiming those broader results are finished, but the first gate required worked examples and identified limitations rather than full acceptance of all three benchmarks.
+
+## Recommendation
+
+Proceed to stage 2 with three parallel assignments: fix and verify SciCode’s recovery, prepare CompChem’s 20-task run, and check ScienceQA on Linux. Then continue through the remaining candidates, running and independently reviewing each ready integration. Reuse existing machines initially.
+
+Execution remains stopped pending your review.
 
 [Full inventory](inventory.md) · [Completion plan, parallel assignments, and costs](PLAN.md)

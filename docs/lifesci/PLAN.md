@@ -1,5 +1,17 @@
 # Completing the Nemotron LifeSci Eval Expansion
 
+## Overall expansion stages
+
+| Stage | Goal |
+|---|---|
+| **1. Qualify the process — current review gate** | **Review readiness across all 63 candidates, test three representative workflows, and obtain Daniel’s first review.** |
+| 2. Complete benchmark setup | Confirm scope and dependencies, finish each integration, and test its scorer. |
+| 3. Run validation samples | Run fixed Nemotron samples and retain every task’s outputs and outcome. |
+| 4. Independently verify results | Reproduce scores, inspect trajectories, and resolve execution problems. |
+| 5. Publish the completed inventory | Record a verified result or documented blocker for every candidate. |
+
+The first goal stops at stage 1’s review gate. After approval, stages 2–5 overlap across benchmarks: ready entries advance while others are still being prepared. The detailed benchmark tasks below support those stages.
+
 ## First /goal: establish the process and stop for Daniel’s review
 
 **Scope this first goal to the review checkpoint below.** The overall project remains all 63 candidates. This goal establishes their readiness, exercises the common acceptance process on representative integrations, and produces a concrete proposal for the remaining work. The later sections describe the full process; they do not authorize continuing past this checkpoint without Daniel’s review.
@@ -27,6 +39,10 @@ Implement, run, verify, and report every accessible benchmark among the [63 sele
 The starting point is 59 entries with configurations, three partial implementations, and one source-access problem. Configuration presence does not establish that a workflow runs. The 41 documented scoring checks were collected retrospectively and vary in coverage. Apply the process below to all 63, reusing existing evidence only when it meets the same requirements. There is no separate 12-benchmark release target.
 
 Codex performs implementation and review. **Nemotron 3.5 Super VL must fill every LLM role inside the benchmark**, including solver, planner, helper, and judge. Pin the actual endpoint model identifier and record any provider revision available. Do not silently substitute another model. Inference is assumed free for this project.
+
+## Work required for each benchmark
+
+The following five tasks are the per-benchmark checklist. They support the overall expansion stages above; the first goal exercises them on representative examples before broader execution.
 
 ## 1. Establish the benchmark contract
 
