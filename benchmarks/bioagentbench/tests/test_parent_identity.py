@@ -5,7 +5,7 @@ import os
 import pytest
 
 
-def test_actual_source_and_asset_identity_before_dispatch(tmp_path):
+def test_actual_source_and_asset_identity_before_dispatch(tmp_path, monkeypatch):
     import hashlib
     import json
     import sys
@@ -61,6 +61,14 @@ def test_actual_source_and_asset_identity_before_dispatch(tmp_path):
         "path": str(native_python.absolute()),
         "sha256": hashlib.sha256(native_python.resolve().read_bytes()).hexdigest(),
     }
+    original_read_bytes = Path.read_bytes
+
+    def reject_whole_asset_read(path):
+        if path == asset / "input":
+            raise AssertionError("Scientific inputs must be hashed without whole-file allocation")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_whole_asset_read)
     identity = worker.validate_identity(packet, config)
     import subprocess
 

@@ -74,7 +74,8 @@ def validate_identity(packet: dict, config: dict) -> dict:
             if file.is_symlink():
                 raise ValueError("Asset tree contains a symlink")
             if file.is_file():
-                actual[str(file.relative_to(asset_root))] = hashlib.sha256(file.read_bytes()).hexdigest()
+                with file.open("rb") as stream:
+                    actual[str(file.relative_to(asset_root))] = hashlib.file_digest(stream, "sha256").hexdigest()
     if actual != assets or not any(name.startswith("data/") for name in actual):
         raise ValueError("Complete selected public/reference/truth asset packet differs from its manifest")
     return {
