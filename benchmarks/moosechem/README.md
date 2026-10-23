@@ -41,3 +41,17 @@ Production `ReplayPrefix` recovery restrictions remain unchanged. Offline replay
 New managed executions store creator files under `attempts/task<ID>/<hash-of-task-and-native-episode>/`; the readable capture key and capture-store identity are recorded in `execution-identity.jsonl`. The exact output directory returned by execution is used for scoring. Historical `import_existing` keeps the original `task<ID>` layout; legacy task-only artifacts block new execution until explicit reconciliation. No artifacts are moved or overwritten.
 
 An independent native repeat is distinct from a retry. A new attempt of the same logical rollout requires reconciled captures, the original capture-store identity, successful managed-process termination, and creator output files. Pending/unknown provider outcomes and partial creator executions remain blocked. Bridge lineage is the persisted native capture key, not a random retry ID. These admission controls do not implement continuation, authorize inference, or certify hypothesis quality.
+
+### Offline settled-tail qualification
+
+`python -m benchmarks.moosechem.qualify_settled_tail --repo CREATOR --saved TRACE
+--gateway LEDGER --evidence PROOF --output NEW_DIR --task-id ID --budget 16384`
+replays a successful saved prefix and stops before its exact rejected HTTP503
+request. The proof binds `saved_sha256`, `gateway_sha256`, the full maintained
+`creator_sha256` map, and `tail_gateway_request_id`. Every saved request must have
+one unique gateway start and terminal response within its recorded time interval;
+completed prefix responses must match IDs and have nonempty stopped generations.
+Network calls are denied by a Python audit hook. The terminal receipt reports
+replayed calls, exact rejected request and zero new model calls, never a scientific
+score. This is an offline compatibility check, not authorization or an implementation
+of live continuation. Existing full saved-loop qualification remains unchanged.
