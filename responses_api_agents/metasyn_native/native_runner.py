@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import argparse
-from contextlib import nullcontext
+import hashlib
 import json
 import os
 import time
 import traceback
+from contextlib import nullcontext
 from pathlib import Path
 
 from metasyn.evaluator import evaluate_record
@@ -24,7 +25,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--review-id", type=int, required=True)
 parser.add_argument("--output-root", type=Path, required=True)
 parser.add_argument("--reference-file", type=Path, required=True)
+parser.add_argument("--saved-generation", type=Path)
+parser.add_argument("--saved-generation-sha256")
 args = parser.parse_args()
+if bool(args.saved_generation) != bool(args.saved_generation_sha256):
+    raise ValueError("Saved generation requires exact artifact binding")
+if args.saved_generation and (
+    args.saved_generation.is_symlink()
+    or hashlib.sha256(args.saved_generation.read_bytes()).hexdigest() != args.saved_generation_sha256
+):
+    raise ValueError("Saved generation changed")
 rows = [json.loads(x) for x in args.reference_file.read_text().splitlines()]
 if args.review_id is not None:
     rows = [x for x in rows if x["ID"] == args.review_id]
@@ -32,15 +42,21 @@ assert rows, "No selected review"
 # Guarded native launches pass only a task-scoped local bridge credential.
 context = nullcontext()
 if os.environ.get("METASYN_BRIDGE_SOCKET"):
-    import metasyn.rag as creator_rag
-    import metasyn.llm_client as creator_llm_client
     import metasyn.evaluator as creator_evaluator
     import metasyn.judge as creator_judge
+    import metasyn.llm_client as creator_llm_client
+    import metasyn.rag as creator_rag
+
     from responses_api_agents.metasyn_native.identity import verify_child
-    verify_child(args.output_root / str(args.review_id), [creator_rag, creator_llm_client, creator_evaluator, creator_judge])
+
+    verify_child(
+        args.output_root / str(args.review_id), [creator_rag, creator_llm_client, creator_evaluator, creator_judge]
+    )
     from responses_api_agents.metasyn_native.guarded_clients import guarded_clients
+
     context = guarded_clients(
-        rag=creator_rag, llm_client=creator_llm_client,
+        rag=creator_rag,
+        llm_client=creator_llm_client,
         socket_path=os.environ["METASYN_BRIDGE_SOCKET"],
         token=os.environ["METASYN_BRIDGE_TOKEN"],
         lineage=os.environ["METASYN_BRIDGE_LINEAGE"],
@@ -58,7 +74,17 @@ with context:
         try:
             prompt = (source / "prompt.txt").read_text()
             candidates = json.loads((source / "candidates.json").read_text())
-            report, usage = generate_report(prompt, MODEL)
+            if args.saved_generation:
+                generation = json.loads(args.saved_generation.read_text())
+                if (
+                    set(generation) != {"report", "usage"}
+                    or not isinstance(generation["report"], str)
+                    or not isinstance(generation["usage"], dict)
+                ):
+                    raise ValueError("Malformed saved generator artifact")
+                report, usage = generation["report"], generation["usage"]
+            else:
+                report, usage = generate_report(prompt, MODEL)
             (out / "report.md").write_text(report)
             result = {
                 "review_id": review["ID"],

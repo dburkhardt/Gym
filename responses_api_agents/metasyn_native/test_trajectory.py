@@ -1,5 +1,7 @@
 import json
+
 import pytest
+
 from nemo_gym.config_types import ModelServerRef
 from responses_api_agents.metasyn_native.trajectory import observations
 
@@ -54,3 +56,31 @@ def test_unresolved_call_does_not_become_complete_trajectory(tmp_path):
             rollout_id="0-0",
             model_ref=ModelServerRef(type="responses_api_models", name="policy_model"),
         )
+
+
+def test_isolated_phase_ordinals_preserve_all_records(tmp_path):
+    generator = tmp_path / "generator"
+    judge = tmp_path / "judge"
+    generator.mkdir()
+    judge.mkdir()
+    saved(generator, 0)
+    for index in range(4):
+        saved(judge, index)
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*.json")}
+    trajectory, usage = observations(
+        judge,
+        generator_directory=generator,
+        task_id="task",
+        rollout_id="0-0",
+        model_ref=ModelServerRef(type="responses_api_models", name="policy_model"),
+    )
+    assert [t.invocation_id for t in trajectory.turns] == ["solver"] + ["judge"] * 4
+    assert [t.model_calls[0].response_id for t in trajectory.turns] == [
+        "response-0",
+        "response-0",
+        "response-1",
+        "response-2",
+        "response-3",
+    ]
+    assert usage.input_tokens == 15 and usage.output_tokens == 10
+    assert {str(p): p.read_bytes() for p in tmp_path.rglob("*.json")} == before

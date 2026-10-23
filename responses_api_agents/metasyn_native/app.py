@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
-from pydantic import ConfigDict, Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr, model_validator
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
 from nemo_gym.base_responses_api_agent import BaseResponsesAPIAgentConfig, SimpleResponsesAPIAgent
@@ -56,6 +56,14 @@ class Config(BaseResponsesAPIAgentConfig):
     creator_source_root: Path = Path("/unqualified-metasyn-source")
     scientific_threads: int = Field(default=1, ge=1)
     inference_enabled: bool = False
+    public_generator_image: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_live_isolation(self) -> "Config":
+        if self.inference_enabled and self.public_generator_image is None:
+            raise ValueError("Fresh MetaSyn inference requires an immutable public_generator_image")
+        return self
+
     model_server: ModelServerRef = Field(
         default_factory=lambda: ModelServerRef(type="responses_api_models", name="policy_model")
     )
@@ -85,6 +93,7 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         raise NotImplementedError("Use /run with a prepared review identifier")
 
     async def _evaluate(self, review_id: int, endpoint: str, lineage: str):
+        deadline = time.time() + 3600
         root = attempt_root(self.config.output_root, review_id, lineage)
         root.mkdir(parents=True, exist_ok=False)
         out = root / str(review_id)
@@ -99,6 +108,9 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
             Path(__file__).with_name("trajectory.py"),
             Path(__file__).with_name("artifacts.py"),
         ]
+        image = getattr(self.config, "public_generator_image", None)
+        if image:
+            files.extend([Path(__file__).with_name("isolation.py"), Path(__file__).with_name("public_generator.py")])
         interpreter = Path(shutil.which(self.config.native_python) or self.config.native_python).resolve()
         identity = {
             "scientific_assets": scientific_assets(self.config.materialized_root, review_id),
@@ -121,8 +133,25 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
         global_config = get_global_config_dict()
         if global_config.get("model_call_capture_dir"):
             identity["capture_root"] = str(Path(global_config["model_call_capture_dir"]).resolve())
+        if image:
+            identity["public_generator_image"] = image
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         _publish(out / "identity.json", identity)
+        saved_generation = None
+        if image:
+            from responses_api_agents.metasyn_native.isolation import run_generator
+
+            saved_generation = await run_generator(
+                image=image,
+                creator=self.config.creator_source_root,
+                prompt=self.config.materialized_root / "rag" / str(review_id) / "prompt.txt",
+                expected_prompt_sha256=identity["prompt_sha256"],
+                out=out,
+                endpoint=endpoint,
+                lineage=lineage,
+                digest=digest,
+                deadline=deadline,
+            )
         provider = LocalProvider(concurrency=1)
         async with scoring_workspace(provider) as handle:
             socket = handle.raw["workspace"] / "model.sock"
@@ -136,6 +165,9 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                 namespace="metasyn",
                 expected_model=MODEL,
             ):
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    raise TimeoutError("MetaSyn combined operational deadline exhausted before verification")
                 await run_creator(
                     [
                         self.config.native_python,
@@ -146,9 +178,19 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
                         str(root),
                         "--reference-file",
                         str(self.config.reference_file),
+                        *(
+                            [
+                                "--saved-generation",
+                                str(saved_generation),
+                                "--saved-generation-sha256",
+                                hashlib.sha256(saved_generation.read_bytes()).hexdigest(),
+                            ]
+                            if saved_generation
+                            else []
+                        ),
                     ],
                     out,
-                    timeout_s=3600,
+                    timeout_s=remaining,
                     env={
                         "PYTHONPATH": str(source) + ":" + str(self.config.creator_source_root.parent),
                         "NEMO_GYM_EXTRA_ROOTS": str(source),
@@ -170,6 +212,8 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
     async def run(self, request: Request, body: RunRequest) -> VerifyResponse:
         if not self.config.inference_enabled:
             raise ValueError("MetaSyn execution requires explicit qualified-runtime enablement")
+        if not self.config.public_generator_image:
+            raise ValueError("Fresh MetaSyn execution requires a qualified public-only generator image")
         global_config = get_global_config_dict()
         if not global_config.get("provider_dispatch_guard") or global_config.get("policy_model_name") != MODEL:
             raise ValueError("MetaSyn requires the guarded authorized model")
@@ -195,6 +239,9 @@ class MetaSynAgent(SimpleResponsesAPIAgent):
             task_id=str(body.model_dump().get("task_id", f"metasyn::{review_id}")),
             rollout_id=lineage,
             model_ref=self.config.model_server,
+            generator_directory=(out / "generator-output/provider-calls")
+            if getattr(self.config, "public_generator_image", None)
+            else None,
         )
         response = NeMoGymResponse.model_validate(
             {

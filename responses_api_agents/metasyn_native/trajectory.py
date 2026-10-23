@@ -3,23 +3,37 @@
 
 import json
 from pathlib import Path
+
 from nemo_gym.config_types import ModelServerRef
 from nemo_gym.openai_utils import NeMoGymResponseUsage
 from nemo_gym.rollout_observability import AgentInvocation, ModelCallRef, TrajectoryRecord, TrajectoryTurn
 
 
-def observations(directory: Path, *, task_id: str, rollout_id: str, model_ref: ModelServerRef):
+def observations(
+    directory: Path,
+    *,
+    task_id: str,
+    rollout_id: str,
+    model_ref: ModelServerRef,
+    generator_directory: Path | None = None,
+):
     trajectory = TrajectoryRecord(task_id=task_id, rollout_id=rollout_id)
     invocations = {}
     usages = []
     requests = sorted(directory.glob("*.request.json"))
+    if generator_directory is not None:
+        generator = sorted(generator_directory.glob("*.request.json"))
+        if len(generator) != 1:
+            raise ValueError("Isolated MetaSyn requires one generator call")
+        requests = generator + requests
     if not requests:
         raise ValueError("No persisted MetaSyn model calls")
     for ordinal, path in enumerate(requests):
-        if path.name != f"{ordinal:06d}.request.json":
+        local_ordinal = ordinal - 1 if generator_directory is not None and ordinal > 0 else ordinal
+        if path.name != f"{local_ordinal:06d}.request.json":
             raise ValueError("Noncontiguous MetaSyn model calls")
         request = json.loads(path.read_text())
-        saved = json.loads(path.with_name(f"{ordinal:06d}.response.json").read_text())
+        saved = json.loads(path.with_name(f"{local_ordinal:06d}.response.json").read_text())
         response = json.loads(saved["body"])
         if saved["status"] != 200 or len(response.get("choices", [])) != 1:
             raise ValueError("Unresolved MetaSyn model call")

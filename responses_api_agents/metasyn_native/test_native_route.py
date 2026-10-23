@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
 
@@ -34,6 +35,7 @@ def test_collection_metadata_survives_validation_and_native_run_route(tmp_path, 
             output_root=tmp_path / "output",
             reference_file=tmp_path / "refs",
             inference_enabled=True,
+            public_generator_image="sha256:" + "a" * 64,
         ),
         server_client=client,
     )
