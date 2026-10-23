@@ -34,6 +34,33 @@ def digest(value):
     ).hexdigest()
 
 
+def _ray_placement_compatible(prior: dict, current: dict) -> bool:
+    """Keep legacy receipt identity only for an isolated Ray placement difference.
+
+    Aggregate global hashes cannot be reconstructed from individual digests. Require
+    complete digest maps, remove only the legacy Ray key, and compare every other
+    identity field. In particular, this never authorizes changed implementation code.
+    """
+    old = prior.get("global_option_digests")
+    new = current.get("global_option_digests")
+    if not isinstance(old, dict) or not isinstance(new, dict) or "ray_head_node_address" not in old:
+        return False
+    if "ray_head_node_address" in new:
+        return False
+    for mapping in (old, new):
+        if not all(
+            isinstance(k, str) and isinstance(v, str) and len(v) == 64 and all(c in "0123456789abcdef" for c in v)
+            for k, v in mapping.items()
+        ):
+            return False
+    if {k: v for k, v in old.items() if k != "ray_head_node_address"} != new:
+        return False
+    excluded = {"global_option_digests", "global_options_sha256"}
+    return {k: v for k, v in prior.items() if k not in excluded} == {
+        k: v for k, v in current.items() if k not in excluded
+    }
+
+
 def bind_execution(
     tracker,
     global_config,
@@ -163,6 +190,7 @@ def bind_execution(
         "worker_lease_cleanup_reserve_s",
         "worker_lease_startup_reserve_s",
         "disallowed_ports",
+        "ray_head_node_address",
     ):
         global_science.pop(key, None)
     scientific_closure = None
@@ -247,6 +275,9 @@ def bind_execution(
         raise ConfigError(
             "Explicit restart requires a previously bound native batch; old unbound runs cannot be relabeled"
         )
+    if prior is not None and prior != binding and _ray_placement_compatible(prior, binding):
+        # Preserve existing row and restart-receipt digests; never rewrite history.
+        return digest(prior)
     if prior is not None and prior != binding:
         changed = sorted(key for key in set(prior) | set(binding) if prior.get(key) != binding.get(key))
         details = ""

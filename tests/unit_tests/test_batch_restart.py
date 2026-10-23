@@ -500,3 +500,56 @@ def test_malformed_relay_implementation_rejected(tmp_path, malformed):
         bind_execution(
             tracker, config, inputs, resume=False, require_prior=False, capture_dirs=[tmp_path / "captures"]
         )
+
+
+def test_ray_address_is_operational_for_new_bindings(tmp_path):
+    tracker, config, inputs, _, _, _ = fixture(tmp_path)
+    original = digest(tracker.execution_binding)
+    config["ray_head_node_address"] = "127.0.0.1:12345"
+    assert (
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+        == original
+    )
+
+
+def test_legacy_ray_only_binding_keeps_original_receipt(tmp_path):
+    from nemo_gym.provider_dispatch import configuration_digest
+
+    tracker, config, inputs, _, _, _ = fixture(tmp_path)
+    old = tracker.execution_binding
+    old["global_option_digests"]["ray_head_node_address"] = configuration_digest(
+        {"ray_head_node_address": "127.0.0.1:54321"}
+    )
+    old["global_options_sha256"] = configuration_digest({"ray_head_node_address": "127.0.0.1:54321"})
+    original = digest(old)
+    config["ray_head_node_address"] = "127.0.0.1:12345"
+    assert (
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+        == original
+    )
+    assert tracker.execution_binding is old
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "implementation_sha256",
+        "runtime_sha256",
+        "server_protocol_sha256",
+        "manifest_sha256",
+        "collector_protocol_sha256",
+    ],
+)
+def test_ray_migration_does_not_hide_other_changes(tmp_path, field):
+    tracker, config, inputs, _, _, _ = fixture(tmp_path)
+    tracker.execution_binding["global_option_digests"]["ray_head_node_address"] = "a" * 64
+    tracker.execution_binding[field] = "b" * 64
+    with pytest.raises(ConfigError, match="binding changed"):
+        bind_execution(tracker, config, inputs, resume=True, require_prior=True, capture_dirs=[tmp_path / "captures"])
+
+
+@pytest.mark.parametrize("old", [None, {}, {"ray_head_node_address": "invalid"}])
+def test_ray_migration_requires_valid_digest_map(old):
+    from nemo_gym.batch_restart import _ray_placement_compatible
+
+    assert not _ray_placement_compatible({"global_option_digests": old}, {"global_option_digests": {}})
