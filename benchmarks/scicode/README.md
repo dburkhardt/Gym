@@ -140,3 +140,29 @@ original signal/OOM evidence remain unchanged. A shape-only control shows the
 broadcast defect without allocating the large arrays; it does not establish
 that the saved model trajectories are numerically correct. A separately named
 normalization study requires the canonical HDF5 and unchanged saved programs.
+
+### Regrade saved generations without another model call
+
+A final rollout response contains only the last generation, not the accumulated
+solutions. Prepare the resource request from the exact materialized task, saved
+result and that rollout's ordered capture file:
+
+```bash
+python -m benchmarks.scicode.saved_regrade --task task.json --result result.json \
+  --captures rollout.capture.jsonl --prompt benchmarks/scicode/prompts/background.yaml \
+  --output saved-verify.json
+```
+
+This command constructs no provider client. It checks task/call identities, exact
+prompts and generation settings, settled responses, optional usage and creator
+prefilled/context-window states using the native helpers. Missing or mismatched
+captures fail. The output and sidecar manifest are new files with input/source
+hashes; originals remain unchanged. Send the prepared request to the maintained
+resource `/verify` route in an isolated, resource-only regrade after the original
+run has stopped and cleaned up. Bind its original H5, image, scientific settings
+and source separately. Preparation alone is not a regrade result.
+
+Verification rejects missing, partial or foreign solution mappings. Explicitly
+keyed empty model output still counts as a scientific failure; creator-prefilled
+steps remain excluded. Do not use an empty mapping to stand in for missing replay
+artifacts or alter a historical result in place.

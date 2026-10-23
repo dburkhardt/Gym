@@ -36,13 +36,6 @@ from uuid import uuid4
 
 from fastapi import Request, Response
 from pydantic import ConfigDict
-from step_utils import (
-    OUT_OF_CONTEXT,
-    PREFILLED_STEPS_CODE,
-    extract_python_script,
-    is_context_window_error,
-    process_problem_steps,
-)
 
 from nemo_gym._checkpoint.agent import LegacyRun, RestoredAgentSession
 from nemo_gym.base_resources_server import AggregateMetrics, AggregateMetricsRequest, BaseRunRequest
@@ -71,6 +64,13 @@ from nemo_gym.rollout_observability import (
     TrajectoryTurn,
 )
 from nemo_gym.server_utils import raise_for_status, rollout_path_prefix
+from responses_api_agents.scicode_agent.step_utils import (
+    OUT_OF_CONTEXT,
+    PREFILLED_STEPS_CODE,
+    extract_python_script,
+    is_context_window_error,
+    process_problem_steps,
+)
 
 
 LOG = logging.getLogger(__name__)

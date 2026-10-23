@@ -130,14 +130,13 @@ def test_run_substep_program_larger_than_arg_max():
 # ----------------------------
 class TestApp:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("has_solution", [False, True])
-    async def test_verify_preserves_step_usage(self, has_solution):
-        request_json = _request(solutions={"1.1": "a"} if has_solution else None).model_dump()
+    async def test_verify_preserves_step_usage(self):
+        request_json = _request(solutions={"1.1": "a"}, n_steps=1).model_dump()
         request_json["token_usage_version"] = 1
         request_json["step_usage"] = [
             {
                 "step_number": "1.1",
-                "status": "generated" if has_solution else "skipped",
+                "status": "generated",
                 "usage": None,
             }
         ]
@@ -146,7 +145,7 @@ class TestApp:
             result = (await _server(h5.name).verify(request)).model_dump()
         assert result["token_usage_version"] == 1
         assert result["step_usage"] == request_json["step_usage"]
-        assert result["reward"] == float(has_solution)
+        assert result["reward"] == 1.0
 
     def test_sanity(self):
         _server()
@@ -158,22 +157,30 @@ class TestApp:
         assert config.test_data_fpath is None
 
     @pytest.mark.asyncio
-    async def test_verify_no_solutions_returns_zero(self):
-        result = await _server().verify(_request(solutions=None))
-        assert result.reward == 0.0
-        assert result.num_steps_total == 0
-        assert result.num_steps_passed == 0
-        assert result.problem_accuracy is False
+    @pytest.mark.parametrize("solutions", [None, {}])
+    async def test_verify_missing_solutions_refuses_scientific_zero(self, solutions):
+        with pytest.raises(ValueError, match="requires saved solutions"):
+            await _server().verify(_request(solutions=solutions))
 
     @pytest.mark.asyncio
-    async def test_verify_excludes_steps_absent_from_solutions(self):
-        # Step 1.2 has no solution entry (prefilled) -> excluded from the denominator entirely.
-        with tempfile.NamedTemporaryFile(suffix=".h5") as h5, _mock_substep(passed=True):
-            result = await _server(h5.name).verify(_request(solutions={"1.1": "a"}, n_steps=2))
-        assert result.num_steps_total == 1
-        assert result.num_steps_passed == 1
-        assert result.reward == 1.0
-        assert result.problem_accuracy is True
+    async def test_verify_keyed_empty_output_remains_scientific_failure(self):
+        with tempfile.NamedTemporaryFile(suffix=".h5") as h5, _mock_substep(passed=False):
+            result = await _server(h5.name).verify(_request(solutions={"1.1": ""}, n_steps=1))
+        assert result.reward == 0.0 and result.num_steps_total == 1
+
+    @pytest.mark.asyncio
+    async def test_verify_known_all_prefilled_empty_is_valid(self):
+        request = _request(solutions={}, n_steps=1)
+        request.problem_id = "62"
+        request.sub_steps[0]["step_number"] = "62.1"
+        result = await _server().verify(request)
+        assert result.num_steps_total == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("solutions", [{"1.1": "a"}, {"2.1": "a"}, {"1.1": "a", "1.2": "b", "1.3": "c"}])
+    async def test_verify_rejects_partial_or_wrong_task_mapping(self, solutions):
+        with pytest.raises(ValueError, match="exactly the generated"):
+            await _server().verify(_request(solutions=solutions, n_steps=2))
 
     @pytest.mark.asyncio
     async def test_verify_unconfigured_test_data_raises(self):
@@ -265,7 +272,7 @@ async def test_known_shape_conflict_is_masked_without_execution(tmp_path, candid
     from pathlib import Path
 
     step = json.loads((Path(__file__).parent / "fixtures/step79_4.json").read_text())
-    body = _request({"79.1": "pass", "79.4": candidate})
+    body = _request({"79.1": "pass", "79.2": "pass", "79.3": "pass", "79.4": candidate})
     body.problem_id = "79"
     body.sub_steps = [{"step_number": f"79.{i}", "test_cases": ["assert True"]} for i in range(1, 4)] + [step]
     server = _server()
@@ -275,18 +282,18 @@ async def test_known_shape_conflict_is_masked_without_execution(tmp_path, candid
         patch.object(app, "execute_substep", AsyncMock(return_value={"passed": True, "error": ""})) as execute,
     ):
         result = await server.verify(body)
-    assert execute.await_count == 1
+    assert execute.await_count == 3
     if candidate != "pass":
-        assert result.step_results == [True, False]
+        assert result.step_results == [True, True, True, False]
         assert not result.mask_sample
-        assert result.reward == 0.0 and result.subtask_accuracy == 0.5
+        assert result.reward == 0.0 and result.subtask_accuracy == 0.75
         assert result.measurement_validity == []
-        assert result.num_steps_total == 2
+        assert result.num_steps_total == 4
         return
-    assert result.step_results == [True, None]
-    assert [x["step_number"] for x in result.step_execution] == ["79.1", "79.4"]
+    assert result.step_results == [True, True, True, None]
+    assert [x["step_number"] for x in result.step_execution] == ["79.1", "79.2", "79.3", "79.4"]
     assert result.mask_sample and result.failure_kind == "scicode:reference_shape_conflict"
     assert result.problem_accuracy is None and result.subtask_accuracy is None
-    assert result.num_steps_total == 2 and result.num_steps_passed == 1
+    assert result.num_steps_total == 4 and result.num_steps_passed == 3
     assert result.measurement_validity[0]["raw_score"] is None
     assert not result.measurement_validity[0]["executed"]

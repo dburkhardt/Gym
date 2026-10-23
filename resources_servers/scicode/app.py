@@ -126,6 +126,18 @@ class ScicodeResourcesServer(SimpleResourcesServer):
 
     async def verify(self, body: ScicodeVerifyRequest) -> ScicodeVerifyResponse:
         solutions = body.solutions or {}
+        # A missing replay payload is not a scientific failure. Empty generated
+        # code is valid only as an explicitly keyed solution. Creator-prefilled
+        # steps may legitimately supply no scored solutions.
+        from responses_api_agents.scicode_agent.step_utils import PREFILLED_STEPS_CODE
+
+        required = {
+            f"{body.problem_id}.{i + 1}"
+            for i in range(len(body.sub_steps))
+            if (body.problem_id, i) not in PREFILLED_STEPS_CODE
+        }
+        if set(solutions) != required:
+            raise ValueError("SciCode verification requires saved solutions for exactly the generated steps")
         # Score only sub-steps the agent produced a solution for. Sub-steps absent from solutions
         # (prefilled steps) are excluded from the denominator entirely; out-of-context sentinels
         # are present and counted as failures.
