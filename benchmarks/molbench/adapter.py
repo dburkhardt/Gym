@@ -18,7 +18,7 @@ def score(repo,meta,answer):
  if meta.get('stratum')=='mo-opt':
   python=os.environ.get('MOLBENCH_OPT_PYTHON')
   if not python:raise RuntimeError('MOLBENCH_OPT_PYTHON must point to isolated pinned native oracle environment')
-  result=subprocess.run([python,str(Path(__file__).with_name('optimization_worker.py')),str(Path(repo).resolve())],input=json.dumps({'meta':meta,'answer':answer}),capture_output=True,text=True,timeout=180,check=True)
+  result=subprocess.run([python,'-I',str(Path(__file__).with_name('optimization_worker.py')),str(Path(repo).resolve())],input=json.dumps({'meta':meta,'answer':answer}),capture_output=True,text=True,timeout=180,check=True)
   return json.loads(result.stdout)
  if meta.get('stratum')=='mo-edit':
   dependency=Path(repo)/'molbench/eval/ChemCoTBench/baseline_and_eval'
