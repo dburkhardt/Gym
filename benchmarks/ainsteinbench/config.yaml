@@ -10,7 +10,6 @@ harbor_agent:
       harbor_datasets:
         ainsteinbench:
           local_dataset_path: benchmarks/ainsteinbench/data/tasks
-          workdir: /home/pyscf
       harbor_agent_name: null
       harbor_agent_import_path: benchmarks.ainsteinbench.harbor_native:AInsteinAgent
       harbor_agent_kwargs:

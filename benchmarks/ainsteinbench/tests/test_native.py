@@ -845,3 +845,11 @@ async def test_et_cancellation_settles_active_exec_before_return(tmp_path):
     assert settled.is_set()
     assert json.loads((tmp_path / "transport-status.json").read_text())["worker_settled"]
     assert not (tmp_path / "score.json").exists()
+
+
+def test_dataset_alias_does_not_override_task_specific_workdir():
+    import yaml
+
+    config = yaml.safe_load((Path(__file__).parents[1] / "config.yaml").read_text())
+    alias = config["harbor_agent"]["responses_api_agents"]["harbor_agent"]["harbor_datasets"]["ainsteinbench"]
+    assert "workdir" not in alias
