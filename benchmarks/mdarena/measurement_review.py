@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Versioned review of frozen task02 measurements; raw RewardKit scores stay intact."""
+"""Versioned review of audited frozen task measurements; raw RewardKit scores stay intact."""
 
 import hashlib
 import json
@@ -15,8 +15,57 @@ AUDITED_CONFIG_SHA256 = {
 }
 
 
+TASK18_CHECK_SHA256 = "4742b137ec647c4e79e5a2c62ce0f941616ef4728583852099d397167ed20df6"
+TASK18_CRITERIA = {
+    "ffnonbonded_ion_atom_type_charges_are_scaled",
+    "ions_itp_molecule_charges_are_scaled",
+    "unused_ion_parameters_are_unchanged",
+    "scaled_topology_points_at_the_scaled_force_field",
+    "unscaled_force_field_files_are_unchanged",
+}
+
+
+def _review_task18(trial_dir: Path, trial_result: dict) -> dict:
+    result = {"version": "mdarena-task18-preservation-review-v1", "metrics": {}, "evidence": {}}
+    native = (trial_result.get("verifier_result") or {}).get("rewards") or {}
+    if "correctness" not in native:
+        return result
+    controller = trial_dir / "verifier/native-controller/controller"
+    values = {}
+    for key, path in {
+        "identity": controller.parent / "identity.json",
+        "details": controller / "result/reward-details.json",
+    }.items():
+        if path.exists():
+            payload = path.read_bytes()
+            result["evidence"][str(path.relative_to(trial_dir))] = hashlib.sha256(payload).hexdigest()
+            values[key] = json.loads(payload)
+    identity = values.get("identity", {})
+    criteria = values.get("details", {}).get("correctness", {}).get("criteria", [])
+    names = {item.get("name") for item in criteria if item.get("weight", 1) > 0}
+    known = (
+        identity.get("test_sources_sha256", {}).get("correctness/checks.py") == TASK18_CHECK_SHA256
+        and names == TASK18_CRITERIA
+    )
+    result["metrics"]["correctness"] = {
+        "status": "unresolved",
+        "reason": (
+            "Audited task18 checks detect tested charge, unused-ion, include and bonded-parameter errors, "
+            "but accept doubled sodium Lennard-Jones sigma and changed sodium molecule count. "
+            "Raw correctness remains a score for those checks, not certification of full parameter/composition "
+            "preservation. Process judging was not exercised by these controls."
+            if known
+            else "Task18 scorer source or criterion signature is changed or unavailable; preservation qualification "
+            "requires new source-bound review. No process-judge conclusion is implied."
+        ),
+    }
+    return result
+
+
 def review(*, trial_dir: Path, instance_id: str, trial_result: dict) -> dict:
     """Do not extrapolate one audited task's scientific findings to other tasks."""
+    if instance_id == "mdarena::18_scale_charge":
+        return _review_task18(trial_dir, trial_result)
     result = {"version": "mdarena-task02-scientific-review-v1", "metrics": {}, "evidence": {}}
     if instance_id != "mdarena::02_conc_diff_sys_traj":
         return result

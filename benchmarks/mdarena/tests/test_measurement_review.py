@@ -124,3 +124,41 @@ def test_review_cannot_mutate_native_scores(tmp_path, monkeypatch):
     native = {"verifier_result": {"rewards": {"reward": 1.0}}}
     annotated, _, _ = apply_measurement_review(native, trial_dir=tmp_path, instance_id="control", import_path=HOOK)
     assert native["verifier_result"]["rewards"]["reward"] == annotated["verifier_result"]["rewards"]["reward"] == 1.0
+
+
+@pytest.mark.parametrize("case", ["reference", "wrong_factor", "lj_preservation_probe", "molecule_count_probe"])
+def test_task18_saved_controls_preserve_raw_and_qualify_preservation(tmp_path, case):
+    from benchmarks.mdarena.measurement_review import TASK18_CHECK_SHA256
+
+    base = (
+        Path(__file__).resolve().parents[5]
+        / "outputs/broad-eval-campaign/foundation/mdarena-process-evidence-20261023/task18-next"
+    )
+    path = base / "controls-export/controls-v1" / case / "result.json"
+    if not path.exists():
+        pytest.skip("Saved task18 control unavailable")
+    hashes = json.loads((base / "controls-export-hashes.json").read_text())
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == hashes[f"controls-v1/{case}/result.json"]
+    saved = json.loads(path.read_text())
+    controller = tmp_path / "verifier/native-controller/controller"
+    (controller / "result").mkdir(parents=True)
+    (controller / "result/reward-details.json").write_text(json.dumps(saved["native_details"]))
+    identity = controller.parent / "identity.json"
+    identity.write_text(json.dumps({"test_sources_sha256": {"correctness/checks.py": TASK18_CHECK_SHA256}}))
+    native = {"verifier_result": {"rewards": {**saved["native_scores"], "process": 0.75}}}
+    original = copy.deepcopy(native)
+    reviewed, kind, _ = apply_measurement_review(
+        native, trial_dir=tmp_path, instance_id="mdarena::18_scale_charge", import_path=HOOK
+    )
+    assert native == original and reviewed["verifier_result"] == original["verifier_result"]
+    metrics = reviewed["measurement_review"]["metrics"]
+    assert set(metrics) == {"correctness"}
+    assert metrics["correctness"]["status"] == "unresolved"
+    assert "doubled sodium" in metrics["correctness"]["reason"]
+    assert kind == "harbor:scientific_measurement_invalid"
+    assert reviewed["verifier_result"]["rewards"]["process"] == 0.75
+    identity.write_text(json.dumps({"test_sources_sha256": {"correctness/checks.py": "changed"}}))
+    unknown, _, _ = apply_measurement_review(
+        native, trial_dir=tmp_path, instance_id="mdarena::18_scale_charge", import_path=HOOK
+    )
+    assert "changed or unavailable" in unknown["measurement_review"]["metrics"]["correctness"]["reason"]
