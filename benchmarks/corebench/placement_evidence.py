@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from benchmarks.corebench.generated_cache import cache_source
+from benchmarks.corebench.runtime_outputs import validate_runtime_outputs
 
 
 REQUIRED = {
@@ -27,7 +28,11 @@ def validate_gpu_placement(row, qualification, limits, evidence):
         raise ValueError("GPU execution requires separate placement evidence")
     root = Path(evidence["root"])
     hashes = evidence["sha256"]
-    if not isinstance(hashes, dict) or set(hashes) not in (REQUIRED, REQUIRED | {"generated-cache.json"}):
+    if (
+        not isinstance(hashes, dict)
+        or not REQUIRED <= set(hashes)
+        or set(hashes) - REQUIRED - {"generated-cache.json", "runtime-outputs.json"}
+    ):
         raise ValueError("Incomplete GPU placement evidence")
     for name, expected in hashes.items():
         path = root / name
@@ -41,10 +46,17 @@ def validate_gpu_placement(row, qualification, limits, evidence):
     if read("before-source.json") != {"files": len(expected_sources), "changed": []}:
         raise ValueError("GPU placement source integrity failed")
     after = read("after-source.json")
-    if after != {"files": len(expected_sources), "changed": []}:
+    integrity_sources = expected_sources
+    if "runtime-outputs.json" in hashes:
+        integrity_sources, after, observed = validate_runtime_outputs(
+            row, expected_sources, after, read("runtime-outputs.json")
+        )
+        if "generated-cache.json" in hashes and read("generated-cache.json").get("observed_sha256") != observed:
+            raise ValueError("Runtime output and generated-cache observations differ")
+    if after != {"files": len(integrity_sources), "changed": []}:
         if "generated-cache.json" not in hashes:
             raise ValueError("GPU placement source integrity failed")
-        validate_generated_cache(expected_sources, after, read("generated-cache.json"))
+        validate_generated_cache(integrity_sources, after, read("generated-cache.json"))
     expected = {
         "image": qualification["final_image"],
         "cpus": limits["cpus"],

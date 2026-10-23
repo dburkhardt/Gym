@@ -166,3 +166,14 @@ The original `after-source.json` stays unchanged; all original and generated has
 remain. This is a cache-integrity exception, not scientific validation or permission to
 reuse a creator-image workflow as final harness-image qualification. Final image
 identity and separate workflow requirements still apply.
+
+A GPU control may additionally bind `runtime-outputs.json` under the explicit
+`core-creator-runtime-output/v1` policy. The only reviewed policy currently covers
+CORE464's two creator-written default emissions CSV files. It binds the exact
+capsule, instruction, published image and creator source hashes; it does not
+permit other tuner, scientific source or dataset changes. Both full original and
+observed manifests remain in the receipt and must match the original-key
+projection of `after-source.json.after_hashes`. New files remain in that raw
+record. All residual changes still require the separate generated-cache proof;
+missing or inconsistent evidence fails closed. This records expected output
+mutation, not evidence of a fresh hyperparameter search or LLM performance.
