@@ -23,6 +23,10 @@ PROFILE = f'''local({{
 
 def recipe(row: dict[str, object]) -> str:
     """Return an opt-in cache recipe bound to the exact capsule and input."""
+    from benchmarks.corebench import model_cache
+
+    if row.get("external_input_variant") == model_cache.VARIANT:
+        return model_cache.recipe(row)
     if row.get("external_input_variant") is None:
         return ""
     if (
@@ -70,6 +74,11 @@ def stage_files(row: dict[str, object], source: Path | None, destination: Path) 
         return
     if source is None:
         raise ValueError("Explicit variant requires the pinned external input")
+    from benchmarks.corebench import model_cache
+
+    if row["external_input_variant"] == model_cache.VARIANT:
+        model_cache.stage(source, destination)
+        return
     if row["external_input_variant"] == CLOSURE_VARIANT:
         if not source.is_dir():
             raise ValueError("Complete external input variant requires a directory")
