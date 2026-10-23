@@ -79,7 +79,17 @@ For an outer supervisor bound that includes service startup, opt in with `python
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl
 ```
 
-Keep native results, failure sidecars, materialized inputs, batch manifest/status, capture ledger, trajectories, and cleanup receipts together. Use the existing [rollout evidence tools](../fern/versions/latest/pages/observability/rollout-evidence.mdx) and benchmark-specific reports. Distinguish raw score from measurement validity, model failure from infrastructure failure, and attempted/scored/unresolved/undispatched counts. Never convert missing or unknown outcomes to zero; retain genuine model-budget zeros. Health and cleanup are separate from scientific scoring.
+Keep native results, failure sidecars, materialized inputs, batch manifest/status, capture ledger, trajectories, and cleanup receipts together. Use the existing [rollout evidence tools](../fern/versions/latest/pages/observability/rollout-evidence.mdx) and benchmark-specific reports. Distinguish raw score from measurement validity, model failure from infrastructure failure, and attempted/scored/unresolved/undispatched counts. Never convert missing or unknown outcomes to zero. A solver budget exhaustion can still receive a genuine zero or partial credit from the original scorer; retain that scorer result rather than assigning zero from the failure label. Health and cleanup are separate from scientific scoring.
+
+### Terminal judge failures are unscored
+
+For an output named `results.jsonl`, inspect `results_failures.jsonl` as well as the scored output. PromptBio now returns a handled HTTP200 failure after a completed solver when the judge exhausts its output-token budget. The sidecar records `_ng_failure_class: judge_failed`, `_ng_failure_terminal: true`, and `failure_disposition: judge_output_budget_exhausted`; `creator_score` and `scientific_score` are null, and there is no `reward` or invented `response`. It retains the task/rollout identity, solver and grading artifact directories, and artifact hashes. The original grader stderr/traceback remains in `execution.json`. HTTP200 here means the failure was recorded, not that the benchmark was scored.
+
+This specific disposition requires matching source and captured-response identities, a completed HTTP200 length response, creator exit1 without a runtime error, and confirmed owned cleanup. Timeouts, signal exits, uncertain dispatches, source mismatches and unconfirmed cleanup do not qualify as this settled judge-budget failure. See the [qualification code](../responses_api_agents/promptbio_bench/outcomes.py).
+
+Ordinary `--resume` skips this terminal occurrence; it does not rerun its solver or judge. Other `judge_failed` rows are not necessarily terminal: inspect `_ng_failure_terminal` rather than treating the class name as a retry policy. The collector excludes failures from its ordinary reward aggregate. Do not enable `count_failure_classes_as_zero` for these unscored judge outcomes to improve apparent coverage. Report them separately from valid solver-budget scores and from unresolved infrastructure failures.
+
+The local regression checks cover HTTP200 handling, failure-sidecar persistence, aggregate exclusion and zero redispatch on resume. Explicit historical projections of saved attempts test classification and collection only; they are not evidence that those older attempts ran the new runtime. Old source receipts remain unchanged and fail current-source qualification.
 
 A run with no scored rows can exit nonzero after recording a definitive provider rejection. Inspect its failure sidecar, capture and batch binding before choosing recovery. A nonzero exit alone neither authorizes a fresh dispatch nor proves that no request was sent.
 
@@ -125,7 +135,7 @@ For visual tasks, verify the complete generated-file → image observation → m
 
 ## Resume or regrade deliberately
 
-For the same bound run, ordinary resume skips completed rows and admits only safe remaining work:
+For the same bound run, ordinary resume skips completed rows and terminal failure occurrences; nonterminal failures remain subject to the configured retry policy and guarded dispatch checks:
 
 ```sh
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl --resume
@@ -133,7 +143,9 @@ gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.json
 
 Retain original source/configuration, inputs, outputs, captures, and manifests. Unknown accepted calls must remain refused; a new suffix or capture directory does not reconcile them. Stateful continuation requires a specifically qualified checkpoint path. An explicit new attempt after definitive rejection is a separate opt-in with exact receipt-selected failures and supported dependency closure: follow [guarded batch restart](../nemo_gym/batch-restart.md), not a generic retry command. Do not resume merely because a process disappeared.
 
-Regrade saved responses with a separately reviewed scorer configuration and a new output:
+Regrade supported saved response records with a separately reviewed scorer configuration and a new output. The command below is not a universal artifact-recovery command: generic reverify requires a saved `response`. PromptBio's terminal judge sidecar intentionally has none, so neither feeding it directly to reverify nor adding `--judge-failed-only` makes it regradable. Recover through a separately qualified benchmark-specific saved-artifact grading path, with exact task/artifact identity and no solver replay. Do not fabricate a response or use `--force` to bypass this missing contract.
+
+For supported response records:
 
 ```sh
 gym eval reverify --config /absolute/regrade.yaml \

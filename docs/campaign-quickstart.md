@@ -31,11 +31,11 @@ gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.json
 gym eval health-check /absolute/attempt --rollouts-file results.jsonl --json
 ```
 
-Retain results, failure sidecars, captures, trajectories, materialized inputs and cleanup receipts. Report attempted, validly scored, unresolved and unstarted counts separately. A supervisor that cleaned up successfully may still contain a failed child run; inspect its child return code. An infrastructure failure is not an incorrect model answer.
+Retain results, failure sidecars, captures, trajectories, materialized inputs and cleanup receipts. Report attempted, validly scored, unresolved and unstarted counts separately. A supervisor that cleaned up successfully may still contain a failed child run; inspect its child return code. An infrastructure failure is not an incorrect model answer. Inspect `results_failures.jsonl` alongside `results.jsonl`: a handled HTTP200 terminal judge failure can retain completed solver artifacts while leaving scientific and creator scores null. It contributes no reward, including no automatic zero. Genuine solver-budget zeros must come from the original scorer. See [terminal judge failures](campaign-operator.md#terminal-judge-failures-are-unscored).
 
 ## Resume or regrade
 
-For an unchanged bound run, ordinary resume preserves completed rows:
+For an unchanged bound run, ordinary resume skips completed rows and occurrences marked `_ng_failure_terminal: true`:
 
 ```sh
 gym eval run --config /absolute/run.yaml --output /absolute/attempt/results.jsonl --resume
@@ -52,6 +52,6 @@ gym eval reverify --config /absolute/regrade.yaml \
   --output /absolute/regrade/results.jsonl
 ```
 
-Reverification preserves solver outputs and records new scorer lineage. An LLM judge may still make inference calls; only a deterministic scorer or qualified saved-judge replay is zero-inference. Inspect evidence through the [rollout tools](../fern/versions/latest/pages/observability/rollout-evidence.mdx) and the benchmark's own report.
+Generic reverification requires a saved `response`. PromptBio's terminal judge sidecar deliberately lacks one; it needs a separately qualified benchmark-specific saved-artifact grading path, not a generic `--judge-failed-only` retry. Reverification of supported response records preserves solver outputs and records new scorer lineage. An LLM judge may still make inference calls; only a deterministic scorer or qualified saved-judge replay is zero-inference. Inspect evidence through the [rollout tools](../fern/versions/latest/pages/observability/rollout-evidence.mdx) and the benchmark's own report.
 
 The six command families were checked against the current CLI help. These configuration templates are not a claim that an arbitrary benchmark is runtime-qualified.
