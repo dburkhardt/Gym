@@ -24,7 +24,7 @@ def stage(source: Path, destination: Path):
     provenance_path = destination / "provenance.json"
     if existing.exists() and (
         not provenance_path.exists()
-        or json.loads(provenance_path.read_text()).get("preparation_version") != "et-native-desitter-v1"
+        or json.loads(provenance_path.read_text()).get("preparation_version") != "et-native-task-isolation-v2"
     ):
         raise ValueError("Changed protocol preparation requires a fresh versioned destination")
     records = []
@@ -40,12 +40,8 @@ def stage(source: Path, destination: Path):
                 if task_id in ET_RUNTIMES
                 else ET_IMAGE
             )
-            # GRHydro remains registered but blocked: this image only qualifies deSitter isolation.
-            blocker = (
-                None
-                if supported
-                else "No task-specific isolated runtime qualification; GRHydro source remains visible"
-            )
+            # Each ET task requires its own qualified isolated runtime.
+            blocker = None if supported else "No task-specific isolated runtime qualification"
             workdir = "/home/pyscf" if msb else raw["environment"]["working_directory"]
             records.append(
                 {
@@ -93,7 +89,7 @@ network_mode = "no-network"
             json.dumps(
                 {
                     "source_commit": "d9b1383e86c2ae43dcb3ddbcaf34c21ceb786cca",
-                    "preparation_version": "et-native-desitter-v1",
+                    "preparation_version": "et-native-task-isolation-v2",
                     "source_hashes": hashes,
                     "task_ids": list(rows),
                     "supported_native_tasks": [

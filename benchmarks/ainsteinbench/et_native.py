@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from harbor.environments.base import BaseEnvironment
 
 
+GRHYDRO = "ET_EinsteinEvolve_GRHydro_GRHydro_Source_cc"
+GRHYDRO_IMAGE = "sha256:e45df9c19c046fa88e9839d4b5854a5706afd1e02d310c14b97be63b4b0be611"
 DESITTER = "ET_EinsteinInitialData_Exact_metrics_de_Sitter_F"
 IMAGE = "sha256:c4884e5e26ca6ba2f0123d9869e4b36ca07a2bcbe7c56ee2b7b9c46fc698ab52"
 
@@ -40,6 +42,21 @@ class ETRuntime:
 # The existing de Sitter image contains GRHydro's target and cannot qualify it.
 ET_RUNTIMES = MappingProxyType(
     {
+        GRHYDRO: ETRuntime(
+            image=GRHYDRO_IMAGE,
+            thorn="EinsteinEvolve/GRHydro",
+            source_filename="GRHydro_Source.cc",
+            references="EinsteinEvolve/GRHydro/test",
+            forbidden=(
+                "/opt/Cactus/arrangements/EinsteinEvolve/GRHydro/src/GRHydro_Source.cc",
+                "/opt/Cactus/repos/einsteinevolve/GRHydro/src/GRHydro_Source.cc",
+                "/opt/Cactus/configs/sim/build/GRHydro/GRHydro_Source.cc.o",
+                "/opt/Cactus/configs/sim/build/GRHydro/GRHydro_Source.cc.d",
+                "/opt/Cactus/configs/sim/lib/libthorn_Exact.a",
+                "/opt/Cactus/configs/sim/lib/libthorn_GRHydro.a",
+                "/opt/Cactus/exe/cactus_sim",
+            ),
+        ),
         DESITTER: ETRuntime(
             image=IMAGE,
             thorn="EinsteinInitialData/Exact",

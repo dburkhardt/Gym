@@ -24,7 +24,7 @@ def test_all_frozen_tasks_preserved_with_explicit_readiness(tmp_path):
     staged = [json.loads(x) for x in output.read_text().splitlines()]
     assert [r["task_id"] for r in staged] == list(rows)
     assert len(staged) == 4
-    assert sum(bool(r["verifier_metadata"]["blocked_reason"]) for r in staged) == 1
+    assert not any(r["verifier_metadata"]["blocked_reason"] for r in staged)
     import tomllib
 
     from harbor.models.task.config import TaskConfig
@@ -737,7 +737,7 @@ def test_desitter_preparation_pins_qualified_image_and_explicit_placement(tmp_pa
     assert config["verifier"]["environment_mode"] == "separate"
     provenance = json.loads((tmp_path / "provenance.json").read_text())
     assert DESITTER in provenance["supported_native_tasks"]
-    assert len(provenance["blocked_tasks"]) == 1
+    assert provenance["blocked_tasks"] == []
 
 
 @pytest.mark.asyncio
@@ -806,7 +806,9 @@ async def test_et_transport_failure_never_becomes_creator_zero(tmp_path, failure
             if "simfactory/bin/sim build" in command:
                 if isinstance(failure, Exception):
                     raise failure
-                return SimpleNamespace(return_code=failure, stdout="partial compiler output", stderr="partial diagnostic")
+                return SimpleNamespace(
+                    return_code=failure, stdout="partial compiler output", stderr="partial diagnostic"
+                )
             return SimpleNamespace(return_code=0, stdout="", stderr="")
 
     with pytest.raises((RuntimeError, TimeoutError)):
@@ -1001,3 +1003,32 @@ def test_et_runtime_metadata_preserves_original_isolation_and_reference_root():
         runtime.references = "EinsteinEvolve/GRHydro/test"
     with pytest.raises(TypeError):
         ET_RUNTIMES["unqualified"] = runtime
+
+
+def test_grhydro_preparation_uses_separate_cache_qualified_image(tmp_path):
+    import tomllib
+
+    from benchmarks.ainsteinbench.et_native import GRHYDRO, GRHYDRO_IMAGE, IMAGE, checked_et_runtime
+
+    rows, _ = checked_source(SOURCE)
+    records = [json.loads(line) for line in stage(SOURCE, tmp_path).read_text().splitlines()]
+    row = next(row for row in records if row["task_id"] == GRHYDRO)
+    assert row["verifier_metadata"]["blocked_reason"] is None
+    config = tomllib.loads((tmp_path / "tasks" / GRHYDRO / "task.toml").read_text())
+    assert config["environment"]["docker_image"] == GRHYDRO_IMAGE
+    assert config["environment"]["cpus"] == 2
+    assert config["environment"]["memory_mb"] == 4096
+    assert config["agent"]["timeout_sec"] == 18600
+    assert config["verifier"]["timeout_sec"] == 3600
+    runtime = checked_et_runtime(rows[GRHYDRO], GRHYDRO_IMAGE)
+    assert runtime.references == "EinsteinEvolve/GRHydro/test"
+    assert "/opt/Cactus/configs/sim/build/GRHydro/GRHydro_Source.cc.o" in runtime.forbidden
+    assert "/opt/Cactus/configs/sim/build/GRHydro" not in runtime.forbidden
+    with pytest.raises(ValueError, match="not qualified"):
+        checked_et_runtime(rows[GRHYDRO], IMAGE)
+    provenance = tmp_path / "provenance.json"
+    old = json.loads(provenance.read_text())
+    old["preparation_version"] = "et-native-desitter-v1"
+    provenance.write_text(json.dumps(old))
+    with pytest.raises(ValueError, match="fresh versioned destination"):
+        stage(SOURCE, tmp_path)

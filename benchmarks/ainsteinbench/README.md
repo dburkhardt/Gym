@@ -54,3 +54,16 @@ solver image by compiling the target answer, or replace original reference/negat
 controls with cache checks. The ET adapter records returned command output before
 rejecting abnormal termination; this preserves available diagnostics without
 recovering bytes discarded upstream or changing the original 300-second deadline.
+
+### GRHydro dependency-bound cache runtime
+
+GRHydro uses its own isolated image `e45df9c19c046fa88e9839d4b5854a5706afd1e02d310c14b97be63b4b0be611`.
+Its 120 restored individual objects and dependency files passed the maintained dependency audit;
+no target object, aggregate library, executable, or target source was restored. The complete
+isolated baseline filesystem is unchanged apart from those audited additions and their directories.
+Original creator reference controls passed 10/10 tests; omitting the source-term call passed 6/10
+(score 80, including compilation and execution credit). This demonstrates sensitivity to that
+specific defect, not comprehensive scorer sensitivity or model performance. Both controls retained
+2 CPUs / 4 GiB, network isolation, the original 300-second command timeout and creator 600-second
+test command. Native preparation preserves the original solver/verifier ceilings and requires a
+fresh versioned destination; older preparation receipts are not overwritten.
