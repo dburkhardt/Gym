@@ -286,3 +286,32 @@ def test_live_isolation_and_cross_phase_budget_fail_before_dispatch(image, budge
     config.isolated_runtime_image = "sha256:" + "a" * 64
     config.output_token_budget = 8192
     app.require_isolated_live(config, {})
+
+
+def test_resolved_isolated_overlay_resource_metadata(monkeypatch, tmp_path):
+    from omegaconf import OmegaConf
+
+    from nemo_gym.config_types import maybe_get_server_instance_config
+
+    root = Path(__file__).resolve().parents[2]
+    for key, value in {
+        "MOOSE_RUNTIME_IMAGE": "sha256:" + "a" * 64,
+        "MOOSE_PUBLIC_INPUT": str(tmp_path / "public"),
+        "MOOSE_PUBLIC_MANIFEST_SHA256": "b" * 64,
+        "MOOSE_OUTPUT": str(tmp_path / "output"),
+        "MOOSE_SOURCE": str(tmp_path / "creator"),
+        "MOOSE_FROZEN_TASKS": str(tmp_path / "tasks.jsonl"),
+        "MOOSE_PYTHON": sys.executable,
+    }.items():
+        monkeypatch.setenv(key, value)
+    config = OmegaConf.merge(
+        OmegaConf.load(root / "responses_api_agents/moosechem_native/configs/moosechem.yaml"),
+        OmegaConf.load(root / "responses_api_agents/moosechem_native/configs/moosechem_isolated.yaml"),
+    )
+    OmegaConf.resolve(config)
+    for name, values in config.items():
+        instance, error = maybe_get_server_instance_config(name, values)
+        assert instance is not None and error is None, error
+    del config.moosechem_verifier.resources_servers.moosechem_verifier.domain
+    instance, error = maybe_get_server_instance_config("moosechem_verifier", config.moosechem_verifier)
+    assert instance is None and "A domain is required" in str(error)
