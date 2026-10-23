@@ -92,20 +92,24 @@ def dockerfile(row):
         )
     layout = ""
     if row.get("filesystem_layout_variant") is not None:
-        if (
-            row["filesystem_layout_variant"] != "8912293-relative-data-v1"
-            or row["id"] != "capsule-8912293"
-            or row["published_image"]
-            != (
+        reviewed_layouts = {
+            "8912293-relative-data-v1": (
+                "capsule-8912293",
                 "registry.codeocean.com/published/2a0bef51-a61e-4c00-82c5-c79023c606d3"
-                "@sha256:e72a3d557a31640b2340714199641b1674925aa5039ceb3e36ef717126654fca"
-            )
-        ):
+                "@sha256:e72a3d557a31640b2340714199641b1674925aa5039ceb3e36ef717126654fca",
+            ),
+            "4884085-relative-data-v1": (
+                "capsule-4884085",
+                "registry.codeocean.com/published/c29ba852-8f5d-4bb6-b68b-06fbe9559dfd"
+                "@sha256:c9e6faf78a83d3acfecb936a0cc18be8c18ab39ee82e006d06a12e9abfc646b5",
+            ),
+        }
+        if reviewed_layouts.get(row["filesystem_layout_variant"]) != (row["id"], row["published_image"]):
             raise ValueError("Unsupported capsule filesystem layout variant")
-        # R resolves /code physically; retain the creator's relative paths.
+        # Interpreters resolve /code physically; preserve original ../../data paths.
         layout = (
-            "RUN ln -s /workspace/capsule-8912293/data /workspace/data"
-            " && ln -s /workspace/capsule-8912293/results /workspace/results\n"
+            f"RUN ln -s /workspace/{row['id']}/data /workspace/data"
+            f" && ln -s /workspace/{row['id']}/results /workspace/results\n"
         )
     from benchmarks.corebench.external_inputs import recipe as external_recipe
 

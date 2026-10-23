@@ -126,16 +126,17 @@ def test_exact_signed_variant(capsule):
     )
 
 
-def test_8912293_layout_is_explicit_and_bound():
+@pytest.mark.parametrize("capsule", ["8912293", "4884085"])
+def test_relative_data_layout_is_explicit_and_bound(capsule):
     import json
     from pathlib import Path
 
     rows = json.loads((Path(__file__).parents[1] / "frozen20.json").read_text())["rows"]
-    row = next(r for r in rows if r["id"] == "capsule-8912293")
-    variant = dict(row, filesystem_layout_variant="8912293-relative-data-v1")
+    row = next(r for r in rows if r["id"] == f"capsule-{capsule}")
+    variant = dict(row, filesystem_layout_variant=f"{capsule}-relative-data-v1")
     assert recipe_digest(variant) != recipe_digest(row)
-    assert "ln -s /workspace/capsule-8912293/data /workspace/data" in dockerfile(variant)
-    assert "ln -s /workspace/capsule-8912293/results /workspace/results" in dockerfile(variant)
+    assert f"ln -s /workspace/capsule-{capsule}/data /workspace/data" in dockerfile(variant)
+    assert f"ln -s /workspace/capsule-{capsule}/results /workspace/results" in dockerfile(variant)
     for key, value in [
         ("id", "capsule-other"),
         ("published_image", "other"),
