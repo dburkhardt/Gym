@@ -62,7 +62,7 @@ from responses_api_agents.harbor_agent.failure_diagnostics import (
 from responses_api_agents.harbor_agent.measurement_review import apply_measurement_review
 from responses_api_agents.harbor_agent.observability import read_terminus_observations
 from responses_api_agents.harbor_agent.resource_admission import StaticRayResourceError, static_resource_feasibility
-from responses_api_agents.harbor_agent.utils import HarborAgentUtils
+from responses_api_agents.harbor_agent.utils import HarborAgentUtils, HarborResourcePolicy
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,8 @@ class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
     # Extra kwargs forwarded to the Harbor EnvironmentConfig (e.g.
     # singularity_image_cache_dir, singularity_force_pull).
     harbor_environment_kwargs: Optional[dict[str, Any]] = None
+    # Explicit acknowledgement of creator omissions; no resource overrides are added.
+    harbor_resource_policy: HarborResourcePolicy = "require_explicit"
 
     # Native Harbor custom verifier hook. Model route is injected for guarded judges.
     harbor_verifier_import_path: Optional[str] = None
@@ -173,7 +175,12 @@ def _find_trial_dir_with_result(job_dir: Path) -> Optional[Path]:
     return None
 
 
-async def run_harbor_job(job_config_dict: dict, admission_budget: Optional[dict] = None) -> str:
+async def run_harbor_job(
+    job_config_dict: dict,
+    admission_budget: Optional[dict] = None,
+    *,
+    resource_policy: HarborResourcePolicy = "require_explicit",
+) -> str:
     """Runs a single Harbor Job and returns the *absolute* trial directory path.
 
     The trial directory contains:
@@ -211,7 +218,7 @@ async def run_harbor_job(job_config_dict: dict, admission_budget: Optional[dict]
     # those exact paths before starting containers; newer Harbor no longer gives
     # omitted resources the old 1 CPU / 2048 MiB defaults.
     for download in job._task_download_results.values():
-        HarborAgentUtils.validate_task_resources(download.path, config.environment)
+        HarborAgentUtils.validate_task_resources(download.path, config.environment, resource_policy=resource_policy)
 
     if admission_budget is not None:
         from responses_api_agents.harbor_agent.phase_budget import validate_job_admission
@@ -243,7 +250,11 @@ _RAY_WORKER_EVENT_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 
 async def _run_harbor_job_with_transport(
-    job_config_dict: dict, transport_config: dict, admission_budget: Optional[dict] = None
+    job_config_dict: dict,
+    transport_config: dict,
+    admission_budget: Optional[dict] = None,
+    *,
+    resource_policy: HarborResourcePolicy = "require_explicit",
 ) -> str:
     # Only the typed parent-selected pool settings cross the Ray boundary. Never
     # parse worker argv or forward the credential-bearing global configuration.
@@ -251,9 +262,12 @@ async def _run_harbor_job_with_transport(
     set_global_aiohttp_client(cfg)
     primary_error = None
     try:
+        kwargs = {}
         if admission_budget is not None:
-            return await run_harbor_job(job_config_dict, admission_budget=admission_budget)
-        return await run_harbor_job(job_config_dict)
+            kwargs["admission_budget"] = admission_budget
+        if resource_policy != "require_explicit":
+            kwargs["resource_policy"] = resource_policy
+        return await run_harbor_job(job_config_dict, **kwargs)
     except BaseException as error:
         primary_error = error
         raise
@@ -268,7 +282,11 @@ async def _run_harbor_job_with_transport(
 
 
 def _run_harbor_job_sync(
-    job_config_dict: dict, transport_config: Optional[dict] = None, admission_budget: Optional[dict] = None
+    job_config_dict: dict,
+    transport_config: Optional[dict] = None,
+    admission_budget: Optional[dict] = None,
+    *,
+    resource_policy: HarborResourcePolicy = "require_explicit",
 ) -> str:
     """Synchronous wrapper for run_harbor_job for use in Ray remote.
 
@@ -281,7 +299,9 @@ def _run_harbor_job_sync(
         _RAY_WORKER_EVENT_LOOP = asyncio.new_event_loop()
         asyncio.set_event_loop(_RAY_WORKER_EVENT_LOOP)
     task = _RAY_WORKER_EVENT_LOOP.create_task(
-        _run_harbor_job_with_transport(job_config_dict, transport_config or {}, admission_budget)
+        _run_harbor_job_with_transport(
+            job_config_dict, transport_config or {}, admission_budget, resource_policy=resource_policy
+        )
     )
     try:
         return _RAY_WORKER_EVENT_LOOP.run_until_complete(task)
@@ -502,6 +522,8 @@ class HarborAgent(SimpleResponsesAPIAgent):
                         mode="json"
                     ),
                 )
+                if self.config.harbor_resource_policy != "require_explicit":
+                    params["resource_policy"] = self.config.harbor_resource_policy
                 if self.config.harbor_admission_finalization_allowance_s is not None:
                     drain = global_config_dict.get("drain_margin_s")
                     if (

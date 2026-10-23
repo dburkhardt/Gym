@@ -167,3 +167,75 @@ def test_production_terminus_job_preflight_and_guard(tmp_path):
         Terminus2NemoGym(
             logs_dir=tmp_path, model_name="authorized-model", **{**options, "api_base": "http://localhost:9999/v1"}
         )
+
+
+def test_creator_unspecified_policy_preserves_task_and_backend_values(tmp_path):
+    from harbor.environments.docker import write_resources_compose_file
+    from harbor.models.task.task import Task
+
+    task = _task(tmp_path, "gpus=1\n")
+    with (task / "task.toml").open("a") as stream:
+        stream.write('\n[verifier.environment]\ndocker_image="example/verifier"\ncpus=2\nmemory_mb=4096\n')
+    before = (task / "task.toml").read_bytes()
+    HarborAgentUtils.validate_task_resources(task, EnvironmentConfig(), resource_policy="preserve_creator_unspecified")
+    parsed = Task(task).config
+    assert parsed.environment.cpus is None and parsed.environment.memory_mb is None
+    assert parsed.verifier.environment.cpus == 2 and parsed.verifier.environment.memory_mb == 4096
+    assert (task / "task.toml").read_bytes() == before
+    compose = write_resources_compose_file(
+        tmp_path / "resources.json",
+        cpu_limit=parsed.environment.cpus,
+        memory_limit_mb=parsed.environment.memory_mb,
+        gpus=parsed.environment.gpus,
+    )
+    main = json.loads(compose.read_text())["services"]["main"]
+    assert "cpus" not in main and "mem_limit" not in main
+    assert main["deploy"]["resources"]["reservations"]["devices"][0]["count"] == 1
+
+
+def test_resource_policy_rejects_invalid_and_defaults_strict(tmp_path):
+    from pydantic import ValidationError
+
+    task = _task(tmp_path, "")
+    assert _make_server().config.harbor_resource_policy == "require_explicit"
+    with pytest.raises(ValidationError):
+        _make_server(harbor_resource_policy="ignore")
+    with pytest.raises(ValueError, match="Unknown Harbor resource policy"):
+        HarborAgentUtils.validate_task_resources(task, EnvironmentConfig(), resource_policy="ignore")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("policy, admitted", [("require_explicit", False), ("preserve_creator_unspecified", True)])
+async def test_native_runner_checks_exact_downloaded_task_before_run(tmp_path, policy, admitted):
+    task_path = tmp_path / "creator"
+    task_path.mkdir()
+    _task(task_path, "")
+    before = (task_path / "task.toml").read_bytes()
+    trial = tmp_path / "job" / "trial"
+
+    async def finish():
+        trial.mkdir(parents=True)
+        (trial / "result.json").write_text("{}")
+
+    job = SimpleNamespace(
+        _task_download_results={"creator": SimpleNamespace(path=task_path)}, run=AsyncMock(side_effect=finish)
+    )
+    with patch("harbor.job.Job.create", new=AsyncMock(return_value=job)):
+        if admitted:
+            result = await run_harbor_job({"job_name": "job", "jobs_dir": str(tmp_path)}, resource_policy=policy)
+            assert result == str(trial.resolve())
+            job.run.assert_awaited_once()
+        else:
+            with pytest.raises(ValueError, match="explicit environment"):
+                await run_harbor_job({"job_name": "job", "jobs_dir": str(tmp_path)}, resource_policy=policy)
+            job.run.assert_not_awaited()
+    assert (task_path / "task.toml").read_bytes() == before
+
+
+@pytest.mark.asyncio
+async def test_transport_wrapper_forwards_explicit_creator_policy():
+    from responses_api_agents.harbor_agent.app import _run_harbor_job_with_transport
+
+    with patch("responses_api_agents.harbor_agent.app.run_harbor_job", new=AsyncMock(return_value="trial")) as run:
+        assert await _run_harbor_job_with_transport({}, {}, resource_policy="preserve_creator_unspecified") == "trial"
+    run.assert_awaited_once_with({}, resource_policy="preserve_creator_unspecified")

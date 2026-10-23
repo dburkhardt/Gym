@@ -66,6 +66,7 @@ def _harbor_transport_links(config, roles):
         links.append(row)
         try:
             values = OmegaConf.to_container(settings, resolve=True)
+            row["resource_policy"] = values.get("harbor_resource_policy", "require_explicit")
             path = values.get("harbor_agent_import_path")
             if path not in _SUPPORTED_HARBOR_AGENTS:
                 row.update(status="unsupported", reason="unsupported_harness")

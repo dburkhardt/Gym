@@ -16,7 +16,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -31,13 +31,25 @@ from nemo_gym.openai_utils import (
 )
 
 
+HarborResourcePolicy = Literal["require_explicit", "preserve_creator_unspecified"]
+
+
 @dataclass
 class HarborAgentUtils:
     @staticmethod
-    def validate_task_resources(task_path: Path, environment_config: object) -> None:
-        """Reject implicit resource changes introduced by the Harbor pin upgrade."""
+    def validate_task_resources(
+        task_path: Path, environment_config: object, *, resource_policy: HarborResourcePolicy = "require_explicit"
+    ) -> None:
+        """Keep strict upgrade protection unless creator omissions are explicitly accepted.
+
+        The opt-in preserves None, not historical defaults: current Harbor Docker
+        does not add CPU/memory limits for these omitted fields. Task bytes and
+        explicit resource values are never changed.
+        """
         from harbor.models.task.task import Task
 
+        if resource_policy not in ("require_explicit", "preserve_creator_unspecified"):
+            raise ValueError(f"Unknown Harbor resource policy: {resource_policy!r}")
         task = Task(task_path)
         environments = [("environment", task.config.environment)]
         verifiers = [("verifier", task.config.verifier)] + [
@@ -52,7 +64,7 @@ class HarborAgentUtils:
                 for field in ("cpus", "memory_mb")
                 if getattr(resources, field) is None and getattr(environment_config, f"override_{field}", None) is None
             ]
-            if missing:
+            if missing and resource_policy == "require_explicit":
                 raise ValueError(
                     f"Task {task_path.name!r} needs explicit {label} {', '.join(missing)} before execution. "
                     "The previous Harbor pin defaulted to cpus=1 and memory_mb=2048. "
