@@ -96,7 +96,9 @@ def test_cuda_oom_and_recipe_require_explicit_controls(tmp_path):
     with pytest.raises(ValueError, match="OOM"):
         validate_qualification(row, q)
     q["oom_resource_review"] = True
-    validate_qualification(row, q)
+    with pytest.raises(ValueError, match="evidence-bound"):
+        validate_qualification(row, q)
+    row["status"] = "ready"
     q["recipe_sha256"] = "wrong"
     with pytest.raises(ValueError, match="recipe"):
         validate_qualification(row, q)

@@ -89,8 +89,10 @@ def validate_qualification(row, receipt):
         raise ValueError("Explicit positive resource limits required")
     if row["status"] == "requires_cuda_no_cpu_substitution" and not limits.get("gpus"):
         raise ValueError("Creator workflow requires CUDA")
-    if row["status"] == "measured_oom_requires_resource_review" and not receipt.get("oom_resource_review"):
-        raise ValueError("Observed OOM requires explicit resource review")
+    if row["status"] == "measured_oom_requires_resource_review":
+        from benchmarks.corebench.resource_review import validate_resource_review
+
+        validate_resource_review(row, limits, receipt.get("oom_resource_review"))
     return limits
 
 

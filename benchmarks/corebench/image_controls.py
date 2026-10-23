@@ -328,7 +328,9 @@ async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, sc
     return {"image": identity, "stdout": result.stdout or ""}
 
 
-async def qualify_images(row, medium_root, reference_root, runtime_archive, final_image, destination, *, resources):
+async def qualify_images(
+    row, medium_root, reference_root, runtime_archive, final_image, destination, *, resources, oom_resource_review=None
+):
     """Produce v2 observed image controls, not scientific or build reproducibility acceptance.
 
     The supplied final image is inspected and tested, not built here. The recipe
@@ -352,7 +354,9 @@ async def qualify_images(row, medium_root, reference_root, runtime_archive, fina
     if row["status"] == "requires_cuda_no_cpu_substitution" and not gpus:
         raise ValueError("CUDA image probes require explicit GPU resources")
     if row["status"] == "measured_oom_requires_resource_review":
-        raise ValueError("Observed OOM requires separate resource review")
+        from benchmarks.corebench.resource_review import validate_resource_review
+
+        validate_resource_review(row, resources, oom_resource_review)
     destination.mkdir(parents=True, exist_ok=False)
     kwargs = {"cpus": resources["cpus"], "memory_mb": resources["memory_mb"]}
     if gpus:
@@ -397,6 +401,8 @@ async def qualify_images(row, medium_root, reference_root, runtime_archive, fina
         "resources": resources,
         "scope": "Observed image/tool probes only; no scientific workflow, solver, or build-history attestation",
     }
+    if row["status"] == "measured_oom_requires_resource_review":
+        receipt["oom_resource_review"] = oom_resource_review
     validate_qualification(row, receipt)
     _publish(destination / "qualification.json", receipt)
     return receipt
