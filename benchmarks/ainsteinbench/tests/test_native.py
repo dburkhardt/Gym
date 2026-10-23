@@ -787,7 +787,7 @@ async def test_et_original_build_failure_preserves_creator_score_and_command_bou
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", [None, 137, TimeoutError("transport timeout")])
+@pytest.mark.parametrize("failure", [None, -1, 124, 137, 143, TimeoutError("transport timeout")])
 async def test_et_transport_failure_never_becomes_creator_zero(tmp_path, failure):
     from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE, score_et
 
@@ -806,13 +806,22 @@ async def test_et_transport_failure_never_becomes_creator_zero(tmp_path, failure
             if "simfactory/bin/sim build" in command:
                 if isinstance(failure, Exception):
                     raise failure
-                return SimpleNamespace(return_code=failure, stdout="", stderr="")
+                return SimpleNamespace(return_code=failure, stdout="partial compiler output", stderr="partial diagnostic")
             return SimpleNamespace(return_code=0, stdout="", stderr="")
 
     with pytest.raises((RuntimeError, TimeoutError)):
         await score_et(SOURCE, Environment(), rows[DESITTER], "source", tmp_path)
     assert not (tmp_path / "score.json").exists()
     assert json.loads((tmp_path / "transport-status.json").read_text())["failures"]
+    records = [json.loads(line) for line in (tmp_path / "commands.jsonl").read_text().splitlines()]
+    builds = [record for record in records if "simfactory/bin/sim build" in record["command"]]
+    if isinstance(failure, Exception):
+        assert builds == []  # No output returned by the provider; never fabricate it.
+    else:
+        assert len(builds) == 1
+        assert builds[0]["return_code"] == failure
+        assert builds[0]["stdout"] == "partial compiler output"
+        assert builds[0]["stderr"] == "partial diagnostic"
 
 
 @pytest.mark.asyncio

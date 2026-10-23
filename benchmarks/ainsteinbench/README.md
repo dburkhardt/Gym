@@ -35,3 +35,22 @@ The parent Harbor server passes its authoritative guard decision as
 false or non-boolean decision, and retains the exact-model and rollout-scoped
 endpoint checks. It does not parse Gym/Hydra configuration in a Ray worker;
 Ray's own command-line arguments must remain untouched.
+
+For ET image preparation, `et_cache.audit_object` provides a fail-closed audit of
+individual ELF relocatable objects and their original compiler `.d` records.
+Supply independently verified original and candidate image filesystem manifests,
+actual object/dependency bytes, and explicit forbidden source paths. It resolves
+symlinks and requires each expanded compiler dependency to retain its exact source
+or header hash in the candidate. Target aliases, identical target copies, missing
+or changed dependencies, unsupported make syntax, archives and executables fail.
+The pinned Fortran compiler's empty additional rule for the same object is accepted;
+additional object-to-object rules remain unsupported rather than being ignored.
+
+A cache receipt neither publishes an image nor establishes scientific readiness.
+Bind both full manifest hashes and immutable image identity in preparation evidence;
+retain source/metadata provenance and preserve cache timestamps during any separately
+reviewed restoration. Do not infer static-library safety from member names, warm a
+solver image by compiling the target answer, or replace original reference/negative
+controls with cache checks. The ET adapter records returned command output before
+rejecting abnormal termination; this preserves available diagnostics without
+recovering bytes discarded upstream or changing the original 300-second deadline.

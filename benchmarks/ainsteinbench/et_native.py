@@ -156,10 +156,6 @@ async def score_et(source: Path, environment: "BaseEnvironment", raw: dict, code
                     "cd " + shlex.quote(working_dir or self.working_dir) + " && " + command, timeout_sec=300
                 )
             )
-            if result.return_code is None or result.return_code < 0 or result.return_code in (124, 137, 143):
-                reason = f"ET execution did not settle normally: return_code={result.return_code}"
-                transport_failures.append(reason)
-                raise RuntimeError(reason)
             with (output / "commands.jsonl").open("a") as stream:
                 stream.write(
                     json.dumps(
@@ -172,6 +168,10 @@ async def score_et(source: Path, environment: "BaseEnvironment", raw: dict, code
                     )
                     + "\n"
                 )
+            if result.return_code is None or result.return_code < 0 or result.return_code in (124, 137, 143):
+                reason = f"ET execution did not settle normally: return_code={result.return_code}"
+                transport_failures.append(reason)
+                raise RuntimeError(reason)
             return result.return_code, result.stdout or "", result.stderr or ""
 
         def copy_to_container(self, src_path: str, dst_path: str) -> bool:
