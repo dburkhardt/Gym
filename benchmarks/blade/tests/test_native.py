@@ -41,7 +41,7 @@ def test_transport_headers_durable_response_and_poison(tmp_path, monkeypatch):
     monkeypatch.setattr("benchmarks.blade.native_phase.post_json", failure)
     with pytest.raises(RuntimeError):
         transport.create(model=MODEL, messages=[])
-    with pytest.raises(RuntimeError, match="no resend"):
+    with pytest.raises(RuntimeError, match="no automatic resend"):
         transport.create(model=MODEL, messages=[])
     assert len(calls) == 2
     assert (tmp_path / "calls/000001.failure.json").exists()
@@ -217,6 +217,6 @@ async def test_creator_failure_artifact_is_not_uploaded_for_scoring(tmp_path, mo
             raise AssertionError("Native failure must never enter scorer")
 
     monkeypatch.setattr(harbor_native, "run_phase", failed_phase)
-    agent = SimpleNamespace(root=tmp_path, endpoint="unused", logs_dir=tmp_path)
+    agent = SimpleNamespace(root=tmp_path, endpoint="unused", logs_dir=tmp_path, gym_provider_dispatch_guard=True)
     with pytest.raises(RuntimeError, match="failure status"):
         await harbor_native.BladeNativeAgent.run(agent, "crofoot", Environment(), None)

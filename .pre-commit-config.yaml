@@ -53,7 +53,7 @@ repos:
             exit 1
           '
         files: '.*\/[^\/]*_[^\/]*\.md$'
-        exclude: '^\.github/'
+        exclude: '^(\.github/|docs/lifesci/FIRST_REVIEW\.md$)'
         types: [file]
       - id: add-verified-flag
         name: Add verified flag to resources server configs
@@ -65,6 +65,6 @@ repos:
       - id: update-readme-table
         name: Update environment list in README
         language: python
-        entry: python scripts/update_env_list.py
+        entry: python scripts/update_env_list.py --skip-without-markers
         additional_dependencies: [pyyaml]
         files: ^README\.md$|^benchmarks/.*/config\.yaml$|^resources_servers/.*/configs/.*\.yaml$|^responses_api_agents/.*/configs/.*\.yaml$

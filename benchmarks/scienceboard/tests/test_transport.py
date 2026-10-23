@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -10,9 +11,14 @@ from benchmarks.scienceboard.guarded_model import CreatorModelHTTP, bind_creator
 from benchmarks.scienceboard.result_mapping import read_creator_result
 
 
-SOURCE = (
-    Path(__file__).resolve().parents[5]
-    / "outputs/broad-eval-campaign/harbor/agent-expansion/sources/223/OS-Copilot-ScienceBoard-21b5eb0"
+SOURCE = Path(
+    os.environ.get(
+        "SCIENCEBOARD_SOURCE_ROOT",
+        str(
+            Path(__file__).resolve().parents[5]
+            / "outputs/broad-eval-campaign/harbor/agent-expansion/sources/223/OS-Copilot-ScienceBoard-21b5eb0"
+        ),
+    )
 )
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
 

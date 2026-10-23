@@ -1,6 +1,6 @@
 # Nemotron LifeSci Eval Expansion
 
-[Execution plan and costs](docs/lifesci/PLAN.md) · [All 63 benchmarks](docs/lifesci/inventory.md) · [Selected results](docs/lifesci/results.md) · [Running an evaluation](docs/campaign-quickstart.md)
+[First review](docs/lifesci/FIRST_REVIEW.md) · [Execution plan and costs](docs/lifesci/PLAN.md) · [All 63 benchmarks](docs/lifesci/inventory.md) · [Selected results](docs/lifesci/results.md) · [Running an evaluation](docs/campaign-quickstart.md)
 
 This repository retains the NeMo Gym fork structure for development and eventual upstream contributions.
 
@@ -53,13 +53,17 @@ These criteria establish an engineering result. Scientific validity remains a se
 
 ### Current implementation coverage
 
+The October 23 review inspected the source and implemented scope of all 63 candidates. **One named integration has completed the uniform engineering checks: ScienceQA’s text-only 50-task sample.** Its sample includes five biology questions, so it is a general-science process example. SciCode has a complete 30-problem scoring replay, with remaining generation and infrastructure qualifications. CompChem provides the Harbor workflow example. The [first review](docs/lifesci/FIRST_REVIEW.md) separates these outcomes and the next steps.
+
 | Outcome | Benchmark entries | Evidence |
 |---|---:|---|
 | Selected for integration | 63 | Public scored release and creator results identified in the inventory review |
 | Gym configuration present | 59 | Tracked configuration and implementation paths inspected |
 | Partial implementation | 3 | ScienceAgentBench, CSMeD, and AgentIdeaBench |
 | Source access unresolved | 1 | VibeProteinBench |
-| Saved-output scoring checks recorded | 41 | Named checks linked in the integrated inventory |
+| Historical saved-output scoring checks recorded | 41 | Earlier checks of varying scope, linked in the integrated inventory |
+| Source and implemented scope reviewed | 63 | Fresh source inspection and appropriate model-free checks |
+| Accepted named engineering integration | 1 | ScienceQA text-only protocol; 50 distinct validation tasks |
 
 The 41 scoring-check records overlap the configured entries and were collected retrospectively. Final release acceptance requires all four checks above for the declared sample. The [execution plan](docs/lifesci/PLAN.md) applies the same acceptance process to all 63 candidates. Each will receive an accepted result with a reconciled task count or a specific blocker with supporting evidence.
 
@@ -67,11 +71,13 @@ The 41 scoring-check records overlap the configured entries and were collected r
 
 [SciCode](https://github.com/scicode-bench/SciCode) asks a model to write Python code for scientific problems. A problem is broken into smaller programming steps: the model writes a function for one step, then receives its earlier code as context when writing the next. The benchmark executes the functions against supplied tests. A whole problem passes only when all of its scored steps pass.
 
-In one 30-problem run, the model was asked to write **116 functions**. One additional step already contained creator-provided code and did not require model generation. Four complete problems passed all their tests; 47 of the 116 generated functions passed their individual tests. These are different measurements: a problem can contain several correct functions and still fail overall.
+We evaluated the same fixed 30 problems under 16,384- and 65,536-token output allowances. They required 116 generated functions; one additional function was supplied by the benchmark. The first condition passed 4 whole problems and 47 functions. The larger-budget condition passed 5 whole problems and 56 functions. The number of generations that exhausted their allowance without visible code fell from 19 to one.
 
-The integration saved the generated code and the inputs needed to execute it. To check reproducibility, we reconstructed the same accumulated Python programs from the recorded responses and ran the tests again in the same software environment. **All 30 problem results matched.** The comparison included each function's pass/fail result, the number of functions passed and tested, whole-problem and function-level accuracy, and flags explaining whether a score was excluded or a run failed. This second scoring pass made no model calls. The [SciCode integration](https://github.com/dburkhardt/Gym/tree/dburkhardt/life-sci-evals/benchmarks/scicode), [execution report](docs/lifesci/results.md) and [field-by-field comparison](docs/lifesci/results.md) provide the underlying detail.
+To verify the second result, we reconstructed the accumulated Python program for each function from its recorded model response and reran the released tests in the same pinned environment. All 30 problem records matched across ten compared fields, including function-level results, whole-problem results, and failure classifications. This scoring pass made no model calls.
 
-The generation setting requires further work before these numbers should be used to characterize model capability. Inspection of all 116 saved responses showed that **19 used the entire 16,384-token output allowance for reasoning and returned no visible code**. Those are not code-extraction failures, and the current data cannot tell us whether a larger allowance would produce correct programs. The [diagnosis](docs/lifesci/results.md) is complete; a [matched follow-up](docs/lifesci/PLAN.md) specifies rerunning all 30 problems under one larger, supported allowance. Rerunning only the failures and replacing their scores would make the result look better without being a fair comparison. Until that experiment runs, the existing scores describe this particular constrained setting; the demonstrated result here is that the integration executes and its scores can be reproduced.
+A third condition used the provider’s advertised 131,072-token ceiling. It produced scores for 29 problems: 4 complete solutions and 51 of 110 tested functions passed. One problem stopped after four successful model responses when a pending capture marker disappeared during a filesystem read. Its two remaining generations were never sent. We retained that failure and the four responses; the 29-problem subset is not presented as a complete 30-problem result.
+
+These are descriptive runs, not a causal estimate of the effect of more reasoning tokens. Concurrency also changed from one problem slot in the original run to three in the later runs. The [SciCode report](docs/lifesci/benchmarks/scicode.md) links the upstream dataset, adapter, exact sample, separate conditions, scoring replay, inspected examples, and remaining qualifications.
 
 ### BLADE: reproducing an LLM-assisted scorer
 
@@ -91,4 +97,4 @@ The work demonstrates that coding agents can contribute integrations across a br
 
 The resulting collection is best treated as an engineering and analysis resource. Sample sizes, task types, and metrics differ, and some implementations use explicitly documented variants of creator settings. Scores should not be averaged across benchmarks or compared directly with published leaderboards without matching those conditions. Systematic expert assessment of scientific validity, representative customer-workflow coverage, and model comparisons remain separate studies.
 
-The immediate follow-up is specific: resolve generation-budget effects before sharing model-capability conclusions, and use the retained trajectories to investigate failed tasks and weak grading rules. The report and integrated inventory already separate those questions from the implementation coverage demonstrated here.
+The [first review](docs/lifesci/FIRST_REVIEW.md) proposes the next execution wave. Further work should qualify recovery from the observed capture failure, carry each ready integration through the same checks, and use retained trajectories to investigate weak grading rules. Expert review remains necessary before using these results to prioritize scientific training data.

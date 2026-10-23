@@ -15,7 +15,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions have scored outputs across separate attempts; earlier uncertain requests remain unresolved.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -23,7 +23,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "325 chemistry questions across 13 broad task groups; frozen 50 available",
+        "public_population_within_scope": 325,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "b77e0d8eb06f62c8528da72bff22d4c7fee11371",
+        "readiness_stage": "chemical_oracle_and_generation_budget_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned ether0 package, RDKit/molbloom and two exact BloomFilter assets. rxn_forward/sol_eval need creator remote reaction/solubility oracle service.",
+        "scoring": "Creator accuracy_reward(test=True, reasoning=False), with native oracle failures unscored.",
+        "protocol_limitations": "Nemotron solver and explicit output allowance; creator XML-answer parsing preserved.",
+        "next_action": "Reconfirm the pinned scorer and chemical oracles on the selected worker. A larger output allowance requires rerunning the complete fixed sample; 12 of the original 20 responses exhausted their allowance.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "scicode",
@@ -38,17 +53,33 @@
       "execution_type": "workflow",
       "implementation_observed": "Configured entry",
       "saved_output_check_previously_documented": true,
-      "observation": "30-problem example: 4 complete solutions and 47 of 116 functions passed. All 30 scores reproduced; 19 generations returned no code after reaching their token limit.",
+      "observation": "The full 65,536-token condition scored all 30 problems: 5 whole problems and 56/116 functions passed. Saved-output scoring reproduced all 300 compared fields. One generation remained capped. At 131,072 tokens, 29 problems scored and one stopped on a capture-storage race; the four earlier responses on that problem are preserved.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
-        "dependencies": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
+        "dependencies": "qualified_pinned_scientific_runtime",
         "adapter_controls": "pending_uniform_review",
-        "model_execution": "pending_uniform_review",
-        "score_replay": "pending_uniform_review",
-        "publication": "pending_uniform_review"
+        "model_execution": "complete_30_at_65536; incomplete_29_plus_one_failure_at_131072",
+        "score_replay": "all_30_matched_at_65536; 131072_not_replayed",
+        "publication": "linked_scoped_report_and_manifest"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "65 released test problems containing 288 evaluated functions. The current experiment uses the original fixed sample of 30 problems.",
+        "public_population_within_scope": 65,
+        "population_unit": "whole problems",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "4510f6a6aa27c43fad7b43da2c59602a86e88480",
+        "readiness_stage": "scoring_reproduced; remaining_generation_and_capture_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Canonical1GB H5 SHA48b0272a88b17dbd29777c217e1b4fb2b019b92e11cc2add847409db9541b890; immutable Python 3.12 scientificDocker image; source task revision 4510f6a6aa27c43fad7b43da2c59602a86e88480.",
+        "scoring": "Whole-problem success requires all generated functions pass tests; generated-function accuracy excludes creator-prefilled functions.",
+        "protocol_limitations": "AAbackground prompt and project output settings;79.4 prompt/reference shape conflict remains masked and separately documented.",
+        "next_action": "Review the declared 65,536-token result and the unresolved capture race in the 131,072-token run. Qualify a narrow recovery before further solver calls.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      },
+      "report": "benchmarks/scicode.md"
     },
     {
       "id": "fukuyamabench",
@@ -63,7 +94,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "Four reaction cases have 32 reviewed draws. One case passed 7/8; the other three produced 24 budget failures. A separate uncertain attempt is excluded.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -71,7 +102,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Text pathway inference over 319 public mechanisms: 78 A, 131 B, and 110 C examples. Diagram recognition is excluded.",
+        "public_population_within_scope": 319,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "63bb79f912f0b2de593996b80ffeea894f6f1a59",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Pinned source,319mechanisms and frozen examples available.",
+        "dependencies": "RDKit and pinned creator parsing and pathway scoring are installed in the existing local environment; a clean worker remains unqualified.",
+        "scoring": "Creator lenient checkpoint pathway exact match, with its additional metrics retained.",
+        "protocol_limitations": "Historical four reaction cases contain 32 repeated draws, including 24 budget failures. These are four unique tasks. A larger allowance requires a consistent new condition.",
+        "next_action": "Qualify a complete fixed sample under a sufficient uniform allowance, retaining the original repeated-draw condition.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "corral-environment-tasks",
@@ -86,7 +132,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "A controlled test verified file preservation and separate scoring. A new model-generated scientific result is not established by that test.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -94,7 +140,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The frozen five level-3 retrosynthesis tasks, rather than the wet-lab and spectroscopy environment collections.",
+        "public_population_within_scope": 5,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "f5a6963a9ccf6e3c0058c776fe4111b639add648; data6f7e6f080e9ec029b8c7847a563246b7e6c1ca18",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Pinnedsource,DBsnapshots,427683reactiondatabase(3supplements),buyablepricesandselectedtaskstate havehistoricalevidence; currentplacementunverified.",
+        "dependencies": "A managed scientific runtime, read-only PostgreSQL/RDKit snapshot, frozen prices and reactions, guarded streaming, and native interaction limits are required.",
+        "scoring": "The creator saved-state evaluator remains canonical; stricter diagnostic scoring is separate.",
+        "protocol_limitations": "Wrong-root, wrong-template, and wrong-precursor controls can receive full credit. One released target/template mismatch remains. Historical reconstructed history differs from actual provider history.",
+        "next_action": "Qualify the complete managed Harbor path, exact scientific state, source/reference boundaries, and fresh controls, while preserving creator false positives.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "compchembench",
@@ -107,17 +168,33 @@
       "execution_type": "workflow",
       "implementation_observed": "Configured entry",
       "saved_output_check_previously_documented": true,
-      "observation": "20 attempted problems produced 18 usable scores: 17 raw passes and one failure. Two cases were excluded because their measurements were invalid; all 18 scores were replayed.",
+      "observation": "43 pinned tasks prepared. A fresh RDKit one-task pilot and its saved-workspace replay both scored 1.0, with four normal-stop model exchanges. The historical 20-task result remains separate: 18 usable, two masked.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
-        "dependencies": "pending_uniform_review",
-        "adapter_controls": "pending_uniform_review",
-        "model_execution": "pending_uniform_review",
-        "score_replay": "pending_uniform_review",
-        "publication": "pending_uniform_review"
+        "source_and_scope": "reviewed_with_qualifications",
+        "dependencies": "pinned43task_preparation_and_one_RDKit_image_qualified",
+        "adapter_controls": "native_nop_oracle_saved_oracle_controls_passed_on_RDKit",
+        "model_execution": "one_task_pilot_complete; full20_validation_pending",
+        "score_replay": "fresh_one_task_workspace_replay_matched",
+        "publication": "linked_scoped_pilot_report_and_manifest"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Pinned 43 Harbor tasks; original 20 attempted. Current README 46 and historical baseline 40 are separate releases.",
+        "public_population_within_scope": 43,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "772d3f3e1a93b875f49ddb692e6dfc3db1d3593d",
+        "readiness_stage": "one_native_pilot_and_workspace_replay_completed",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "20 attempts yielded 18 native scores, 17 raw passes, one failure, and two masked attempts. LAMMPS scheduling, CP2K basis/electrostatics, and QE position caveats remain. Runtime import provenance is incomplete.",
+        "next_action": "Await first review, then validate the fixed 20-task sample. Preserve historical limitations and the original-verifier resource-observation boundary.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      },
+      "report": "benchmarks/compchem.md"
     },
     {
       "id": "naturebench",
@@ -132,7 +209,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Molecular workflow ran but did not produce an accepted scientific score. Controlled tests verified that evaluator input files can be preserved before later modification.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -140,7 +217,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Scientific ML coding; frozen 5 Harbor tasks need four low-tier GPU assignments and one high-tier; a four-hour solve budget.",
+        "public_population_within_scope": 90,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "0f80a67d47a56fcd08ab3f1f586159d264616e2f",
+        "readiness_stage": "needs_exact_hardware",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Creator documents 3090/4090 low tier andA800 high tier. CPU calibration is outside frozen 5. Numeric improvement with unknown validity is not an accepted result. Full task may exceed first checkpoint.",
+        "next_action": "Qualify frozen task assets and exact hardware class before live admission.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "researchclawbench",
@@ -156,7 +248,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "A model completed eight work episodes, but scoring failed during verifier startup. Environment and file-access controls passed separately.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -164,7 +256,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Two frozen CPU/no-network tasks: Neuroscience000 and Life002 among 40 mixed-domain tasks.",
+        "public_population_within_scope": 40,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "needs_native_verifier_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Historical eight episodes completed but verifier startup failed. Five exhausted judges yielded no valid score. Artifact-capture metric is operational only. Other 38 tasks need individual scope review.",
+        "next_action": "Qualify separate verifier, full workspace capture, hidden-reference isolation, and judge protocol.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "bioagent-bench",
@@ -180,7 +287,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "All ten selected workflows have model-call evidence. Some completed and received scores; others stopped during tool execution. A cell-label scorer can award full credit for just one matching label pair.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -188,7 +295,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Ten frozen real bioinformatics workflows, including large-data and GIAB; maintained current Verifiers/OpenCode protocol",
+        "public_population_within_scope": 10,
+        "population_unit": "selected workflows",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "35eed91676062d98d98562556ec6cce326fd7d93",
+        "readiness_stage": "tool_runtime_and_measurement_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Python 3.13, Verifiers 0.2, OpenCode 1.15.11; task data, scientific tools, mamba/hap for selected workflows; immutable isolated runtime and checksum manifest required.",
+        "scoring": "Creator results_match; pipeline-judge metrics separate. DESeqfive-gene and single-cell any-one-pair overlaps flagged scientifically unresolved.",
+        "protocol_limitations": "Nemotron solver/judge enforced instead of creator supplied endpoint;2 CPU/8 GiB managed Docker variant; references stay out of solver.",
+        "next_action": "Confirm all ten immutable data/runtime prerequisites, replay original scorer outputs, and retain scientifically unresolved masks for permissive overlap cases.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "promptbio-bench",
@@ -203,7 +325,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "The solver completed five calls; the judge used seven calls and reached its token limit. The resulting fallback score of 1.0 was rejected as unreliable.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -211,7 +333,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The 244 released file-producing bioinformatics tasks, using a minimal shell agent and the pinned creator artifact evaluator.",
+        "public_population_within_scope": 244,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "data078420b69e25c41c99a79135724b6ae6a6c82b69; evaluatore2a1947894eac530900247f00c0b726363b540ed",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Definitionmetadataandfrozen20cached;taskassetsfetchedperselectedtask. Creator-sourcefilesretainedwithhistoricaljudgeevidence.",
+        "dependencies": "Solver and evaluator images must be qualified separately. Every solver, helper, and judge uses the exact Nemotron model. Native task time limits and declared turn and token settings apply.",
+        "scoring": "Creator detection and recommendation are shared; matching and comparison run for each output. Similarity and per-file error dispositions remain explicit.",
+        "protocol_limitations": "An earlier budget-exhausted judge produced a rejected fallback score. CRISPR guide-pair and LC-MS convention ambiguities remain. Some task assets and software are unqualified.",
+        "next_action": "Qualify the maintained evaluator image and all-role capture, test missing and invalid artifacts, and inspect five full tool and judge trajectories.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "biabench",
@@ -226,7 +363,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "A controlled five-task test exercised the solver, judge and artifact collection. It does not establish new model performance; an earlier reported score is separate.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -234,7 +371,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "One maintained wound-healing task among 16 creator bioimage-analysis tasks; outcome and process are separate.",
+        "public_population_within_scope": 16,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "needs_runtime_and_process_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Outcome 0.79 with 30 prediction files does not establish process score. Four TIFF references failed encoding. Uncertain requests must not be resent blindly. Canonical transport change needs runtime requalification.",
+        "next_action": "Qualify managed runtime and process judge, review omitted TIFFs, and retain outcome-only replay separately.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "genotex",
@@ -250,7 +402,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "One rebuilt native workflow completed with score 0.0027; that score and eleven earlier saved results were reproduced without rerunning the model.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -258,7 +410,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "A resource-selected GEO-only pilot covering dataset selection, preprocessing, and gene-trait analysis. The frozen sample has 20 of 1,384 released problems.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "source2ce91ce8fe326bb53a64a7cf25d57d961f75fe36; data9d50c9020256e8c943e02b6c0ad843017cd76cf8",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Upstreammetadata1384pairs;rawinputfullsource41.5GBandbundled82GB.Frozen20taskidentitiescached; currentselectedassetsneedqualification.",
+        "dependencies": "Docker with 4 CPUs and 16 GiB per task, a separate Python 3.11 grading environment, raw GEO assets, and the declared two-hour task bound are required.",
+        "scoring": "Unchanged creator stage functions are retained. The Gym reward is analysis F1 divided by 100; earlier stages remain separate.",
+        "protocol_limitations": "The generic shell agent differs from published GenoAgent. Selection by input size is not random, and TCGA-backed tasks are excluded. Undefined or omitted creator scores remain visible.",
+        "next_action": "Verify frozen task identities, raw GEO inputs, reference isolation, and clean setup, then run a three-stage pilot without gold preprocessing.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "bioplanner-bioprot",
@@ -273,7 +440,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 distinct tasks have result records: 43 scored and seven excluded. Mean creator argument recall was 0.341 on the 43; this is not whole-task success.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -281,7 +448,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "BioPlanner has 100 protocol-planning examples. Inputs contain only the title, description, and admissible functions; complete protocols remain scoring references.",
+        "public_population_within_scope": 100,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "80b69543f6d4c3abbeb5fcc9cb1bacef76bf974a",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Source and deterministic50sample available. Several creator references fail parsing.",
+        "dependencies": "A separate Python 3.11 scorer and the pinned SciBERT cache are required. Their installation needs clean-worker qualification.",
+        "scoring": "Six native metric groups are retained. Argument recall is the Gym bookkeeping reward, rather than whole-protocol success.",
+        "protocol_limitations": "The retained 50 task records contain 43 scored and seven excluded cases. Mean argument recall was 0.34108 over the 43. Reference parsing, extraction, and empty-output quirks remain explicit.",
+        "next_action": "Investigate the seven exclusions, qualify dependencies and scorer controls on a clean worker, and freeze a consistent generation condition.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "biomaze",
@@ -297,7 +479,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are represented by 35 native solver executions plus 15 earlier outputs scored through the current integration. Runs and settings remain separately identifiable.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -305,7 +487,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Separate TrueFalse and Openended conditions, each with preserved frozen 50 samples",
+        "public_population_within_scope": 2622,
+        "population_unit": "TrueFalse source questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "a74daf313d5557713aeaedbc87f17896436b6377",
+        "readiness_stage": "pilot_and_judge_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Normal Gym dependencies; Openended additionally needs exact source judge template and separate guarded Nemotron judge server.",
+        "scoring": "TrueFalse exact Yes/No accuracy; Openended creator conclusion agreement.",
+        "protocol_limitations": "Nemotron judge substitution and provider context enforcement; stricter explicit-verdict qualification masks malformed creator-judge fallback.",
+        "next_action": "Keep TF/Openended separate; replay recorded judge calls in occurrence order, check format qualification, and run uniform frozen-sample expansion only after current pilot review.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "evidencebench",
@@ -321,7 +518,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 earlier answers were rescored; five additional native validation executions averaged 0.8196. The expectation-format variant limits comparison with published results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -329,7 +526,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Original EvidenceBench biomedical sentence selection: 293 public test examples, separately from the 100k extension.",
+        "public_population_within_scope": 293,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "bf1d9633c694381c7b016fd56ee9f95f48593cc3",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Original source dataset and frozen50answers cached; fresh native5already retained.",
+        "dependencies": "The maintained deterministic scorer and pinned creator source are available. Clean-worker qualification remains necessary.",
+        "scoring": "The maintained exact-expectation variant and the separate creator GPT-parser saved-answer adaptation must be reported separately.",
+        "protocol_limitations": "The creator model-name parsers do not define Nemotron. Ordered oversize RNG and regeneration semantics differ from the exact-expectation variant.",
+        "next_action": "Name the maintained protocol, review all 50 saved answers and five trajectories, qualify the worker, and verify scorer controls.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "scienceagentbench",
@@ -342,7 +554,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Task preparation and scoring components exist, but the required public archive was inaccessible and no runnable full configuration was established.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -350,7 +562,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The verified release has 102 scientific-program tasks. The existing frozen sample contains 50 task descriptions, with separate scientific data and grading references.",
+        "public_population_within_scope": 102,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "c26e151ed601ba109dc4d35e057ff8e73fec469d; verified dataset9c6e96c9e74572e979b0930ee735041cef528cb7",
+        "readiness_stage": "blocked_external_assets",
+        "data_availability": "Verified metadata Parquet cached and all50frozen rows load. Creator requires separate benchmark_verified.zip; latest retained anonymous access401. Extracted files may not be redistributed.",
+        "dependencies": "The authentic benchmark_verified.zip archive, task datasets, gold and evaluation programs, rubrics, isolated runtime, and a qualified Nemotron tokenizer are required.",
+        "scoring": "Creator program execution and visual judging have bridge controls; actual scientific execution is unqualified.",
+        "protocol_limitations": "Synthetic prerequisite files and source-based bridge controls do not supply missing scientific data. There is no runnable registered config.",
+        "next_action": "Acquire the authentic verified archive through restored public or authorized access, pin its assets, and qualify isolated execution.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "core-bench",
@@ -365,7 +592,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "Native code-reproduction examples produced scored outputs and replay agreement. Individual failures and numerical-tolerance caveats remain visible; a single aggregate success rate is not established here.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -373,7 +600,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "CORE-Bench medium; one original capsule plus frozen 20 selected capsules must remain distinct",
+        "public_population_within_scope": 20,
+        "population_unit": "frozen selected capsules;43 reported question fields",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "e32a2980e72fe6eb04ee04eb749458f570625663",
+        "readiness_stage": "per_capsule_dependency_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Creator CodeOcean images and capsule archives, Python/R packages; some tasks requireCUDA and cannot silently use CPU. Actual native preparation config must point to intended frozen 20 selection.",
+        "scoring": "Creator numeric95% prediction intervals and exact string/list fields; task success requires all questions.",
+        "protocol_limitations": "Terminus Gym/Harbor agent versus creator CORE-Agent; medium preserved inputs; single-capsule prepare default is not evidence of 20-capsule coverage.",
+        "next_action": "Bind frozen 20 plan/source/image identities, run correct/negative/missing-output controls per capsule, and separate code execution failures from scorer failures.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "superchem",
@@ -389,7 +631,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions are covered by an earlier set of 20 and a later set of 30, with saved-answer scoring checks.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -397,7 +639,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "500 released chemistry questions; current adapter final-answer ACC only",
+        "public_population_within_scope": 500,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "2a8c8491ae5a2bb86f40114b6c17a40962770226",
+        "readiness_stage": "scope_and_fixed_sample_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Gym dependencies for answer metric; source parquet with multimodal content and frozen 50 cached. RPF/DAG path additionally requires judges and chemical comparison backend.",
+        "scoring": "Creator boxed-answer ACC; strict duplicate-choice diagnostic retained separately.",
+        "protocol_limitations": "RPF/DAG metrics not implemented by current adapter, and text-only/multimodal conditions need explicit labeling.",
+        "next_action": "Declare final-answer accuracy as the integrated metric, inspect actual image inclusion and output allowances, replay the 50 answers, and retain duplicate-choice diagnostics.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "speak-to-structure-s-bench-formerly-tomg-bench",
@@ -412,7 +669,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 saved outputs were scored again through the integration, reproducing 44 correct answers. This proves scorer replay, not a fresh solver run.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -420,7 +677,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "MolCustom AtomNum only; public suite has nine subtasks and 45,000 rows; frozen 50 in this subset.",
+        "public_population_within_scope": 5000,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "df70b90de6efb62e753345b886234b7acfeff874",
+        "readiness_stage": "needs_named_subset_acceptance",
+        "data_availability": "Declared public subset instantiated from pinned source; all 50 selected records exactly match historical source preparation.",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "44/50 saved-output replay preserves creator scoring. Disconnected molecules can satisfy atom counts. Eight other subtasks are unimplemented.",
+        "next_action": "Qualify explicitly named AtomNum subset with controls and trajectory review; assess remaining subtasks separately.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "proteinlmbench",
@@ -436,7 +708,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions were evaluated and rescored. Missing biological context in some questions limits interpretation.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -444,7 +716,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "All 944 public protein-knowledge questions, preserving source order and options; the SFT corpus is excluded.",
+        "public_population_within_scope": 944,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "datasetf1397963c7f727a4a2f00cdd691e6e219c36e992; creator evaluator d8586e22ff85f6805edea0bbc23002aaccf525c4",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Byte-pinned944-question JSON and selected50questions available.",
+        "dependencies": "The stateless grader and public data are available. Current worker and model connectivity need qualification.",
+        "scoring": "Creator first-number accuracy, with a secondary strict-format diagnostic.",
+        "protocol_limitations": "The option 7 uncertainty instruction is retained even when unavailable. Some questions lack article context. Reasoning removal and a larger output allowance are documented adaptations.",
+        "next_action": "Run a consistent fixed sample, inspect missing-context and option 7 cases, and report primary and strict scores separately.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "moleculariq",
@@ -459,7 +746,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "The later 30 questions yielded 12 correct answers and 17 token-incomplete responses. Saved-output scoring matched; earlier 20 are separate.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -467,7 +754,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "5,111 questions from 849 molecular graphs, covering feature counting, atom-index attribution, and constrained generation.",
+        "public_population_within_scope": 5111,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "425ecaaa8faf65aa43aa60ec0f584b7b7f060063",
+        "readiness_stage": "core_dependency_and_budget_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "moleculariq-core at pinned a1b89635371c3cd942e44ebeec63ec3665e7743d, RDKit, datasets; frozen 50 and public parquet cached.",
+        "scoring": "Creator symbolic evaluate_answer and exact task extractors.",
+        "protocol_limitations": "Single-run project sample versus creatorthree repetitions and pass@3; current later 30 contains 17 incomplete-budget responses.",
+        "next_action": "Qualify core dependency from clean environment and a usable output budget, then run complete fixed sample consistently.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "microvqa",
@@ -483,7 +785,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions have recorded attempts and saved-output checks. The final four generated three correct answers.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -491,7 +793,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Microscopy multimodal MCQ with original images; frozen 50.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "3b52dc7131c3a285c33654856b349d9073e3604b",
+        "readiness_stage": "needs_uniform_independent_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Preserved 50 span 20+25+1+4 attempts. First matching answer string is creator behavior. Manifest modality text is misleading; config correctly requires vision.",
+        "next_action": "Verify image/task/reference hashes, inspect visual trajectories and parser parity, and reconcile all 50 receipts.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "genomeqa",
@@ -506,7 +823,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions were executed. The later 30 include six responses that reached the output limit; creator scoring was recomputed.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -514,7 +831,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Sequence-based binary/MCQ genomic inference; native prompt, option order, and parser; frozen 50.",
+        "public_population_within_scope": 5200,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "7ccc230e734fc11a365fd1963b593b5fd11e834d",
+        "readiness_stage": "needs_uniform_sample_review",
+        "data_availability": "Declared public subset instantiated from pinned source; all 50 selected records exactly match historical source preparation.",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Manifest includes motif files in addition to other categories; reconcile the old five-task description. Six later outputs reached cap. No top-level license found.",
+        "next_action": "Reconcile all 50 terminal outcomes and output-limit settings, then independently review trajectories; fresh source preparation and scorer controls passed.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "metasyn",
@@ -530,7 +862,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Controlled execution and saved-output checks cover parts of the integration. Deterministic metrics were checked; model-judge and embedding-based metrics remain unresolved.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -538,7 +870,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "20 fixed review tasks using a BM25 top-200 article pool. The source release contains 422 reviews and 140,585 corpus articles.",
+        "public_population_within_scope": 20,
+        "population_unit": "fixed selected reviews",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "3ee040f31b9a476c4efe4012d909aac6e7cce8d6",
+        "readiness_stage": "linux_dependency_and_judge_metric_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Python 3.11/Linux71-wheel closure, pinned encoder weights, datasets and BM25; full 20 prompts400620\u2013517165 characters and source refs retained.",
+        "scoring": "Creator inclusion/selection ID metrics deterministic; criteria/direction/insight/structure judges and encoder metrics require separate qualification.",
+        "protocol_limitations": "Nemotron generator/judge, preserved BM25 top 200 rather than custom corpus-search prompts; data revision c8fa07d89c44093d623f9a213c6bf070f40ab960.",
+        "next_action": "Verify that every full prompt fits the context window, qualify the Linux runtime and all Nemotron roles, replay deterministic metrics, and resolve judge and embedding metrics separately.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "omebench",
@@ -553,7 +900,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions were executed. The later 30 include 19 output-limit responses; creator scoring was recomputed.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -561,7 +908,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "196 oMeGold reaction mechanisms; excludes Silver/Template training collections",
+        "public_population_within_scope": 196,
+        "population_unit": "reaction mechanisms",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "48632ca037cbb7d6e09a22132257c55ee6008edb",
+        "readiness_stage": "generation_budget_and_scorer_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned source, RDKit/pandas; Gold data and frozen 50 cached.",
+        "scoring": "Creator oMeS S_total, plus S_partial, validityV, logical fidelityL; no added weighted composite.",
+        "protocol_limitations": "Chat output cleanup; project solver settings; later 30 has 19 budget-exhausted outputs.",
+        "next_action": "Increase allowance as consistently named full-sample condition if supported, preserve prior outputs, and replay all four creator metrics.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "blade",
@@ -576,7 +938,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "The AMTL saved analysis and 15 ordered judge responses reproduced ten scorer metrics without model calls. Other attempted cases retain failures.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -584,7 +946,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Three biological analysis datasets: Crofoot, Panda Nuts, and AMTL, with a native agent and ten scoring metrics.",
+        "public_population_within_scope": 3,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "6118fa8d5007b91aa8c91c518182db82446a4547",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "186releasefilesbound;stagedpublicsolverinputsseparatefromannotations.MaintainedAMTLsavedanalysisand15orderedjudgeresponsesavailable.",
+        "dependencies": "The pinned Python 3.11/Torch 2.5.1 CPU image, Harbor, scoped model bridge, and separate solver and scorer resource limits are required.",
+        "scoring": "Native analysis evaluation returns ten hit-rate and coverage metrics.",
+        "protocol_limitations": "AMTL replay verifies the recorded scoring computation, rather than judge accuracy or a new solver result. Failed Crofoot and Panda Nuts attempts remain. Fifteen judge occurrences include only nine unique payloads.",
+        "next_action": "Qualify current image and lifecycle readiness, replay AMTL independently, and inspect its analysis and judgments before another live pilot.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "microvqa-plus-plus",
@@ -600,7 +977,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "All 15 released demonstration/training examples have saved outputs; 11/15 passed the strict-number adaptation. These are not the full benchmark test set.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -608,7 +985,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": "Full test release/creator scoring implementation unavailable;15-demo subset is separately runnable.",
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "All 15 released demonstration examples. The creator still lists the complete dataset and test results as pending release.",
+        "public_population_within_scope": 15,
+        "population_unit": "demo questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "57a2272e9116631db3ca136518b171cc38747f6b",
+        "readiness_stage": "demo_scope_and_license_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Standard Gym dependencies plus image input;15 demo examples staged. Public complete test set and creator scorer not released.",
+        "scoring": "Explicit strict-number choice equality, not a released creator scorer.",
+        "protocol_limitations": "Demo-only subset; exact numbered-answer variant; data-license needs confirmation before redistribution.",
+        "next_action": "Report the 15-example demonstration subset explicitly, and confirm its inclusion and redistribution terms.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "genehop",
@@ -623,7 +1015,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Five tasks ran; two were automatically scored and three require manual assessment.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -631,7 +1023,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "150 public questions across three categories. The creator automatically scores the 50 Disease gene location questions.",
+        "public_population_within_scope": 150,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "0a2a327a507be49e660597769cc53431abd6613a",
+        "readiness_stage": "manual_scoring_scope_and_frozen_sample_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "NCBI EUtils/BLAST public APIs with retained mutable responses; pinned creator header, native tool loop and guarded Gym transport.",
+        "scoring": "Creator Disease gene location reference recall; other two categories manual-only/null.",
+        "protocol_limitations": "Nemotron chat and 16K output allowance; allowlisted bounded NCBI calls, original rolling header/tool truncation retained.",
+        "next_action": "Keep manual-only scores null, inspect the five-task native pilot and hollow answers, and define grading for the remaining categories.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "smolinstruct",
@@ -646,7 +1053,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "Selected examples ran through the maintained integration and saved outputs were rescored. Strict output-tag requirements qualify interpretation.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -654,7 +1061,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Two formula-conversion tasks out of 14: IUPAC to formula and SMILES to formula, with 2,993 official test examples each.",
+        "public_population_within_scope": 5986,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "source43ab5fccd14514ddf756534d18a6917e7e11d0ae; datasetb3e028007c6abc043f62ed0aef4824dc9e86bacc",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "2993eachofficialtesttask;692MBpinnedarchivecached;50sampleavailable.",
+        "dependencies": "NumPy and the relevant AST-extracted creator functions suffice for scoring. The full generation dependency stack is unnecessary.",
+        "scoring": "Creator output-tag extraction and molecular-formula element-count equality.",
+        "protocol_limitations": "Strict MOLFORMULA tags may reject an otherwise correct formula. The other 12 tasks remain unimplemented.",
+        "next_action": "Qualify generation settings and report both tasks, including tag-related failures, without claiming the full suite.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "moleculeqa",
@@ -670,7 +1092,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Preparation and controlled variants exist, but execution acceptance on the shared integration is not established.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -678,7 +1100,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "A zero-shot, single-instance, strict-letter molecular-fact variant. The published general-model baseline instead uses aspect-specific ten-shot examples.",
+        "public_population_within_scope": 5786,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "source6258ad546330f32b015383f40498311405f4354c; datasetcd1bcb922c9127b57e0944cdb605baccaa98ef9d",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "5786test records cached, public ungated dataset. Full ordered creator ten-shot demonstrations/extraction script absent from inspected creator release.",
+        "dependencies": "A stateless grader is available. Clean-worker setup, full controls, and a live pilot remain necessary.",
+        "scoring": "Full-match A\u2013D letter accuracy, explicitly named as a variant.",
+        "protocol_limitations": "The full ordered demonstrations, aspect prompts, instance grouping, and extraction policy are absent from the inspected creator release. Dataset and software license claims differ.",
+        "next_action": "Qualify the named zero-shot variant; retain canonical protocol reconstruction as an explicit gap.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "mollangbench",
@@ -693,7 +1130,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are covered; the later 30 yielded 20 raw credits. Saved-output scoring reproduced the recorded results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -701,7 +1138,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "400 generation/edit SMILES test records; recognition and image-output variants excluded",
+        "public_population_within_scope": 400,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "76dcacb082e20871851cbca6395180503a8b6d22",
+        "readiness_stage": "fixed_sample_and_replay_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned source plus dataset 859cb8337b49c1d9646e504ca2813c49339c180f, RDKit/pyarrow/datasets. Both generation/edit test parquet and frozen 50 cached.",
+        "scoring": "Creator tagged-SMILES parsing and canonical RDKit equality; validity reported separately.",
+        "protocol_limitations": "Explicit generation/edit subset, not full suite;50 attempts from separately documented conditions need reconciliation.",
+        "next_action": "Inspect the original 50 task identities and output allowances, replay canonicalization on the qualified worker, and review at least five trajectories.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "lpm-24",
@@ -716,7 +1168,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are covered; the later 30 yielded no raw credits. Saved-output scoring reproduced the recorded results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -724,7 +1176,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "LPM-24 text-to-molecule generation, using only the creator InChI exact-match metric over 21,805 released examples.",
+        "public_population_within_scope": 21805,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "8e747238e90734bf8774712ecc010ee24efcd346",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "21805released final-evaluation examples and50sample available.",
+        "dependencies": "RDKit, NLTK, and Levenshtein are installed in the existing local environment. Clean-worker setup remains necessary.",
+        "scoring": "The actual creator evaluation function computes InChI equality, with validity and Levenshtein diagnostics.",
+        "protocol_limitations": "The chat prefix is an explicit adaptation. Captioning, BLEU, FCD, and overall shared-task scores are excluded. Multiple molecules may satisfy one description.",
+        "next_action": "Qualify a clean environment and consistent 50-task condition, and inspect chemically valid alternatives that fail exact match.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "scivisagentbench",
@@ -739,7 +1206,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Five visualization workflows finished, but malformed or truncated judge responses prevented usable scientific scores.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -747,7 +1214,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "11 frozen Napari workflow identities; output/efficiency plus text/vision assessment.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "b9435d13e9ff979226b1754e6c467efeb026978a",
+        "readiness_stage": "needs_runtime_and_judge_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Eleven completed workflows have unusable aggregate judgments. Creator formatter turns screenshot images into text placeholders. Maintained inference gate defaults closed; runtime paths need qualification.",
+        "next_action": "Qualify guarded transport/native container and define any budget/image transport change as a new condition.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "fgbench",
@@ -762,7 +1244,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions are represented; the later 30 ran and were rescored. Prompts use a zero-shot variant rather than all creator model-specific settings.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -770,7 +1252,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "7,146 molecular functional-group questions across six Boolean and numerical task types; the fixed sample contains 50 questions.",
+        "public_population_within_scope": 7146,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "fe67aded66bb08534da180ad6073cef42f422666",
+        "readiness_stage": "generation_budget_and_frozen_sample_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned creator source plus datasets/NumPy; actual scorer is CPU only. Existing local creator controls and saved20 aggregate parity passed this review.",
+        "scoring": "Three separate Boolean accuracy and three numeric RMSE/validity strata. Zero numeric predictions/references excluded by unchanged creator rule.",
+        "protocol_limitations": "Exact public question as zero-shot message rather than every creator model-specific prompt; no valid combined scalar.",
+        "next_action": "Retain all six metrics, inspect truncated responses, and qualify a consistent output allowance before accepting the 50-question result.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "mol-instructions",
@@ -785,7 +1282,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are covered; the later 30 yielded eight raw credits. Saved-output scoring reproduced the recorded results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -793,7 +1290,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Two held-out biomolecular-text tasks: 1,001 multiple-choice and 100 true/false questions. Other molecular and protein tasks are excluded.",
+        "public_population_within_scope": 1101,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "d08a15f88e0c1b5e6d1e08330f570983885ddee1; dataset66da41958866dfce072595017aaf460bb290c19b",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Pinned test-split source and frozen50available.",
+        "dependencies": "The adapter executes the relevant creator functions through AST extraction; a local language-model stack is unnecessary.",
+        "scoring": "Creator task-specific accuracy on the released Alpaca prompts. Empty answers become explicit failures rather than creator parser crashes.",
+        "protocol_limitations": "Balanced sampling is not population weighted. True/false macro F1 is absent from the current per-task accuracy integration.",
+        "next_action": "Qualify the complete sample, report the two tasks separately, and implement macro F1 if that metric is claimed.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "suprabench",
@@ -808,7 +1320,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are covered; the later 30 yielded four raw credits. Saved-output scoring reproduced the recorded results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -816,7 +1328,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The 2,064 four-choice TBS base examples for selecting the strongest binder; other SupraBench tasks are excluded.",
+        "public_population_within_scope": 2064,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "bcb06eb6e1d283b70e943ed0c90aa9e6f97826e5",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "All2064baseTBSrecords and50sampleavailable.",
+        "dependencies": "The creator parser is lightweight. Other dataset families require separate integration.",
+        "scoring": "Creator loose-letter parsing and parsed-only accuracy, alongside an all-attempt diagnostic.",
+        "protocol_limitations": "BAP, SID, HGD, VQA, and few-shot variants are unimplemented. Stray letters may be parsed as answers. Ordinary mean Gym reward differs from parsed-only accuracy.",
+        "next_action": "Run a consistent fixed sample and report parsing coverage, creator accuracy, and the all-attempt diagnostic separately.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "csmed",
@@ -829,7 +1356,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Preparation and ranking-metric controls exist; complete input documents and native solver execution are not qualified.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -837,7 +1364,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": "Complete original EVAL export/loader alignment and solver protocol are unresolved.",
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Original CSMeD review-level retrieval/ranking; not CSMeD-FT classification",
+        "public_population_within_scope": null,
+        "population_unit": "complete reviews and corpus documents",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "81cd35498bdea8981e5310842c32398625a10e95",
+        "readiness_stage": "source_data_and_solver_protocol_resolution",
+        "data_availability": "full_original_review_export_not_qualified",
+        "dependencies": "Needs full Cochrane EVAL export with title, abstract, criteria, search strategy, document text and labels; old loader alignment unresolved. Scoring requires ranx 0.3.18 in isolated Python 3.11.",
+        "scoring": "21 creator ranx metrics and supplementary ranking measures, separately by query/run; no pooled accuracy.",
+        "protocol_limitations": "Current maintained code prepares authorized interchange exports and scores saved complete rankings; no native Nemotron solver or Gym config.",
+        "next_action": "Acquire/validate full creator-compatible EVAL metadata and choose an explicit LLM retrieval/ranking protocol. Do not substitute the already-run CSMeD-FT task.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "csmed-ft",
@@ -853,7 +1395,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "49 selected papers have evaluated outputs; one remains unresolved because of full-text quality. Saved-output scoring is available for reviewed subsets.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -861,7 +1403,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Full-text eligibility classification for systematic reviews, preserving creator chunk generation and paper-level merging. Historical whole-paper classification is a separate variant.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "baseline81cd35498bdea8981e5310842c32398625a10e95",
+        "readiness_stage": "contract_reviewed_input_disposition_pending",
+        "data_availability": "Frozen50selected papers cached. Retained full creator-input check:47valid papers yield49chunks;3invalid inputs remain explicit.",
+        "dependencies": "An isolated Python 3.11 environment, tiktoken 0.4.0, LangChain 0.0.191, and the pinned cl100k asset are required. Metric-library deviations are recorded separately.",
+        "scoring": "The lower-only creator parser and exclusion-if-any-chunk merge feed seven paper-level metrics.",
+        "protocol_limitations": "All-invalid chunk answers become included under the creator merge. Two selected papers lack eligibility criteria, and one lacks full text. Historical whole-paper outputs cannot establish chunk-protocol results.",
+        "next_action": "Resolve missing inputs or propose an explicitly named subset at review, then qualify chunk generation and grouped reporting.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "molrgen",
@@ -877,7 +1434,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Five tasks ran in a single-completion CPU variant. This differs from the creator's full multiple-candidate protocol.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -885,7 +1442,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "OOD boxed molecular-generation prompts with creator reward service; original 5 singleton draws.",
+        "public_population_within_scope": 1000,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "f033a3dfea50c3be5782a979e73eeeb842a7bae1",
+        "readiness_stage": "needs_scientific_runtime",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "CPU Vina is an explicit oracle variant. Grouped library metrics differ from published notebook sampling/fingerprint. One draw per prompt cannot support diversity-aware top-k.",
+        "next_action": "Qualify real docking controls and a creator-compatible multiple-draw protocol before reported-metric comparison.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "fdarxbench",
@@ -901,7 +1473,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "The later 30 tasks were scored after provider-limit recovery, with 20 raw judge credits; an earlier 20 are separate. Saved-answer verification includes a new judge call for one answer.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -909,7 +1481,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "FDA label-grounded factual, multihop, and refusal QA; original frozen 50 across separate attempts.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "019785d2802c4ceec583e4d4b82b902d7a8f9910",
+        "readiness_stage": "needs_uniform_judge_replay",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Nemotron judge replacement is a variant. A past saved-answer regrade made a new judge call. LICENSE says Apache 2.0 while pyproject says MIT; clarify before redistribution.",
+        "next_action": "Bind rubric/data revision, replay judge occurrences, and inspect judgments while separating any fresh-judge calls.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "ctbench",
@@ -925,7 +1512,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "The later 30 produced no usable performance scores: 27 scoring/judge failures and three judge rate-limit failures. Earlier 20 use a separate variant.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -933,7 +1520,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "100 CT-Pub and 1,690 CT-Repo after excluding demonstrations; zero-shot feature extraction.",
+        "public_population_within_scope": 1790,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "09d7a6bb68e7dc04167ad57c653c4ea9c8f1702e",
+        "readiness_stage": "needs_judge_protocol_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Creator 1000-token setting caused unusable outputs. Three-shot and BERTScore are outside implemented scope. Zero-candidate division by zero remains a grading error; coverage guard is a documented deviation.",
+        "next_action": "Pilot one consistent solver/judge allowance and retain complete judge receipts before validation.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "sino-us-drugqa",
@@ -948,7 +1550,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions were covered in separate 20- and 30-question executions; saved-answer scoring was checked.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -956,7 +1558,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "11,444 bilingual FDA/NMPA regulatory questions across policy, application, and comparison tasks.",
+        "public_population_within_scope": 11444,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "cd026a27a5e039863de9080b8d7d95acaf1f5a39",
+        "readiness_stage": "creator_budget_vs_project_budget_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned source and public release JSONL cached; deterministic parser with no scientific external oracle.",
+        "scoring": "Creator parsed selected-answer accuracy and output-validity; missing/malformed answer remains visible.",
+        "protocol_limitations": "Maintained literal brace-formatting repair keeps canonical prompt text; creator 1,024-token allowance truncates reasoning model outputs.",
+        "next_action": "Preserve the creator-budget results, and evaluate any larger output allowance as a separate condition across the entire fixed sample.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "trialpanorama",
@@ -972,7 +1589,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "The later 30 selected examples have scoring across separate attempts; saved-answer regrades were checked. Earlier 20 are separate.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -980,7 +1597,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Study screening only: 100 batched review records containing 979 study decisions.",
+        "public_population_within_scope": 100,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "needs_reference_and_completeness_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Creator fallback can earn credit for empty output; omission can inflate score. Duplicate reference PMIDs are unresolved source issues. Mean batch accuracy differs from prediction-weighted accuracy.",
+        "next_action": "Reconcile 50 batches and all decisions, duplicate PMIDs, missing context, and separate raw/strict aggregate definitions.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "vibeproteinbench",
@@ -993,7 +1625,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Source access remains unresolved. No runnable integration is established.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1001,7 +1633,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": "Fresh exact-revision Hugging Face API returned 401. Paper-level criteria do not establish executable normalization or scorer equivalence. Prior 957 planning count is unverified.",
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Recognition, rationale-guided engineering, and generation; no downloaded task identities verified.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "external_access_blocked",
+        "data_availability": "Exact revision requires authorization",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Fresh exact-revision Hugging Face API returned 401. Paper-level criteria do not establish executable normalization or scorer equivalence. Prior 957 planning count is unverified.",
+        "next_action": "Obtain authorized creator data and scoring source, then freeze all applicable configurations.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "reactbench",
@@ -1017,7 +1664,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples yielded 33 exact-match successes. Matching only trims surrounding whitespace, so this is an explicit variant of creator extraction.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1025,7 +1672,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "1,618 released image questions across graph, multiple-line, single-line, and tree diagrams. Several questions share each diagram.",
+        "public_population_within_scope": 1618,
+        "population_unit": "questions; correlated shared diagrams",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "d5ad4de2915106e9cf9fe71d795fce0d0128c797",
+        "readiness_stage": "fixed_sample_and_measurement_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Standard Gym runtime; pyarrow/Pillow for preparation. Source parquet and frozen 50 with original image bytes cached; current public HF card read.",
+        "scoring": "Trim-surrounding-whitespace exact string equality; literal bytes equality diagnostic.",
+        "protocol_limitations": "Creator template extractor unreleased; explicit inline-prompt exact-match variant. Diagram topology is available; paper task taxonomy is not.",
+        "next_action": "Replay the 50 saved answers, inspect diagram ambiguities and truncations, and label the exact-match scoring variant.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "moljson-molecular-reasoning-evaluation",
@@ -1040,7 +1702,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "49 of 50 selected examples have scored outputs and replay evidence; one request remains unresolved.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1048,7 +1710,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Shortest-path only: 2,919 questions in 3 correlated representations; frozen 50.",
+        "public_population_within_scope": 8757,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "c010264fa0fba0c6da52ea770a30d6085fbaf52d",
+        "readiness_stage": "needs_scope_and_budget_review",
+        "data_availability": "Declared public subset instantiated from pinned source; all 50 selected records exactly match historical source preparation.",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Inventory points to package repository; executable benchmark is oxpig/MolJSON-data. Translation and constrained generation remain outside scope.49 scored rows do not complete 50-task validation.",
+        "next_action": "Use actual MolJSON-data companion source, reconcile unresolved one of 50, and qualify one consistent condition.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "flyaoc",
@@ -1063,7 +1740,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "The final nine previously unstarted tasks completed and were rescored. Other scored attempts are retained; unresolved provider responses prevent an unqualified all-task result.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1071,7 +1748,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Drosophila annotation with literature tools; frozen 50 gene IDs; GO/anatomy semantic recall and synonym recall.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "needs_runtime_and_attempt_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Historical 20 replay matches within 1 e-12. Fake-model controls demonstrate integration, not performance. Some provider outcomes remain unresolved.",
+        "next_action": "Qualify runtime/source/corpus, reconcile all 50 terminal states, and replay per-gene plus aggregate metrics.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "p-bench",
@@ -1086,7 +1778,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "A reviewed set of 26 attempts produced 18 scores, including 13 creator-credit successes; eight provider failures were excluded. Those 18 scores were replayed.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1094,7 +1786,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "50 fixed statistical tasks from 450 staged files. The creator README describes 425 benchmark tasks; release identities require reconciliation.",
+        "public_population_within_scope": 50,
+        "population_unit": "frozen selected statistical tasks",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "968dd38bea50102a313d7d36843aba564eabc33f",
+        "readiness_stage": "native_harbor_live_and_reference_review",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned R 4.4/Python 3.12 image and R packages; immutable image-qualified native path exists;20/50 task manifests and source hashes retained.",
+        "scoring": "Creator raw conclusion and strict p-value/z-distance single-run scores; paper pass@1/pass@3 requires3 repeats.",
+        "protocol_limitations": "Terminus terminalR replaces persistentXML/Fisher harness. Two reviewedv6 reference cases remain scientifically unresolved.",
+        "next_action": "Reconcile the 425-versus-450 task counts, qualify fresh native Harbor execution, and preserve the two suspect reference answers as unresolved.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "chemiq",
@@ -1109,7 +1816,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions have scored outputs across separate attempts; recovered answers and final 13 outputs were rescored. Budget failures remain failures.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1117,7 +1824,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Eight chemical reasoning categories; native parser/checker; original frozen 50.",
+        "public_population_within_scope": 816,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "63826f64990802e87f1b11b9192606a20838d522",
+        "readiness_stage": "needs_dependency_qualification",
+        "data_availability": "Declared public subset instantiated from pinned source; all 50 selected records exactly match historical source preparation.",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "OPSIN failures can invalidate measurements separately from model failures. Preserve separate budget conditions. No top-level license found in inspected checkout.",
+        "next_action": "Qualify OPSIN, clean dependencies, all 50 terminal outcomes, generation settings, and independent scoring review.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "qcbench",
@@ -1132,7 +1854,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 saved answers were rescored. One reference answer has a documented defect, so 50 result records do not mean 50 valid measurements.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1140,7 +1862,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Numeric chemistry QA using boxed extraction and creator decimal-round comparison; frozen 50.",
+        "public_population_within_scope": 350,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "195b4788375d1701b405f1addbf84903a41b5dc1",
+        "readiness_stage": "needs_reference_and_budget_review",
+        "data_availability": "Declared public subset instantiated from pinned source; all 50 selected records exactly match historical source preparation.",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Comparator rejects its own 3.51 e-09 reference.11 budget failures remain zeros. Raw 22/50 is not 50 scientifically validated measurements. No top-level license found.",
+        "next_action": "Verify raw replay 50, retain invalid reference 233, and assess a consistently changed output budget.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "brainbench",
@@ -1155,7 +1892,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 examples were evaluated using whole-chat likelihood scoring. Thirty later likelihood scores were recomputed; this is a protocol variant.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1163,7 +1900,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "200 human abstract pairs; whole-chat prompt-likelihood variant",
+        "public_population_within_scope": 200,
+        "population_unit": "abstract pairs",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "9808e5d61ee88c51967e43b5a48ad89b3aeee421",
+        "readiness_stage": "likelihood_endpoint_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Creator raw-forward-pass protocol uses CUDA locally; maintained variant needs exact-model prompt_logprobs=0 with full prompt token likelihoods. Text-answer endpoints are insufficient.",
+        "scoring": "Lower whole-prompt mean NLL wins; ties incorrect.",
+        "protocol_limitations": "Server-rendered chat wrapper is included, unlike creator raw-text local forward pass.",
+        "next_action": "Reprobe exact endpoint likelihood capability, retain raw paired likelihood receipts, then replay the existing frozen 50 by task identity.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "mdarena",
@@ -1179,7 +1931,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Earlier scoring was reproduced but its scientific interpretation was rejected. A later task stopped after 57 calls without a final answer or score.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1187,7 +1939,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Molecular-dynamics workflows; JSON/XML Terminus2 variants and task-specific environments.",
+        "public_population_within_scope": 50,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "d1d789d92a9935e716182e31d99393edcd4ac7d6",
+        "readiness_stage": "needs_scientific_scorer_decision",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Earlier 1/1 raw scores are excluded by scoped review. Later 57-call attempt had no final answer/score. One verifier image cannot qualify all 50 heterogeneous tasks.",
+        "next_action": "Review known correctness/process-judge defects and qualify a task-specific runtime before new measurement.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "ainsteinbench",
@@ -1202,7 +1969,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Two quantum-chemistry tasks exhausted their step budgets without submissions; another task returned a raw score rejected as scientifically invalid.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1210,7 +1977,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Four released code-repair tasks: two PySCF and two Einstein Toolkit; per-task runtime qualifications required",
+        "public_population_within_scope": 4,
+        "population_unit": "code-repair tasks",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "d9b1383e86c2ae43dcb3ddbcaf34c21ceb786cca",
+        "readiness_stage": "scientific_runtime_and_native_live_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Immutable creator Docker images and compiler/runtime packages; current source-sha256 binds consumed files; native Harbor path and separate verifier exist.",
+        "scoring": "Creator passed-test percentage and test identities, with patch-rejection and incomplete-test diagnostics. Percent tests passed is not solved-task rate.",
+        "protocol_limitations": "Nemotron, bounded timeouts/resource caps, reference/history stripping; no borrowed reference patch accessible to solver.",
+        "next_action": "Review every task image and scorer control, qualify the native Harbor path, and run all four public tasks with explicit timeout and test-collection outcomes.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "moose-chem",
@@ -1226,7 +2008,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "A native hypothesis-retrieval task completed and produced top-three inspiration recall of 0.5. That metric measures retrieved inspirations, not hypothesis quality; controlled saved-judge replay was also checked.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1234,7 +2016,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Native inspiration screening, hypothesis generation and refinement, and reference evaluation over a 51-question, 150-paper corpus.",
+        "public_population_within_scope": 51,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "f8cda98a3bed30b0f0d85fba625e343d688461ab",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Pinnedcreatorcode/workbook/corpusandfrozen5IDs18,26,38,0,33available;historicaltask26hasseparatesettlement/isolationrecords requiringreview.",
+        "dependencies": "Separately qualified public-solver and trusted-verifier images, all-role Nemotron transport, source bindings, and reviewed settlement of prior calls are required.",
+        "scoring": "The full native evaluation is retained; inspiration recall is a transport metric, rather than overall hypothesis quality.",
+        "protocol_limitations": "Modern models may have encountered the 2024 papers. Gold hypotheses and key points must remain outside solver inputs. Task 26 requires explicit settlement review before clearing its block.",
+        "next_action": "Review settlement and isolated-runtime evidence, then admit a named task only after source, image, dependency, and model-role checks.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "chemx",
@@ -1249,7 +2046,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Local request controls passed, but both real request formats were rejected by the provider. No scientific score was produced.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1257,7 +2054,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": "Historical real requests rejected by provider; no scientific model score available.",
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Magnetic extraction from two articles, containing 22 reference rows. The complete magnetic table contains 2,578 rows from 386 articles.",
+        "public_population_within_scope": 2,
+        "population_unit": "articles",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "3d91dec63603955aba18d29a011c1886ed687148",
+        "readiness_stage": "provider_request_compatibility",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Poppler500DPI rendering, pypdf/pdf2image/Pillow; actual38.4 MB and 26.9 MB JPEG payloads need supported image count/context/request size. Scorer pandas2.2.3/numpy2.2.5.",
+        "scoring": "Creator per-column multiset precision/recall/F1; adapter mean-columnF1 is explicitly named.",
+        "protocol_limitations": "Two frozen accessible articles; exact creator image path plus explicit page order. Column matching ignores row association.",
+        "next_action": "Qualify provider support for the unchanged full-resolution requests, and retain article-license and request-size evidence.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "hiscibench",
@@ -1272,7 +2084,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected biology questions have results; the later 30 yielded 17 correct answers and were rescored. Full process-cleanup verification remains qualified.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1280,7 +2092,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "200 L1 Biology questions borrowed from SuperGPQA. This subset covers one part of the 8,735-task HiSciBench suite.",
+        "public_population_within_scope": 200,
+        "population_unit": "questions",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "022fd997164f7dcb9a82c1c1809adf540973950c",
+        "readiness_stage": "source_pinned_worker_qualification",
+        "data_availability": "cached_public_subset_present",
+        "dependencies": "Pinned archive subset verified by source-manifest; timeout-decorator0.5.0 in creator scorer process. Cached200 questions and frozen 50 exist.",
+        "scoring": "Creator zero-shot option-label/content parser accuracy.",
+        "protocol_limitations": "16384-token/temperature 0.1 project condition differs from creator default4096; content overlaps SuperGPQA.",
+        "next_action": "Confirm actual process cleanup and scorer dependency on worker, then audit/replay fixed 50 without counting borrowed questions twice.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "molbench-molclaw",
@@ -1295,7 +2122,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "Saved-output scoring works for five molecular-ranking examples and 20 optimization responses. This is not fresh agent execution or full MolClaw support.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1303,7 +2130,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Tool-free screening ms-1 (50), ms-2 (37), and ms-3 (25), plus separately implemented editing/optimization variants.",
+        "public_population_within_scope": null,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "needs_scope_review",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "This does not establish complete MolClaw tool-agent support. Ranking parser truncates 60 entries to 3; duplicates can receive repeated credit. ms 2 lacks optional reference fields.",
+        "next_action": "Declare accepted subsets and their actual scorer/runtime, then reconcile original samples.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "agentideabench",
@@ -1316,7 +2158,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Released result tables were validated. A runnable evaluation workflow is not implemented; table rows are not independent benchmark questions.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1324,7 +2166,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Static and active ideation across 100 subfields, with 40 densely scored; release table rows are not benchmark tasks.",
+        "public_population_within_scope": 100,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": null,
+        "readiness_stage": "implementation_needed",
+        "data_availability": "Published tables omit full reference inputs",
+        "dependencies": null,
+        "scoring": null,
+        "protocol_limitations": "Public 51-table release omits abstracts/reference text. Changing the creator's three-model critic ensemble to Nemotron changes the score scale.",
+        "next_action": "Reconstruct the frozen paper/reference corpus, bind creator source, and implement both task paths.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "airs-bench",
@@ -1339,7 +2196,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "Two research tasks each generated models making 10,000 predictions, with replayed error metrics. A third stopped on a provider limit. The two targets use different scales and are not averaged.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1347,7 +2204,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Five molecular research workflows: ZINC regression and four QM9 targets. Each predicts its complete 5,000- or 10,000-row test set.",
+        "public_population_within_scope": 5,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "18e4f1d retainedcreatorrelease",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Fullscientificarrays,imageIDsandscorersboundbyfrozen_sources. PartiallaptopArrowcachesisnotcompleteinputreadiness.",
+        "dependencies": "Pinned scientific assets and qualified images, Harbor 0.24.0, and the declared CPU, memory, turn, and time limits are required. Two images have explicit reconstructed revisions.",
+        "scoring": "A separate verifier computes raw MAE for each target and checks the full prediction count.",
+        "protocol_limitations": "Five research workflows are five LLM tasks. Their prediction rows are not additional LLM tasks. The Harbor harness differs from published agents, and MAEs across targets must not be averaged.",
+        "next_action": "Qualify all five images and assets on the current worker, repeat oracle, offset, and missing-submission controls, and admit a native pilot.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "molpuzzle",
@@ -1362,7 +2234,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected examples are covered; the later 30 yielded 18 raw credits. Saved-output scoring reproduced recorded results.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1370,7 +2242,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "Stage 2 H-NMR image-and-question Yes/No tasks, with repaired image transport: 2,592 of 2,808 records have published matching images.",
+        "public_population_within_scope": 2592,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "4b62e754ddb5c9b3a5c870a6221b55d71c70ebd2",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "2808H-NMR records;2592matching published images,216missing before sampling. Cached image assets and50sample available.",
+        "dependencies": "The endpoint must support actual image parts. Pinned source images and code are cached.",
+        "scoring": "Creator Yes-before-No substring accuracy, retaining invalid-output diagnostics.",
+        "protocol_limitations": "Stages 1 and 3, and other spectra, are excluded. Image encoding differs from the original base64-in-text implementation. Loose substring parsing and balanced sampling limit interpretation.",
+        "next_action": "Qualify the visual payload and inspect five complete image, answer, and scoring examples for the named repaired-transport subset.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "scienceboard",
@@ -1386,7 +2273,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Task preparation, dependencies and controller tests exist; no full GUI-driven scientific execution is established.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1394,7 +2281,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The exact creator-parity sample of 20 GUI-driven scientific tasks and its custom multimodal Tester.",
+        "public_population_within_scope": 20,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "21b5eb0f1d00898f7de9e84c3d33a87c2f2b3c3e",
+        "readiness_stage": "contract_reviewed_runtime_qualification_pending",
+        "data_availability": "Exact20taskJSONsandcreatorcodecached;sanitizedflattenedruntimeimageandapplicationassetsnotqualifiedoncurrentworker.",
+        "dependencies": "A sanitized, flattened creator image, scientific applications, Linux bridge connectivity, and conservative admission resources of 8 CPUs, 24 GiB RAM, 80 GiB disk, and 2 GiB shared memory are required.",
+        "scoring": "Creator result.out values and swallowed exceptions are retained by an explicitly named guarded-transport variant.",
+        "protocol_limitations": "Passing source and lifecycle fixtures does not establish working scientific applications. The reference VM is not an admitted sanitized Docker image. Retry and overflow-trimming suppression are explicit variants.",
+        "next_action": "Qualify the exact sanitized image, application initialization, actions, grading, and owned cleanup in a real runtime before live admission.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "scienceqa",
@@ -1402,6 +2304,7 @@
       "upstream": "https://github.com/lupantech/ScienceQA",
       "source": "https://scienceqa.github.io/",
       "config_paths": [
+        "benchmarks/scienceqa/creator-recipe.yaml",
         "benchmarks/scienceqa/config.yaml"
       ],
       "execution_type": "one-shot",
@@ -1409,15 +2312,32 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 creator-recipe examples were evaluated and saved outputs replayed. Strict-answer accuracy was 47/50; one fallback interpretation remains separately documented.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
-        "dependencies": "pending_uniform_review",
-        "adapter_controls": "pending_uniform_review",
-        "model_execution": "pending_uniform_review",
-        "score_replay": "pending_uniform_review",
-        "publication": "pending_uniform_review"
+        "source_and_scope": "accepted_named_protocol",
+        "dependencies": "qualified_clean_macos_fixture",
+        "adapter_controls": "passed_native_fixture_and_creator_controls",
+        "model_execution": "accepted_retained_50_exact_model_calls",
+        "score_replay": "matched_50",
+        "publication": "local_report_and_sample_manifest_complete"
       },
-      "accepted_task_count": null,
-      "blocker": null
+      "accepted_task_count": 50,
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "QCM-ALE two-shot, no-caption raw completion recipe; original frozen 50.",
+        "public_population_within_scope": 4241,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "2cbf8318e07b9ece895bb2ae605e71e38d623264",
+        "readiness_stage": "accepted_scoped_engineering_integration",
+        "data_availability": "Public source and retained samples located; fresh full acquisition not tested",
+        "dependencies": "Fresh macOS Python3.13.14 frozen84-package setup and five-task native CLI fixture qualified; supervisedLinux deployment remains separate.",
+        "scoring": "Strict unique answer extraction and ordered creator fallback; both47/50, one fallback remains separately recorded.",
+        "protocol_limitations": "General school science/language/social science sample, not life-sciences-only. Images intentionally omitted. One repeated answer triggers creator fallback. Data CC BY-NC-SA 4.0 differs from software MIT.",
+        "next_action": "Accepted fixed 50-task text-only engineering sample. Supervised Linux deployment and life-sciences-only sampling remain separate qualifications.",
+        "evidence_boundary": "Accepted named engineering sample, combining retained exact-model50-call evidence with fresh setup, controls, and independent replay. Scientific validity and supervisedLinux deployment remain separate."
+      },
+      "accepted": true,
+      "report": "benchmarks/scienceqa.md"
     },
     {
       "id": "scibench",
@@ -1432,7 +2352,7 @@
       "saved_output_check_previously_documented": true,
       "observation": "50 selected questions have executions; all later 30 creator scores were reproduced from saved outputs.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1440,7 +2360,22 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": null,
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "The 256 chemistry and thermodynamics questions from Atkins, ChemMC, Matter, and Thermo; other SciBench subjects are excluded.",
+        "public_population_within_scope": 256,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "e14e0ca3d3db0f02928a18d435b9c3d15656a7c5",
+        "readiness_stage": "contract_reviewed_worker_qualification_pending",
+        "data_availability": "Source textbookJSONs andfrozen50 cached;50resultrecordsreplayedfresh.",
+        "dependencies": "The numeric parser, tolerance, and unit scaling need no heavyweight scientific runtime. Current worker qualification remains necessary.",
+        "scoring": "Creator boxed-number extraction, power-of-ten unit normalization, and 5% relative tolerance.",
+        "protocol_limitations": "All 50 retained scores replayed exactly: 27 correct, 33 completed responses, and 17 output-budget failures. Replay does not resolve an unsuitable generation allowance.",
+        "next_action": "Use the replay and actual failure examples at review, then evaluate the same 50 under one sufficiently large allowance.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     },
     {
       "id": "wmdp-bio-chem",
@@ -1456,7 +2391,7 @@
       "saved_output_check_previously_documented": false,
       "observation": "Configuration and likelihood-request controls exist, but a compatible live scoring backend is not qualified.",
       "acceptance": {
-        "source_and_scope": "pending_uniform_review",
+        "source_and_scope": "reviewed_with_qualifications",
         "dependencies": "pending_uniform_review",
         "adapter_controls": "pending_uniform_review",
         "model_execution": "pending_uniform_review",
@@ -1464,7 +2399,29 @@
         "publication": "pending_uniform_review"
       },
       "accepted_task_count": null,
-      "blocker": null
+      "blocker": "This measures hazardous knowledge. Higher accuracy does not imply an adoption or training priority. No model evaluation has been obtained.",
+      "latest_review": {
+        "reviewed_date": "2026-10-23",
+        "implemented_scope": "WMDP Bio and Chem, using the exact zero-shot lm-eval 0.4.2 likelihood procedure; Cyber is excluded.",
+        "public_population_within_scope": 1681,
+        "population_unit": "creator-defined tasks or questions; see implemented scope",
+        "population_is_completed_validation_tasks": false,
+        "source_revision": "creator c0b6c12bb0de3decf9c13bb13f9f1aa15754a132; dataset7125571f22f032c56415e7980f48d877dd830ff8",
+        "readiness_stage": "blocked_backend_capability",
+        "data_availability": "Both byte-pinned Parquets cached:1273Bio+408Chem. Fresh source-parity and full-row staging tests passed.",
+        "dependencies": "Raw causal continuation probabilities, exact model and tokenizer identities, and durable transport are required. The current chat backend refuses this path.",
+        "scoring": "Summed continuation log likelihood over four letter choices, with first-index tie breaking.",
+        "protocol_limitations": "This measures hazardous knowledge. Higher accuracy does not imply an adoption or training priority. No model evaluation has been obtained.",
+        "next_action": "Qualify a native conditional-likelihood backend before execution.",
+        "evidence_boundary": "Source/code inspection and model-free checks; complete runtime and scientific acceptance are recorded separately."
+      }
     }
-  ]
+  ],
+  "review_summary": {
+    "reviewed_date": "2026-10-23",
+    "source_scope_reviews": 63,
+    "uniformly_accepted_benchmarks": 1,
+    "accepted_validation_tasks": 50,
+    "note": "Public population counts refer to different task units and must not be summed as completed evaluation tasks."
+  }
 }

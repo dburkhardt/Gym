@@ -1,0 +1,766 @@
+{
+  "benchmark": "SciCode",
+  "reviewed_utc": "2026-10-23",
+  "upstream": "https://github.com/scicode-bench/SciCode",
+  "dataset": "https://huggingface.co/datasets/SciCode1/SciCode",
+  "dataset_revision": "4510f6a6aa27c43fad7b43da2c59602a86e88480",
+  "runtime_source_revision": "7e645a6af",
+  "model": "nvidia/nvidia/nemotron-3.5-super-vl",
+  "model_weights_hash": null,
+  "selection": "The existing frozen 30-problem sample, retained unchanged; no population representativeness claim.",
+  "sample_task_ids": [
+    "73",
+    "8",
+    "14",
+    "27",
+    "53",
+    "61",
+    "67",
+    "72",
+    "2",
+    "18",
+    "23",
+    "46",
+    "59",
+    "62",
+    "9",
+    "16",
+    "28",
+    "48",
+    "57",
+    "66",
+    "15",
+    "34",
+    "54",
+    "65",
+    "40",
+    "45",
+    "75",
+    "56",
+    "24",
+    "52"
+  ],
+  "sample_declared_substeps": 117,
+  "sample_scored_functions": 116,
+  "prefilled_step": "62.1",
+  "original_sample_sha256": "a0fe10ac186d5bedd640d4a92b29cc5a5ef6c9b7c1ad373e793c651be75facf5",
+  "sample_65536_sha256": "43b439b4d02b6f4c09868066ac32107aade79ebfec2d1cea7ca07563d0eba1ea",
+  "sample_131072_sha256": "8280ff5e00aa06f079e77e41767d14568e7fb17ef2dbe89a1026bb7e08b7745b",
+  "shared_protocol": {
+    "temperature": 0,
+    "background_included": true,
+    "tools": [],
+    "provider_timeout_seconds": 600,
+    "provider_attempts_per_request": 1,
+    "verifier_processes": 2,
+    "scientific_cpu_per_container": 1,
+    "scientific_memory_mib_per_container": 4096,
+    "scientific_timeout_seconds_per_function": 30,
+    "test_data_sha256": "48b0272a88b17dbd29777c217e1b4fb2b019b92e11cc2add847409db9541b890",
+    "sandbox_image_id": "sha256:008c95a5fc523cd29f4e423ec6f71fe9623dd7fc3ff8ad947c018d158452fe07",
+    "scientific_source_hashes": {
+      "benchmarks/scicode/prompts/background.yaml": "8ce8b01e7fc0d3d839c4e0ec6fa0e2dd40bd2939e3facfd6292723464316b773",
+      "responses_api_agents/scicode_agent/README.md": "71f20f05857ac9b5ae58882989e89ec583ce65c704b1d25b8ca1bdb0f5a5840c",
+      "responses_api_agents/scicode_agent/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "responses_api_agents/scicode_agent/app.py": "f1fc267c09719d997f3d0b3ef3e077a4edda5854d723b570128affa832d92101",
+      "responses_api_agents/scicode_agent/configs/scicode_agent.yaml": "fbcaf20ef6679e498cd3cd231c8be4cf6e900aacf4f72702de27db7dfa281298",
+      "responses_api_agents/scicode_agent/requirements.txt": "18e0d5e99020599c4d033912b39d4569276b1b9278db73469ea9708742cfaa7d",
+      "responses_api_agents/scicode_agent/step_utils.py": "665dd2be5a51cc0a2aa77a3b00befa618cd5788d21022b038b51c7df9a61ea9b",
+      "resources_servers/scicode/README.md": "3ae19eab6d70c19e0e41e4a039d939ed936f1f149d5aa4844f81e0d108576452",
+      "resources_servers/scicode/app.py": "cca6e8b266db1540fe6ccaf2da514f97daa33b55fb26aedbf8a4ed812370bc3c",
+      "resources_servers/scicode/configs/scicode.yaml": "837f95b6966555384aa9eb462106f6e18c87048b8b61e462d7b219cd33709ff0",
+      "resources_servers/scicode/managed_execution.py": "7ff826990ef43ee60fd16b5ee3f66932d7a3e03f25607064ed4bc7103829d4f8",
+      "resources_servers/scicode/measurement_validity.py": "d34c026cd999b4fbaefe13e2f5cbdd6a9ed3386c60eeb2156a386260c509a125",
+      "resources_servers/scicode/requirements.txt": "fdf5ab2fafcebd5d15df853330f1eb7cd7aa39c96c05a902a220999c3a48810b",
+      "resources_servers/scicode/sandbox/Dockerfile": "032514139915260b24fc14bb2fed6c234bc7cc37cc408e3c8b29eb12e49fd5ac",
+      "resources_servers/scicode/sandbox/execute.py": "68c29d2f2600ff5151e7e7e1040e65fabb2abdc61bbe306e3350b1ebeb36b69d",
+      "resources_servers/scicode/sandbox/requirements.txt": "d4452eae7a139ec908bd45f74cbcb02a5cdb4c48dd8c3bd003ed94d0e13539b1",
+      "resources_servers/scicode/scicode_integration/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "resources_servers/scicode/scicode_integration/runner.py": "43b645294ae27261e618bf3912d7fb8dbd15fe39839ffe018cc078be7f03f296",
+      "resources_servers/scicode/shape_review.json": "e66804ad47d5a4380948f6e91ef5f448f750040b77bb1dde64196ea829ad712f",
+      "resources_servers/scicode/task_data.py": "fbcce863f55472f3a6fd66b2e3e8a86301ca2dbebe0d055f1350be408f0e883f",
+      "environment_servers/legacy_agent/README.md": "173ebf546dfa739c046173863b47c7f0a49ad84a5df156b0946c1887e3c84117",
+      "environment_servers/legacy_agent/__init__.py": "39b67a3543de12fbe919327958818a53222b223688ef8ece33a12bc1e46d1f14",
+      "environment_servers/legacy_agent/app.py": "429aa98aeb76a91068ade2a07fae28832524214c8506615e89a7217d35dca490",
+      "environment_servers/legacy_agent/configs/legacy_agent.yaml": "ec74b9fe329cf3f85a0fe063195efbd13312a67cc9dd84c14613b00530f3ce3e",
+      "environment_servers/legacy_agent/requirements.txt": "18e0d5e99020599c4d033912b39d4569276b1b9278db73469ea9708742cfaa7d"
+    }
+  },
+  "conditions": [
+    {
+      "max_output_tokens": 16384,
+      "sample_complete": true,
+      "task_concurrency": 1,
+      "scored_problems": 30,
+      "whole_problems_passed": 4,
+      "functions_passed": 47,
+      "functions_scored": 116,
+      "physical_model_calls": 116,
+      "http200": 116,
+      "generations_completed": 97,
+      "generations_incomplete": 19,
+      "input_tokens": 196040,
+      "output_tokens_including_reasoning": 593646,
+      "captured_request_span_seconds": 1697.088526,
+      "scientific_timeouts": [
+        "14.2"
+      ],
+      "results_sha256": "cc3187c4d6e55cd563e6486ecee5afb058e8f09eed444ae9ee0b0ec443ecd004",
+      "saved_output_scoring_status": "No new replay claim made on this page."
+    },
+    {
+      "max_output_tokens": 65536,
+      "sample_complete": true,
+      "task_concurrency": 3,
+      "scored_problems": 30,
+      "whole_problems_passed": 5,
+      "functions_passed": 56,
+      "functions_scored": 116,
+      "physical_model_calls": 116,
+      "http200": 116,
+      "generations_completed": 115,
+      "generations_incomplete": 1,
+      "input_tokens": 221467,
+      "output_tokens_including_reasoning": 673904,
+      "captured_request_span_seconds": 616.42982,
+      "scientific_timeouts": [
+        "14.2"
+      ],
+      "results_sha256": "880cf858481729446f1a77b1aceddde92e41f02b694f979c48085f5731ea4eff",
+      "saved_output_scoring": {
+        "problems": 30,
+        "functions": 116,
+        "model_calls": 0,
+        "compared_fields_per_problem": 10,
+        "all300_fields_equal": true,
+        "lifecycle_cleanup_receipts": 116
+      }
+    },
+    {
+      "max_output_tokens": 131072,
+      "sample_complete": false,
+      "task_concurrency": 3,
+      "scored_problems": 29,
+      "whole_problems_passed": 4,
+      "functions_passed": 51,
+      "functions_scored": 110,
+      "physical_model_calls": 114,
+      "http200": 114,
+      "generations_completed": 114,
+      "generations_incomplete": 0,
+      "input_tokens": 211708,
+      "output_tokens_including_reasoning": 631082,
+      "captured_request_span_seconds": 618.694654,
+      "scientific_timeouts": [
+        "14.2"
+      ],
+      "results_sha256": "d975c6a32b87d0ca8032cb0826384277b3275aca9e976b9ee8673dc27ab8986c",
+      "failed_problem_id": "67",
+      "unscored_preserved_generations": 4,
+      "missing_generations": 2,
+      "failure_sidecar_sha256": "8c0ee86e1b28b495471dc3d851d03ed7c39c7e09097fbb6f4faf921b43de077d",
+      "failed_capture_sha256": "584b8a32678add8e1729f16b7bc21a1333e7c39660d70c1c5c4eaf5a81717cae",
+      "saved_output_scoring_status": "Not replayed; 29-only resource replay is proposed, not executed."
+    }
+  ],
+  "per_problem": [
+    {
+      "problem_id": "73",
+      "problem_name": "Xray_conversion_II",
+      "declared_substeps": 9,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 9
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 9
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 9
+      }
+    },
+    {
+      "problem_id": "8",
+      "problem_name": "Spatial_filters_III",
+      "declared_substeps": 1,
+      "condition_16384": {
+        "whole_problem_passed": true,
+        "functions_passed": 1,
+        "functions_scored": 1
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      }
+    },
+    {
+      "problem_id": "14",
+      "problem_name": "Brownian_motion_in_the_optical_tweezer",
+      "declared_substeps": 2,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      }
+    },
+    {
+      "problem_id": "27",
+      "problem_name": "Design_trade_offs_for_high_speed_photodetectors",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "53",
+      "problem_name": "Stochastic_Lotka_Volterra",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": true,
+        "functions_passed": 4,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": true,
+        "functions_passed": 4,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "61",
+      "problem_name": "Xray_conversion_I",
+      "declared_substeps": 5,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 5
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 5
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 4,
+        "functions_scored": 5
+      }
+    },
+    {
+      "problem_id": "67",
+      "problem_name": "LEG_Dyson_equation_bulk",
+      "declared_substeps": 6,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 6
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 4,
+        "functions_scored": 6
+      },
+      "condition_131072": null
+    },
+    {
+      "problem_id": "72",
+      "problem_name": "ising_model",
+      "declared_substeps": 9,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 7,
+        "functions_scored": 9
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 7,
+        "functions_scored": 9
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 7,
+        "functions_scored": 9
+      }
+    },
+    {
+      "problem_id": "2",
+      "problem_name": "Gaussian_Beam_Focus",
+      "declared_substeps": 1,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      }
+    },
+    {
+      "problem_id": "18",
+      "problem_name": "NURBS",
+      "declared_substeps": 2,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 2
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 2
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 2
+      }
+    },
+    {
+      "problem_id": "23",
+      "problem_name": "Blahut_Arimoto",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": true,
+        "functions_passed": 3,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "46",
+      "problem_name": "helium_atom_vmc",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "59",
+      "problem_name": "VQE",
+      "declared_substeps": 5,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 5
+      },
+      "condition_65536": {
+        "whole_problem_passed": true,
+        "functions_passed": 5,
+        "functions_scored": 5
+      },
+      "condition_131072": {
+        "whole_problem_passed": true,
+        "functions_passed": 5,
+        "functions_scored": 5
+      }
+    },
+    {
+      "problem_id": "62",
+      "problem_name": "dmrg",
+      "declared_substeps": 6,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 5
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 5
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 5
+      }
+    },
+    {
+      "problem_id": "9",
+      "problem_name": "Weighted_Jacobi",
+      "declared_substeps": 1,
+      "condition_16384": {
+        "whole_problem_passed": true,
+        "functions_passed": 1,
+        "functions_scored": 1
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 1
+      },
+      "condition_131072": {
+        "whole_problem_passed": true,
+        "functions_passed": 1,
+        "functions_scored": 1
+      }
+    },
+    {
+      "problem_id": "16",
+      "problem_name": "Davidson_method",
+      "declared_substeps": 2,
+      "condition_16384": {
+        "whole_problem_passed": true,
+        "functions_passed": 2,
+        "functions_scored": 2
+      },
+      "condition_65536": {
+        "whole_problem_passed": true,
+        "functions_passed": 2,
+        "functions_scored": 2
+      },
+      "condition_131072": {
+        "whole_problem_passed": true,
+        "functions_passed": 2,
+        "functions_scored": 2
+      }
+    },
+    {
+      "problem_id": "28",
+      "problem_name": "Gaussian_Beam_Intensity",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "48",
+      "problem_name": "MEELS_conversion",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "57",
+      "problem_name": "1D_harmonic_oscillator_numerov_shooting",
+      "declared_substeps": 5,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 5
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 5
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 5
+      }
+    },
+    {
+      "problem_id": "66",
+      "problem_name": "kolmogorov_crespi_potential",
+      "declared_substeps": 6,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 4,
+        "functions_scored": 6
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 4,
+        "functions_scored": 6
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 4,
+        "functions_scored": 6
+      }
+    },
+    {
+      "problem_id": "15",
+      "problem_name": "Crank_Nicolson_for_time_dependent_Schrodinger",
+      "declared_substeps": 2,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 2
+      }
+    },
+    {
+      "problem_id": "34",
+      "problem_name": "PN_diode_band_diagram",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "54",
+      "problem_name": "SUPG",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "65",
+      "problem_name": "GHZ_protocol_fidelity",
+      "declared_substeps": 6,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 6
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 6
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 2,
+        "functions_scored": 6
+      }
+    },
+    {
+      "problem_id": "40",
+      "problem_name": "Spliting_Operator",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "45",
+      "problem_name": "finite_difference_heat_equation",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 0,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "75",
+      "problem_name": "graphene_tight_binding",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "56",
+      "problem_name": "temporal_niches",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 3,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": true,
+        "functions_passed": 4,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": true,
+        "functions_passed": 4,
+        "functions_scored": 4
+      }
+    },
+    {
+      "problem_id": "24",
+      "problem_name": "Burgers_equation",
+      "declared_substeps": 3,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 3
+      }
+    },
+    {
+      "problem_id": "52",
+      "problem_name": "Shooting_algo_H_atom",
+      "declared_substeps": 4,
+      "condition_16384": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 4
+      },
+      "condition_65536": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 4
+      },
+      "condition_131072": {
+        "whole_problem_passed": false,
+        "functions_passed": 1,
+        "functions_scored": 4
+      }
+    }
+  ],
+  "131072_acceptance": "Not accepted as a complete 30-problem condition; original failure and four successful captures retained.",
+  "privacy": "Contains public task identities, aggregate counts, hashes, and protocol. Raw prompts, responses, local paths, provider IDs, and credentials are excluded."
+}

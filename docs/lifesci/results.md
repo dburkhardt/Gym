@@ -2,15 +2,13 @@
 
 These summaries describe completed records and their limitations. Source code is in this repository; raw trajectories, provider receipts, and large execution artifacts are retained separately. The uniform 63-benchmark acceptance review is specified in [PLAN.md](PLAN.md).
 
+## ScienceQA
+
+The accepted text-only 50-task engineering sample scored 47/50. Every saved score was reproduced without new model calls. The sample contains five biology questions; 23 source images are intentionally omitted under the creator’s text-completion recipe. A fresh macOS setup and deterministic CLI controls qualify that local path; Linux deployment remains separate. [Full report and sample](benchmarks/scienceqa.md).
+
 ## SciCode
 
-The reviewed sample contains 30 problems and 116 model-generated functions. Four whole problems and 47 functions passed their tests. One creator-provided function is excluded from the generated-function denominator. All 30 problem records were reproduced by executing the same saved programs in the same scoring environment, without model calls.
-
-The comparison checked reward, exclusion flag, failure kind, failure explanation, per-function results, measurement-validity metadata, passed-function count, total-function count, whole-problem accuracy, and function-level accuracy. All matched. These fields are implementation consistency checks, not ten independent scientific validations.
-
-Review of all 116 captured responses found 19 with a 16,384-token limit, exactly 16,384 reasoning tokens, and no visible answer. The generation setting therefore needs a controlled follow-up before using the result as a broad measure of coding capability. Use the same complete 30-problem sample, verify the endpoint's supported limits, and choose one adequate allowance for the revised condition. Preserve the original results. Replaying only the failed generations and replacing their scores is not an unbiased comparison.
-
-[Upstream](https://github.com/scicode-bench/SciCode) · [Adapter](../../benchmarks/scicode/README.md) · [Saved-generation reconstruction](../../benchmarks/scicode/saved_regrade.py)
+The complete 65,536-token condition passed 5/30 problems and 56/116 generated functions. A fresh model-free scoring pass reproduced all 30 problem records across ten fields. One generation still exhausted its allowance. At 131,072 tokens, 29 problems received scores and one retained a capture-storage failure after four successful model calls. These conditions remain separate. [Full report, source, exact sample, and failure diagnosis](benchmarks/scicode.md).
 
 ## BLADE
 

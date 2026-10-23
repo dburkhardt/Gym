@@ -1,0 +1,102 @@
+{
+  "benchmark": "CompChemBench",
+  "protocol": "compchem-rdkit-descriptors-batch-native-harbor-pilot-v1",
+  "date": "2026-10-23",
+  "task_ids": [
+    "compchem::rdkit-descriptors-batch"
+  ],
+  "sample_size": 1,
+  "sample_selection": "First task of the original frozen five-task prefix; selected as a compact CPU scientific-tool workflow.",
+  "integration_source_commit": "ec3c3ab6c1e08cf3825e17efc176b0caa19ec2e6",
+  "source_archive_sha256": "dfbb2298368356c5926e6493701b9a246d0b9ee22b236c9a602ebc8c52b5a322",
+  "creator_revision": "772d3f3e1a93b875f49ddb692e6dfc3db1d3593d",
+  "creator_url": "https://github.com/Chenghao-Wu/compchem-bench",
+  "harbor_revision": "96ff9c6db90cc015f0fc0987d896670c9c5f1fad",
+  "runtime_variant": "harbor-sidecar-resources-v1",
+  "runtime_compose_sha256": "c27809ba5e5be07de4a069c768ececb1aae3859d3ff4b6aa1a80d5d67923b01b",
+  "docker_image": "sha256:c892e0ea41ee1aa1a1c40044b15d4b5eea06efff434dbaa2a79de69076603ad9",
+  "model": "nvidia/nvidia/nemotron-3.5-super-vl",
+  "provider_model_weight_hash": null,
+  "parameters": {
+    "temperature": 0,
+    "max_output_tokens_per_call": 16384,
+    "interleaved_thinking": true,
+    "summarization_enabled": false,
+    "parser": "json"
+  },
+  "resources": {
+    "task_cpus": 1,
+    "task_memory_mb": 2048,
+    "sidecar_cpus": 0.25,
+    "sidecar_memory_bytes": 134217728,
+    "solver_timeout_seconds": 900,
+    "verifier_timeout_seconds": 60,
+    "outer_watchdog_seconds": 1200,
+    "ray_node_cpus": 2,
+    "ray_task_cpu_reservation": 1.25,
+    "ray_object_store_memory_bytes": 83886080
+  },
+  "result": {
+    "task": "compchem::rdkit-descriptors-batch",
+    "native_reward": 1,
+    "native_mask_sample": false,
+    "saved_workspace_replay_reward": 1,
+    "replay_new_model_calls": 0,
+    "logical_calls": 4,
+    "physical_attempts": 4,
+    "all_calls_http200": true,
+    "all_calls_normal_stop": true,
+    "automatic_provider_retries": 0,
+    "prompt_tokens": 11086,
+    "completion_tokens": 3752,
+    "trajectory_steps": 5,
+    "agent_steps": 4,
+    "shell_commands": 7,
+    "observed_containers": 4,
+    "observed_container_limits_match": true,
+    "owned_containers_remaining": 0,
+    "scope": "Observed solver and separate replay-verifier limits; original brief separate verifier not directly observed. Replay retains original agent metadata and token counts; these are not new inference usage.",
+    "final_cleanup_checks": {
+      "all_matching_containers_absent": true,
+      "owned_service_ports_closed": true,
+      "controller_pid_absent": true,
+      "owned_ray_processes_absent": true
+    }
+  },
+  "hashes": {
+    "capture_sha256": "b32872a3df0d937fb583a08700d0a75f62c733b85b9a03a0a2b0a012e5d429a7",
+    "trajectory_sha256": "c8ecc69e042e60980c22785cf792eb201af7e3d1f6f375eb84833475f10fa9f2",
+    "native_result_sha256": "0679afd93fc4c6de04a18acefc55b098edbd7899aba831bf404390db7344b6a0",
+    "replay_result_sha256": "ac882d2f0b7a7a029ab44471c6564df8239019df0a53a79ff18f47f71bb7664e",
+    "task_instruction_sha256": "e5d302f14977b19a83b47223ad0dcd9b029b62b0c81445736306cdbef43004f7",
+    "creator_verifier_sha256": "652f678954fd0c9a640a30670367a6730f9a5f2a1127de089501085dc7e0cf22",
+    "creator_input_sha256": "c4509ebfd136148eaf645dd8215c428972f5724c842d2fae17d99b1d8013d3fc",
+    "final_owned_state_sha256": "25b59fe5484a21c087a32f72e715d62c63ffc795ccc744dfbca7cf13fb912872",
+    "first_setup_zero_dispatch_receipt_sha256": "c66ec70f28b966a1374b40b45760eaac2fda42634fa19d821d39af268b1fe2e3",
+    "independent_reconciliation_sha256": "ef019774b7d624e0ef6192d9974fd0889ed403fa9a98db1b70e740f2d50ca28b",
+    "terminal_supervisor_state_sha256": "95b006ad416ea66cbb3bbb0e58a71f3b877f3e3f1f78de132185f16d60281b96"
+  },
+  "elapsed_seconds": {
+    "supervised_attempt": 80.47367787361145,
+    "operation_with_replay": 72.83243447999848
+  },
+  "evidence_archive_sha256": "8c6aa56c79e0520281e8ce86b8e1e866b516710ce7c8c4077a601abc79fbdf2b",
+  "scope_limit": "One-task engineering result. It does not accept the complete 43-task benchmark or historical twenty-task measurement.",
+  "output_artifacts": {
+    "descriptors.csv": {
+      "original_sha256": "146105737e6eb5f5a3cc351d6fb65c1524f09f8741215061f5aa19e95f7fdeee",
+      "replay_sha256": "146105737e6eb5f5a3cc351d6fb65c1524f09f8741215061f5aa19e95f7fdeee",
+      "identical": true
+    },
+    "results.json": {
+      "original_sha256": "2b279cbe211a642daf1d37fd3d958243589adfcc4143473c7926f1abd8572503",
+      "replay_sha256": "2b279cbe211a642daf1d37fd3d958243589adfcc4143473c7926f1abd8572503",
+      "identical": true
+    },
+    "assets/input_smiles.txt": {
+      "original_sha256": "c4509ebfd136148eaf645dd8215c428972f5724c842d2fae17d99b1d8013d3fc",
+      "replay_sha256": "c4509ebfd136148eaf645dd8215c428972f5724c842d2fae17d99b1d8013d3fc",
+      "identical": true
+    }
+  }
+}

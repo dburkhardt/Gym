@@ -35,4 +35,6 @@ def test_prepare_uses_test_split_problem_ids(monkeypatch, tmp_path) -> None:
 
     assert [row["problem_id"] for row in rows] == ["test-1", "test-2"]
     assert [row["uuid"] for row in rows] == ["test-1", "test-2"]
-    load_dataset.assert_called_once_with("SciCode1/SciCode", token=None)
+    load_dataset.assert_called_once_with(
+        "SciCode1/SciCode", revision="4510f6a6aa27c43fad7b43da2c59602a86e88480", token=None
+    )

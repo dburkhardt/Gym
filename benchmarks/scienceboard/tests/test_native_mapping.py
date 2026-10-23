@@ -53,6 +53,8 @@ async def test_native_run_refuses_unqualified_runtime_before_provider(tmp_path):
     from benchmarks.scienceboard.tests.test_transport import SOURCE
     from responses_api_agents.scienceboard_native.app import Agent
 
+    if not SOURCE.is_dir():
+        pytest.skip("Pinned creator source required; set SCIENCEBOARD_SOURCE_ROOT")
     item = json.loads(MANIFEST.read_text())["tasks"][0]
     task = json.loads((SOURCE / item["path"]).read_text())
     manifest = json.loads(MANIFEST.read_text())

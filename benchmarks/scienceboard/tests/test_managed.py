@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,9 +11,14 @@ from benchmarks.scienceboard.managed_desktop import ManagedDesktop
 from benchmarks.scienceboard.prepare import prepare
 
 
-SOURCE = (
-    Path(__file__).resolve().parents[5]
-    / "outputs/broad-eval-campaign/harbor/agent-expansion/sources/223/OS-Copilot-ScienceBoard-21b5eb0"
+SOURCE = Path(
+    os.environ.get(
+        "SCIENCEBOARD_SOURCE_ROOT",
+        str(
+            Path(__file__).resolve().parents[5]
+            / "outputs/broad-eval-campaign/harbor/agent-expansion/sources/223/OS-Copilot-ScienceBoard-21b5eb0"
+        ),
+    )
 )
 
 

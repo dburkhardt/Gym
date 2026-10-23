@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import re
 import sys
 import unicodedata
@@ -440,11 +441,21 @@ def format_table(table: list[list[str]]) -> str:  # pragma: no cover
     return "\n".join(formatted_rows)
 
 
-def main():  # pragma: no cover
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Update the marked environment table in README.md.")
+    parser.add_argument(
+        "--skip-without-markers",
+        action="store_true",
+        help="Leave README unchanged when both environment-table markers are absent.",
+    )
+    parser.add_argument("filenames", nargs="*", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
     text = README_PATH.read_text()
-
-    training_servers = get_training_server_info()
-    training_table_str = generate_training_table(training_servers)
+    if args.skip_without_markers and not any(
+        marker in text for marker in ("<!-- START_TRAINING_SERVERS_TABLE -->", "<!-- END_TRAINING_SERVERS_TABLE -->")
+    ):
+        print("README.md has no environment-table markers; skipping table generation.")
+        return
 
     training_pattern = re.compile(
         r"(<!-- START_TRAINING_SERVERS_TABLE -->)(.*?)(<!-- END_TRAINING_SERVERS_TABLE -->)",
@@ -457,6 +468,8 @@ def main():  # pragma: no cover
         )
         sys.exit(1)
 
+    training_servers = get_training_server_info()
+    training_table_str = generate_training_table(training_servers)
     text = training_pattern.sub(lambda m: f"{m.group(1)}\n{training_table_str}\n{m.group(3)}", text)
 
     README_PATH.write_text(text)

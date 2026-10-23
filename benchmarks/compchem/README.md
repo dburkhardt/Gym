@@ -8,4 +8,10 @@ The preserved overlay normalizes resource fields, adds tmux/asciinema to task im
 
 Preparation and planning do not establish live readiness. Container builds, guarded agent calls, cleanup and saved-result regrading still require runtime acceptance for this maintained path. The historical 20-task campaign had 17 raw passes but is not 17 scientifically certified successes: controlled replays exposed LAMMPS neighbor-schedule sensitivity, CP2K SZV electrostatics sensitivity, and a QE case changing physical atomic positions. Preserve those qualifications when reporting native verifier rewards. No new inference is part of preparation.
 
-The default config bounds Harbor’s network sidecar to 0.25 CPU and 128 MiB through the shared `extra_docker_compose` overlay. Scientific main-container CPU, memory and solver/verifier timeouts remain those declared by each creator task. Run native Gym from the repository root, as required by Harbor’s Ray worker path resolution. Campaigns with another working directory must resolve the overlay path explicitly.
+The default `extra_docker_compose` overlay bounds the **agent environment's** network sidecar to 0.25 CPU and 128 MiB. Harbor does not propagate that runtime overlay into a **separate verifier environment**, including saved-output regrades. Before using separate verification, apply the existing [checksum-gated sidecar runtime variant](../../responses_api_agents/harbor_agent/runtime_patches/sidecar_resources.py) in an isolated runtime with Harbor 0.24.0 from commit `96ff9c6db90cc015f0fc0987d896670c9c5f1fad`:
+
+```sh
+python -m responses_api_agents.harbor_agent.runtime_patches.sidecar_resources --output /absolute/private/sidecar-patch-receipt
+```
+
+The command verifies the imported package and source provenance before bounding the built-in sidecar for both agent and separate verifier containers; it refuses a different upstream source. Preserve its receipt and inspect actual container limits during qualification. Do not modify another evaluation's shared runtime. Scientific main-container CPU, memory, and solver/verifier timeouts remain those declared by each creator task. Run native Gym from the repository root, as required by Harbor's Ray worker path resolution; another working directory must resolve the overlay path explicitly.
