@@ -1,0 +1,32 @@
+{
+  "attempt": 1,
+  "raw_scores": {
+    "drd2_qed": {
+      "SR@0.4": null,
+      "SR@0.5": null,
+      "SR@0.6": null,
+      "error": "[Errno 2] No such file or directory: '/problem/data/drd2_qed/x_test.csv'"
+    },
+    "admet": {
+      "SRA_hERG": null,
+      "SRA_ESOL": null,
+      "SRA_BBBP": null,
+      "SRA_Mutagenicity": null,
+      "SRA_lipop": null,
+      "SRA_hERG ESOL": null,
+      "SRA_Mutagenicity BBBP": null,
+      "SRA_hERG Mutagenicity": null,
+      "SRA_Mutagenicity ESOL": null,
+      "SRA_Mutagenicity lipop": null,
+      "SRA_overall": null,
+      "error": "[Errno 2] No such file or directory: '/problem/data/admet/x_test.csv'"
+    }
+  },
+  "per_instance_improvement": {
+    "drd2_qed": -1.0,
+    "admet": -1.0
+  },
+  "aggregate_improvement": -1.0,
+  "best_aggregate_improvement": -1.0,
+  "best_attempt": 1
+}

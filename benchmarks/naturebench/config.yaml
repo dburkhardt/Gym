@@ -35,6 +35,7 @@ harbor_agent:
       harbor_environment_import_path: benchmarks.naturebench.docker_environment:NatureBenchDockerEnvironment
       harbor_environment_kwargs: {}
       harbor_no_delete: false
+      harbor_measurement_review_import_path: benchmarks.naturebench.measurement_review:review
       harbor_verifier_import_path: benchmarks.naturebench.verifier:NatureBenchVerifier
       harbor_verifier_kwargs:
         bridge_host: ${oc.env:NATUREBENCH_BRIDGE_HOST,127.0.0.1}
