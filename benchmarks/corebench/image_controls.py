@@ -271,7 +271,7 @@ def inspect_local_image(image):
     return {k: value[k] for k in ("Id", "RepoDigests", "Os", "Architecture")}
 
 
-async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, script=None):
+async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, script=None, gpus=0):
     """Run a bounded no-network probe through the existing owned sandbox path."""
     import shlex
     import uuid
@@ -279,6 +279,8 @@ async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, sc
     from nemo_gym.sandbox import AsyncSandbox, SandboxResources, SandboxSpec
     from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
 
+    if type(gpus) is not int or gpus < 0:
+        raise ValueError("GPU count must be a nonnegative integer")
     identity = inspect_local_image(image)
     destination.mkdir(parents=True, exist_ok=False)
     sandbox = AsyncSandbox(
@@ -287,7 +289,8 @@ async def probe_image(image, command, destination, *, cpus=2, memory_mb=4096, sc
             image=identity["Id"],
             ttl_s=180,
             workdir="/tmp",
-            resources=SandboxResources(cpu=cpus, memory_mib=memory_mb),
+            resources=SandboxResources(cpu=cpus, memory_mib=memory_mb, gpu=gpus),
+            provider_options={"run_args": ["--runtime=nvidia"]} if gpus else {},
             metadata={"workload": "corebench-image-control", "run": uuid.uuid4().hex},
         ),
     )
@@ -334,10 +337,17 @@ async def qualify_images(row, medium_root, reference_root, runtime_archive, fina
         for k in ("cpus", "memory_mb", "storage_mb", "agent_timeout_sec")
     ):
         raise ValueError("Explicit positive resource limits required")
-    if row["status"] in {"requires_cuda_no_cpu_substitution", "measured_oom_requires_resource_review"}:
-        raise ValueError("This CPU qualification producer does not admit CUDA or observed OOM tasks")
+    gpus = resources.get("gpus", 0)
+    if type(gpus) is not int or gpus < 0:
+        raise ValueError("GPU count must be a nonnegative integer")
+    if row["status"] == "requires_cuda_no_cpu_substitution" and not gpus:
+        raise ValueError("CUDA image probes require explicit GPU resources")
+    if row["status"] == "measured_oom_requires_resource_review":
+        raise ValueError("Observed OOM requires separate resource review")
     destination.mkdir(parents=True, exist_ok=False)
     kwargs = {"cpus": resources["cpus"], "memory_mb": resources["memory_mb"]}
+    if gpus:
+        kwargs["gpus"] = gpus
     before = await probe_image(row["published_image"], SCIENTIFIC_PROBE, destination / "creator", **kwargs)
     after = await probe_image(final_image, SCIENTIFIC_PROBE, destination / "final", **kwargs)
     if not before["stdout"] or before["stdout"] != after["stdout"]:

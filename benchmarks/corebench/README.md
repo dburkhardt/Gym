@@ -136,3 +136,11 @@ immutable final image, CPU/memory/GPU resources and original agent deadline, wit
 successful execution, fresh stdout and exact container cleanup. The original
 image qualification remains unchanged in preparation metadata. This attests
 execution placement, not model performance or absence of historical outputs.
+
+CUDA-required capsules can use `qualify_images` with explicit positive `resources.gpus`.
+Every image/tool/source probe then receives that GPU allocation through the owned
+Docker sandbox; omitting it still rejects the frozen CUDA status. These bounded
+probes establish image parity, not scientific workflow success. Staging any GPU
+execution, including GPUs inherited from the qualification receipt, additionally
+requires the separate full-workflow placement evidence described above. CPU
+probe defaults and the explicit OOM-review requirement remain unchanged.

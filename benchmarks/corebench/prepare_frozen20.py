@@ -146,6 +146,7 @@ def stage(
             if type(gpu) is not int or gpu <= 0:
                 raise ValueError("GPU count must be a positive integer")
             limits["gpus"] = gpu
+        if limits.get("gpus"):
             from benchmarks.corebench.placement_evidence import validate_gpu_placement
 
             row = next(r for r in rows if r["id"] == cid)

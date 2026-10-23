@@ -164,11 +164,14 @@ def test_qualification_binds_recovered_runtime(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_maintained_qualification_producer(tmp_path, monkeypatch):
+@pytest.mark.parametrize("gpus", [0, 1])
+async def test_maintained_qualification_producer(tmp_path, monkeypatch, gpus):
     import benchmarks.corebench.image_controls as controls
     import benchmarks.corebench.prepare as preparation
 
     medium, refs, row, _, _ = fixture(tmp_path)
+    if gpus:
+        row["status"] = "requires_cuda_no_cpu_substitution"
     runtime = tmp_path / "runtime.tar"
     runtime.write_bytes(b"fixture runtime")
     monkeypatch.setattr(preparation, "RUNTIME_SHA256", hashlib.sha256(runtime.read_bytes()).hexdigest())
@@ -191,10 +194,17 @@ async def test_maintained_qualification_producer(tmp_path, monkeypatch):
         runtime,
         "sha256:" + "b" * 64,
         tmp_path / "qualified",
-        resources={"cpus": 2, "memory_mb": 4096, "storage_mb": 10240, "agent_timeout_sec": 3600},
+        resources={
+            "cpus": 2,
+            "memory_mb": 4096,
+            "storage_mb": 10240,
+            "agent_timeout_sec": 3600,
+            **({"gpus": gpus} if gpus else {}),
+        },
     )
     validate_qualification(row, receipt)
     assert len(calls) == 4
+    assert all(call[2].get("gpus", 0) == gpus for call in calls)
     assert calls[0][1] == calls[1][1] == controls.SCIENTIFIC_PROBE
     assert json.loads((tmp_path / "qualified/qualification.json").read_text()) == receipt
 
@@ -489,3 +499,87 @@ def test_gpu_execution_rejects_unqualified_placement(tmp_path, mutation):
             placement_evidence={row["id"]: evidence},
         )
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("with_evidence", [False, True])
+def test_gpu_qualification_still_requires_workflow_placement(tmp_path, with_evidence):
+    medium, refs, row, q, manifest = fixture(tmp_path)
+    q["resources"].update(memory_mb=8192, gpus=1)
+    evidence = gpu_evidence(tmp_path, row, q)
+    kwargs = {"placement_evidence": {row["id"]: evidence}} if with_evidence else {}
+    if not with_evidence:
+        with pytest.raises(ValueError, match="separate placement evidence"):
+            stage(medium, refs, {row["id"]: q}, tmp_path / "out", manifest=manifest, **kwargs)
+        assert not (tmp_path / "out").exists()
+    else:
+        stage(medium, refs, {row["id"]: q}, tmp_path / "out", manifest=manifest, **kwargs)
+        receipt = json.loads((tmp_path / "out/preparation.json").read_text())
+        assert row["id"] in receipt["execution_placement_reviews"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,gpus",
+    [
+        ("requires_cuda_no_cpu_substitution", 0),
+        ("requires_cuda_no_cpu_substitution", True),
+        ("measured_oom_requires_resource_review", 1),
+    ],
+)
+async def test_image_producer_rejects_ineligible_resources_before_probe(tmp_path, monkeypatch, status, gpus):
+    import benchmarks.corebench.image_controls as controls
+    import benchmarks.corebench.prepare as preparation
+
+    medium, refs, row, _, _ = fixture(tmp_path)
+    row["status"] = status
+    runtime = tmp_path / "runtime.tar"
+    runtime.write_bytes(b"runtime")
+    monkeypatch.setattr(preparation, "RUNTIME_SHA256", hashlib.sha256(runtime.read_bytes()).hexdigest())
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("ineligible resource configuration reached probe")
+
+    monkeypatch.setattr(controls, "probe_image", forbidden)
+    with pytest.raises(ValueError, match="GPU|OOM"):
+        await controls.qualify_images(
+            row,
+            medium,
+            refs,
+            runtime,
+            "sha256:" + "b" * 64,
+            tmp_path / "out",
+            resources={"cpus": 2, "memory_mb": 8192, "storage_mb": 10240, "agent_timeout_sec": 3600, "gpus": gpus},
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gpus", [0, 1])
+async def test_image_probe_binds_actual_sandbox_gpu_request(tmp_path, monkeypatch, gpus):
+    import contextlib
+    from types import SimpleNamespace
+
+    import benchmarks.corebench.image_controls as controls
+    import nemo_gym.sandbox as api
+    import nemo_gym.sandbox.lifecycle as lifecycle
+
+    specs = []
+
+    class Sandbox:
+        def __init__(self, config, spec):
+            specs.append(spec)
+            assert config["docker"]["create"]["network"] == "none"
+
+        async def exec(self, command, timeout_s):
+            return SimpleNamespace(stdout="ok", stderr="", return_code=0, error_type=None)
+
+    @contextlib.asynccontextmanager
+    async def owned(sandbox, receipt):
+        yield sandbox
+        receipt.write_text(json.dumps({"cleanup_confirmed": True}))
+
+    monkeypatch.setattr(api, "AsyncSandbox", Sandbox)
+    monkeypatch.setattr(lifecycle, "_owned_sandbox", owned)
+    monkeypatch.setattr(controls, "inspect_local_image", lambda image: {"Id": image})
+    await controls.probe_image("sha256:" + "b" * 64, "true", tmp_path / "probe", gpus=gpus)
+    assert specs[0].resources.gpu == gpus
+    assert specs[0].provider_options == ({"run_args": ["--runtime=nvidia"]} if gpus else {})
