@@ -1,4 +1,4 @@
-# Run a campaign benchmark
+# Running an evaluation
 
 Use the installed `gym` CLI from the selected fork and its qualified environment. The commands below are templates: replace `/absolute/...` with your reviewed configuration and artifact paths. See the [operator reference](campaign-operator.md) for resource admission, service ownership and recovery details.
 
@@ -12,7 +12,7 @@ gym env prefetch --config /absolute/run.yaml
 
 Read the chosen benchmark's README and select its pinned data, frozen sample and compatible agent configuration. Preparation and prefetch can download or install dependencies. Record the source revision and asset hashes. Keep references inaccessible to the solver.
 
-Select model and harness through the configuration, preserving the benchmark's scoring protocol and budgets. For this campaign, explicitly bind **every LLM role** to `nvidia/nvidia/nemotron-3.5-super-vl`, including judges and helpers. A solver override does not change a separate judge. Supply credentials through the approved environment mechanism.
+Select model and harness through the configuration, preserving the benchmark's scoring protocol and budgets. For this evaluation project, explicitly bind **every LLM role** to `nvidia/nvidia/nemotron-3.5-super-vl`, including judges and helpers. A solver override does not change a separate judge. Supply credentials through the approved environment mechanism.
 
 Check generation settings in a captured no-inference fixture request before live execution. Bare top-level temperature/token settings may not reach the provider; use the supported request parameters or model `extra_body` and verify the actual payload against the benchmark protocol.
 

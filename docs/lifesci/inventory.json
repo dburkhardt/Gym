@@ -1,0 +1,1470 @@
+{
+  "scope": "All 63 originally selected benchmarks; uniform acceptance review pending. This is project status, not an alternative Gym runtime registry.",
+  "entries": [
+    {
+      "id": "ether0-benchmark",
+      "name": "ether0 benchmark",
+      "upstream": "https://github.com/Future-House/ether0",
+      "source": "https://huggingface.co/datasets/futurehouse/ether0-benchmark",
+      "config_paths": [
+        "benchmarks/ether0_benchmark/config.yaml",
+        "resources_servers/ether0_benchmark/configs/ether0_benchmark.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions have scored outputs across separate attempts; earlier uncertain requests remain unresolved.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scicode",
+      "name": "SciCode",
+      "upstream": "https://github.com/scicode-bench/SciCode",
+      "source": "https://arxiv.org/abs/2407.13168",
+      "config_paths": [
+        "benchmarks/scicode/config.yaml",
+        "resources_servers/scicode/configs/scicode.yaml",
+        "responses_api_agents/scicode_agent/configs/scicode_agent.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "30-problem example: 4 complete solutions and 47 of 116 functions passed. All 30 scores reproduced; 19 generations returned no code after reaching their token limit.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "fukuyamabench",
+      "name": "FukuyamaBench",
+      "upstream": "https://github.com/HaCTang/ReactionMechanismReasoning",
+      "source": "https://arxiv.org/abs/2607.12771",
+      "config_paths": [
+        "benchmarks/fukuyama/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "Four reaction cases have 32 reviewed draws. One case passed 7/8; the other three produced 24 budget failures. A separate uncertain attempt is excluded.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "corral-environment-tasks",
+      "name": "Corral environment tasks",
+      "upstream": "https://github.com/lamalab-org/corral",
+      "source": "https://huggingface.co/datasets/jablonkagroup/corral-environment-tasks",
+      "config_paths": [
+        "benchmarks/corral/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "A controlled test verified file preservation and separate scoring. A new model-generated scientific result is not established by that test.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "compchembench",
+      "name": "CompChemBench",
+      "upstream": "https://github.com/Chenghao-Wu/compchem-bench",
+      "source": "https://github.com/Chenghao-Wu/compchem-bench",
+      "config_paths": [
+        "benchmarks/compchem/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "20 attempted problems produced 18 usable scores: 17 raw passes and one failure. Two cases were excluded because their measurements were invalid; all 18 scores were replayed.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "naturebench",
+      "name": "NatureBench",
+      "upstream": "https://github.com/FrontisAI/NatureBench",
+      "source": "https://github.com/FrontisAI/NatureBench",
+      "config_paths": [
+        "benchmarks/naturebench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Molecular workflow ran but did not produce an accepted scientific score. Controlled tests verified that evaluator input files can be preserved before later modification.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "researchclawbench",
+      "name": "ResearchClawBench",
+      "upstream": "https://github.com/InternScience/ResearchClawBench",
+      "source": "https://huggingface.co/datasets/InternScience/ResearchClawBench",
+      "config_paths": [
+        "benchmarks/researchclaw/config.yaml",
+        "benchmarks/researchclaw/campaign.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "A model completed eight work episodes, but scoring failed during verifier startup. Environment and file-access controls passed separately.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "bioagent-bench",
+      "name": "BioAgent Bench",
+      "upstream": "https://github.com/bioagent-bench/bioagent-bench",
+      "source": "https://arxiv.org/abs/2601.21800",
+      "config_paths": [
+        "benchmarks/bioagentbench/config.yaml",
+        "responses_api_agents/bioagent_native/configs/bioagent.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "All ten selected workflows have model-call evidence. Some completed and received scores; others stopped during tool execution. A cell-label scorer can award full credit for just one matching label pair.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "promptbio-bench",
+      "name": "PromptBio-Bench",
+      "upstream": "https://www.biorxiv.org/content/10.64898/2026.05.05.723092v2",
+      "source": "https://www.biorxiv.org/content/10.64898/2026.05.05.723092v2",
+      "config_paths": [
+        "benchmarks/promptbio_bench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "The solver completed five calls; the judge used seven calls and reached its token limit. The resulting fallback score of 1.0 was rejected as unreliable.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "biabench",
+      "name": "BIABench",
+      "upstream": "https://github.com/BIABench/BIABench",
+      "source": "https://arxiv.org/abs/2609.34274",
+      "config_paths": [
+        "benchmarks/biabench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "A controlled five-task test exercised the solver, judge and artifact collection. It does not establish new model performance; an earlier reported score is separate.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "genotex",
+      "name": "GenoTEX",
+      "upstream": "https://github.com/Liu-Hy/GenoTEX",
+      "source": "https://arxiv.org/abs/2406.15341",
+      "config_paths": [
+        "benchmarks/genotex/config.yaml",
+        "responses_api_agents/genotex/configs/genotex.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "One rebuilt native workflow completed with score 0.0027; that score and eleven earlier saved results were reproduced without rerunning the model.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "bioplanner-bioprot",
+      "name": "BioPlanner / BioProt",
+      "upstream": "https://github.com/bioplanner/bioplanner",
+      "source": "https://arxiv.org/abs/2310.10632",
+      "config_paths": [
+        "benchmarks/bioplanner/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 distinct tasks have result records: 43 scored and seven excluded. Mean creator argument recall was 0.341 on the 43; this is not whole-task success.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "biomaze",
+      "name": "BioMaze",
+      "upstream": "https://github.com/zhao-ht/BioMaze",
+      "source": "https://arxiv.org/abs/2502.16660",
+      "config_paths": [
+        "benchmarks/biomaze/config.yaml",
+        "resources_servers/biomaze/configs/biomaze.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are represented by 35 native solver executions plus 15 earlier outputs scored through the current integration. Runs and settings remain separately identifiable.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "evidencebench",
+      "name": "EvidenceBench",
+      "upstream": "https://github.com/EvidenceBench/EvidenceBench",
+      "source": "https://github.com/EvidenceBench/EvidenceBench",
+      "config_paths": [
+        "benchmarks/evidencebench/config.yaml",
+        "resources_servers/evidencebench/configs/evidencebench.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 earlier answers were rescored; five additional native validation executions averaged 0.8196. The expectation-format variant limits comparison with published results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scienceagentbench",
+      "name": "ScienceAgentBench",
+      "upstream": "https://github.com/OSU-NLP-Group/ScienceAgentBench",
+      "source": "https://arxiv.org/abs/2410.05080",
+      "config_paths": [],
+      "execution_type": "not_configured",
+      "implementation_observed": "Partial implementation",
+      "saved_output_check_previously_documented": false,
+      "observation": "Task preparation and scoring components exist, but the required public archive was inaccessible and no runnable full configuration was established.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "core-bench",
+      "name": "CORE-Bench",
+      "upstream": "https://github.com/siegelz/core-bench",
+      "source": "https://arxiv.org/abs/2409.11363",
+      "config_paths": [
+        "benchmarks/corebench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "Native code-reproduction examples produced scored outputs and replay agreement. Individual failures and numerical-tolerance caveats remain visible; a single aggregate success rate is not established here.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "superchem",
+      "name": "SUPERChem",
+      "upstream": "https://github.com/catalystforyou/SUPERChem_eval",
+      "source": "https://huggingface.co/datasets/ZehuaZhao/SUPERChem",
+      "config_paths": [
+        "benchmarks/superchem/config.yaml",
+        "resources_servers/superchem/configs/superchem.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions are covered by an earlier set of 20 and a later set of 30, with saved-answer scoring checks.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "speak-to-structure-s-bench-formerly-tomg-bench",
+      "name": "Speak-to-Structure / S\u00b2-Bench, formerly TOMG-Bench",
+      "upstream": "https://github.com/phenixace/S2-TOMG-Bench",
+      "source": "https://arxiv.org/abs/2412.14642",
+      "config_paths": [
+        "benchmarks/s2tomg/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 saved outputs were scored again through the integration, reproducing 44 correct answers. This proves scorer replay, not a fresh solver run.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "proteinlmbench",
+      "name": "ProteinLMBench",
+      "upstream": "https://github.com/tsynbio/ProteinLMDataset",
+      "source": "https://arxiv.org/abs/2406.05540",
+      "config_paths": [
+        "benchmarks/proteinlmbench/config.yaml",
+        "resources_servers/proteinlmbench/configs/proteinlmbench.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions were evaluated and rescored. Missing biological context in some questions limits interpretation.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "moleculariq",
+      "name": "MolecularIQ",
+      "upstream": "https://github.com/ml-jku/moleculariq",
+      "source": "https://arxiv.org/abs/2601.15279",
+      "config_paths": [
+        "benchmarks/moleculariq/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "The later 30 questions yielded 12 correct answers and 17 token-incomplete responses. Saved-output scoring matched; earlier 20 are separate.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "microvqa",
+      "name": "MicroVQA",
+      "upstream": "https://github.com/jmhb0/microvqa",
+      "source": "https://arxiv.org/abs/2503.13399",
+      "config_paths": [
+        "benchmarks/microvqa/config.yaml",
+        "resources_servers/microvqa/configs/microvqa.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions have recorded attempts and saved-output checks. The final four generated three correct answers.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "genomeqa",
+      "name": "GenomeQA",
+      "upstream": "https://github.com/ai4nucleome/GenomeQA",
+      "source": "https://arxiv.org/abs/2604.05774",
+      "config_paths": [
+        "benchmarks/genomeqa/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions were executed. The later 30 include six responses that reached the output limit; creator scoring was recomputed.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "metasyn",
+      "name": "MetaSyn",
+      "upstream": "https://github.com/THUIR/MetaSyn",
+      "source": "https://arxiv.org/abs/2606.17041",
+      "config_paths": [
+        "benchmarks/metasyn/config.yaml",
+        "responses_api_agents/metasyn_native/configs/metasyn.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Controlled execution and saved-output checks cover parts of the integration. Deterministic metrics were checked; model-judge and embedding-based metrics remain unresolved.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "omebench",
+      "name": "oMeBench",
+      "upstream": "https://github.com/skylarkie/oMeBench",
+      "source": "https://arxiv.org/abs/2510.07731",
+      "config_paths": [
+        "benchmarks/omebench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions were executed. The later 30 include 19 output-limit responses; creator scoring was recomputed.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "blade",
+      "name": "BLADE",
+      "upstream": "https://github.com/behavioral-data/BLADE",
+      "source": "https://arxiv.org/abs/2408.09667",
+      "config_paths": [
+        "benchmarks/blade/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "The AMTL saved analysis and 15 ordered judge responses reproduced ten scorer metrics without model calls. Other attempted cases retain failures.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "microvqa-plus-plus",
+      "name": "MicroVQA++",
+      "upstream": "https://github.com/ieellee/MicroVQA-PlusPlus",
+      "source": "https://arxiv.org/abs/2511.11407",
+      "config_paths": [
+        "benchmarks/microvqa_plusplus_demo/config.yaml",
+        "resources_servers/microvqa_plusplus_demo/configs/microvqa_plusplus_demo.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "All 15 released demonstration/training examples have saved outputs; 11/15 passed the strict-number adaptation. These are not the full benchmark test set.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "genehop",
+      "name": "GeneHop",
+      "upstream": "https://github.com/ncbi/GeneGPT",
+      "source": "https://github.com/ncbi/GeneGPT",
+      "config_paths": [
+        "benchmarks/genehop/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Five tasks ran; two were automatically scored and three require manual assessment.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "smolinstruct",
+      "name": "SMolInstruct",
+      "upstream": "https://github.com/OSU-NLP-Group/LlaSMol",
+      "source": "https://huggingface.co/datasets/osunlp/SMolInstruct",
+      "config_paths": [
+        "benchmarks/smolinstruct/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "Selected examples ran through the maintained integration and saved outputs were rescored. Strict output-tag requirements qualify interpretation.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "moleculeqa",
+      "name": "MoleculeQA",
+      "upstream": "https://github.com/IDEA-XL/MoleculeQA",
+      "source": "https://huggingface.co/datasets/IDEA-AI4S/MoleculeQA",
+      "config_paths": [
+        "benchmarks/moleculeqa/config.yaml",
+        "resources_servers/moleculeqa/configs/moleculeqa.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Preparation and controlled variants exist, but execution acceptance on the shared integration is not established.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "mollangbench",
+      "name": "MolLangBench",
+      "upstream": "https://github.com/TheLuoFengLab/MolLangBench",
+      "source": "https://huggingface.co/datasets/ChemFM/MolLangBench",
+      "config_paths": [
+        "benchmarks/mollangbench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are covered; the later 30 yielded 20 raw credits. Saved-output scoring reproduced the recorded results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "lpm-24",
+      "name": "LPM-24",
+      "upstream": "https://github.com/language-plus-molecules/LPM-24-Dataset",
+      "source": "https://github.com/language-plus-molecules/LPM-24-Dataset",
+      "config_paths": [
+        "benchmarks/lpm24/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are covered; the later 30 yielded no raw credits. Saved-output scoring reproduced the recorded results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scivisagentbench",
+      "name": "SciVisAgentBench",
+      "upstream": "https://github.com/KuangshiAi/SciVisAgentBench",
+      "source": "https://arxiv.org/abs/2603.29139",
+      "config_paths": [
+        "benchmarks/scivisagentbench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Five visualization workflows finished, but malformed or truncated judge responses prevented usable scientific scores.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "fgbench",
+      "name": "FGBench",
+      "upstream": "https://github.com/xuanliugit/FGBench",
+      "source": "https://arxiv.org/abs/2508.01055",
+      "config_paths": [
+        "benchmarks/fgbench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions are represented; the later 30 ran and were rescored. Prompts use a zero-shot variant rather than all creator model-specific settings.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "mol-instructions",
+      "name": "Mol-Instructions",
+      "upstream": "https://github.com/zjunlp/Mol-Instructions",
+      "source": "https://huggingface.co/datasets/zjunlp/Mol-Instructions",
+      "config_paths": [
+        "benchmarks/molinstructions/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are covered; the later 30 yielded eight raw credits. Saved-output scoring reproduced the recorded results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "suprabench",
+      "name": "SupraBench",
+      "upstream": "https://github.com/Tianyi-Billy-Ma/SupraBench",
+      "source": "https://arxiv.org/abs/2606.13477",
+      "config_paths": [
+        "benchmarks/suprabench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are covered; the later 30 yielded four raw credits. Saved-output scoring reproduced the recorded results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "csmed",
+      "name": "CSMeD",
+      "upstream": "https://github.com/WojciechKusa/systematic-review-datasets",
+      "source": "https://arxiv.org/abs/2311.12474",
+      "config_paths": [],
+      "execution_type": "not_configured",
+      "implementation_observed": "Partial implementation",
+      "saved_output_check_previously_documented": false,
+      "observation": "Preparation and ranking-metric controls exist; complete input documents and native solver execution are not qualified.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "csmed-ft",
+      "name": "CSMeD-FT",
+      "upstream": "https://github.com/WojciechKusa/systematic-review-datasets",
+      "source": "https://arxiv.org/abs/2311.12474",
+      "config_paths": [
+        "benchmarks/csmed_ft/config.yaml",
+        "resources_servers/csmed_ft/configs/csmed_ft.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "49 selected papers have evaluated outputs; one remains unresolved because of full-text quality. Saved-output scoring is available for reviewed subsets.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "molrgen",
+      "name": "MolRGen",
+      "upstream": "https://github.com/Fransou/MolRGen",
+      "source": "https://arxiv.org/abs/2603.18256",
+      "config_paths": [
+        "benchmarks/molrgen/config.yaml",
+        "resources_servers/molrgen/configs/molrgen.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Five tasks ran in a single-completion CPU variant. This differs from the creator's full multiple-candidate protocol.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "fdarxbench",
+      "name": "FDARxBench",
+      "upstream": "https://github.com/xiongbetty/FDARxBench",
+      "source": "https://arxiv.org/abs/2603.19539",
+      "config_paths": [
+        "benchmarks/fdarxbench/config.yaml",
+        "resources_servers/fdarxbench/configs/fdarxbench.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "The later 30 tasks were scored after provider-limit recovery, with 20 raw judge credits; an earlier 20 are separate. Saved-answer verification includes a new judge call for one answer.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "ctbench",
+      "name": "CTBench",
+      "upstream": "https://github.com/nafis-neehal/CTBench_LLM",
+      "source": "https://arxiv.org/abs/2406.17888",
+      "config_paths": [
+        "benchmarks/ctbench/config.yaml",
+        "resources_servers/ctbench/configs/ctbench.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "The later 30 produced no usable performance scores: 27 scoring/judge failures and three judge rate-limit failures. Earlier 20 use a separate variant.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "sino-us-drugqa",
+      "name": "Sino-US-DrugQA",
+      "upstream": "https://github.com/DodgeLU/Sino-US-DrugQA",
+      "source": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0343858",
+      "config_paths": [
+        "benchmarks/sino_us_drugqa/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions were covered in separate 20- and 30-question executions; saved-answer scoring was checked.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "trialpanorama",
+      "name": "TrialPanorama",
+      "upstream": "https://github.com/RyanWangZf/TrialPanorama",
+      "source": "https://arxiv.org/abs/2505.16097",
+      "config_paths": [
+        "benchmarks/trialpanorama_screening/config.yaml",
+        "resources_servers/trialpanorama_screening/configs/trialpanorama_screening.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "The later 30 selected examples have scoring across separate attempts; saved-answer regrades were checked. Earlier 20 are separate.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "vibeproteinbench",
+      "name": "VibeProteinBench",
+      "upstream": "https://arxiv.org/abs/2605.10978",
+      "source": "https://arxiv.org/abs/2605.10978",
+      "config_paths": [],
+      "execution_type": "not_configured",
+      "implementation_observed": "Source access unresolved",
+      "saved_output_check_previously_documented": false,
+      "observation": "Source access remains unresolved. No runnable integration is established.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "reactbench",
+      "name": "ReactBench",
+      "upstream": "https://arxiv.org/abs/2604.15994",
+      "source": "https://arxiv.org/abs/2604.15994",
+      "config_paths": [
+        "benchmarks/reactbench/config.yaml",
+        "resources_servers/reactbench/configs/reactbench.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples yielded 33 exact-match successes. Matching only trims surrounding whitespace, so this is an explicit variant of creator extraction.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "moljson-molecular-reasoning-evaluation",
+      "name": "MolJSON molecular reasoning evaluation",
+      "upstream": "https://github.com/oxpig/MolJSON",
+      "source": "https://arxiv.org/abs/2605.01822",
+      "config_paths": [
+        "benchmarks/moljson/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "49 of 50 selected examples have scored outputs and replay evidence; one request remains unresolved.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "flyaoc",
+      "name": "FlyAOC",
+      "upstream": "https://github.com/xingjian-zhang/flyaoc",
+      "source": "https://github.com/xingjian-zhang/flyaoc",
+      "config_paths": [
+        "benchmarks/flyaoc/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "The final nine previously unstarted tasks completed and were rescored. Other scored attempts are retained; unresolved provider responses prevent an unqualified all-task result.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "p-bench",
+      "name": "P-Bench",
+      "upstream": "https://github.com/jmu27/FisherR1",
+      "source": "https://github.com/jmu27/FisherR1",
+      "config_paths": [
+        "benchmarks/pbench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "A reviewed set of 26 attempts produced 18 scores, including 13 creator-credit successes; eight provider failures were excluded. Those 18 scores were replayed.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "chemiq",
+      "name": "ChemIQ",
+      "upstream": "https://github.com/oxpig/ChemIQ",
+      "source": "https://arxiv.org/abs/2505.07735",
+      "config_paths": [
+        "benchmarks/chemiq/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions have scored outputs across separate attempts; recovered answers and final 13 outputs were rescored. Budget failures remain failures.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "qcbench",
+      "name": "QCBench",
+      "upstream": "https://github.com/jiaqingxie/QCBench",
+      "source": "https://arxiv.org/abs/2508.01670",
+      "config_paths": [
+        "benchmarks/qcbench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 saved answers were rescored. One reference answer has a documented defect, so 50 result records do not mean 50 valid measurements.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "brainbench",
+      "name": "BrainBench",
+      "upstream": "https://github.com/braingpt-lovelab/BrainBench",
+      "source": "https://arxiv.org/abs/2403.03230",
+      "config_paths": [
+        "benchmarks/brainbench/config.yaml"
+      ],
+      "execution_type": "likelihood",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 examples were evaluated using whole-chat likelihood scoring. Thirty later likelihood scores were recomputed; this is a protocol variant.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "mdarena",
+      "name": "MDArena",
+      "upstream": "https://github.com/weitse-hsu/MDArena",
+      "source": "https://arxiv.org/abs/2608.02642",
+      "config_paths": [
+        "benchmarks/mdarena/config.yaml",
+        "responses_api_agents/harbor_agent/configs/harbor_agent_mdarena_json.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Earlier scoring was reproduced but its scientific interpretation was rejected. A later task stopped after 57 calls without a final answer or score.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "ainsteinbench",
+      "name": "AInsteinBench",
+      "upstream": "https://github.com/ByteDance-Seed/AInsteinBench",
+      "source": "https://arxiv.org/abs/2512.21373",
+      "config_paths": [
+        "benchmarks/ainsteinbench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Two quantum-chemistry tasks exhausted their step budgets without submissions; another task returned a raw score rejected as scientifically invalid.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "moose-chem",
+      "name": "MOOSE-Chem",
+      "upstream": "https://github.com/ZonglinY/MOOSE-Chem",
+      "source": "https://github.com/ZonglinY/MOOSE-Chem",
+      "config_paths": [
+        "benchmarks/moosechem/config.yaml",
+        "responses_api_agents/moosechem_native/configs/moosechem.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "A native hypothesis-retrieval task completed and produced top-three inspiration recall of 0.5. That metric measures retrieved inspirations, not hypothesis quality; controlled saved-judge replay was also checked.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "chemx",
+      "name": "ChemX",
+      "upstream": "https://github.com/ai-chem/ChemX",
+      "source": "https://huggingface.co/ai-chem",
+      "config_paths": [
+        "benchmarks/chemx/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Local request controls passed, but both real request formats were rejected by the provider. No scientific score was produced.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "hiscibench",
+      "name": "HiSciBench",
+      "upstream": "https://huggingface.co/ScienceOne-AI/HiSciBench",
+      "source": "https://arxiv.org/abs/2512.22899",
+      "config_paths": [
+        "benchmarks/hiscibench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected biology questions have results; the later 30 yielded 17 correct answers and were rescored. Full process-cleanup verification remains qualified.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "molbench-molclaw",
+      "name": "MolBench (MolClaw)",
+      "upstream": "https://github.com/InternScience/MolClaw",
+      "source": "https://arxiv.org/abs/2604.21937",
+      "config_paths": [
+        "benchmarks/molbench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "Saved-output scoring works for five molecular-ranking examples and 20 optimization responses. This is not fresh agent execution or full MolClaw support.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "agentideabench",
+      "name": "AgentIdeaBench",
+      "upstream": "https://github.com/HKUST-KnowComp/AgentIdeaBench",
+      "source": "https://github.com/HKUST-KnowComp/AgentIdeaBench",
+      "config_paths": [],
+      "execution_type": "not_configured",
+      "implementation_observed": "Partial implementation",
+      "saved_output_check_previously_documented": false,
+      "observation": "Released result tables were validated. A runnable evaluation workflow is not implemented; table rows are not independent benchmark questions.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "airs-bench",
+      "name": "AIRS-Bench",
+      "upstream": "https://github.com/facebookresearch/airs-bench",
+      "source": "https://arxiv.org/abs/2602.06855",
+      "config_paths": [
+        "benchmarks/airsbench/config.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "Two research tasks each generated models making 10,000 predictions, with replayed error metrics. A third stopped on a provider limit. The two targets use different scales and are not averaged.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "molpuzzle",
+      "name": "MolPuzzle",
+      "upstream": "https://github.com/KehanGuo2/MolPuzzle",
+      "source": "https://huggingface.co/datasets/kguo2/MolPuzzle_data",
+      "config_paths": [
+        "benchmarks/molpuzzle/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected examples are covered; the later 30 yielded 18 raw credits. Saved-output scoring reproduced recorded results.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scienceboard",
+      "name": "ScienceBoard",
+      "upstream": "https://github.com/OS-Copilot/ScienceBoard",
+      "source": "https://github.com/OS-Copilot/ScienceBoard",
+      "config_paths": [
+        "benchmarks/scienceboard/config.yaml",
+        "responses_api_agents/scienceboard_native/configs/scienceboard.yaml"
+      ],
+      "execution_type": "workflow",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Task preparation, dependencies and controller tests exist; no full GUI-driven scientific execution is established.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scienceqa",
+      "name": "ScienceQA",
+      "upstream": "https://github.com/lupantech/ScienceQA",
+      "source": "https://scienceqa.github.io/",
+      "config_paths": [
+        "benchmarks/scienceqa/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 creator-recipe examples were evaluated and saved outputs replayed. Strict-answer accuracy was 47/50; one fallback interpretation remains separately documented.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "scibench",
+      "name": "SciBench",
+      "upstream": "https://github.com/mandyyyyii/scibench",
+      "source": "https://scibench-ucla.github.io/",
+      "config_paths": [
+        "benchmarks/scibench/config.yaml"
+      ],
+      "execution_type": "one-shot",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": true,
+      "observation": "50 selected questions have executions; all later 30 creator scores were reproduced from saved outputs.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    },
+    {
+      "id": "wmdp-bio-chem",
+      "name": "WMDP (Bio / Chem)",
+      "upstream": "https://github.com/centerforaisafety/wmdp",
+      "source": "https://arxiv.org/abs/2403.03218",
+      "config_paths": [
+        "benchmarks/wmdp_bio_chem/config.yaml",
+        "responses_api_agents/wmdp_conditional/configs/wmdp.yaml"
+      ],
+      "execution_type": "likelihood",
+      "implementation_observed": "Configured entry",
+      "saved_output_check_previously_documented": false,
+      "observation": "Configuration and likelihood-request controls exist, but a compatible live scoring backend is not qualified.",
+      "acceptance": {
+        "source_and_scope": "pending_uniform_review",
+        "dependencies": "pending_uniform_review",
+        "adapter_controls": "pending_uniform_review",
+        "model_execution": "pending_uniform_review",
+        "score_replay": "pending_uniform_review",
+        "publication": "pending_uniform_review"
+      },
+      "accepted_task_count": null,
+      "blocker": null
+    }
+  ]
+}

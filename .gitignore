@@ -1,3 +1,7 @@
+# Runtime coordination files; preserve on disk, never publish.
+/benchmarks/*/data/*.stage.lock
+*.reverify-lease
+
 # log and data files
 *.model
 *.pkl
