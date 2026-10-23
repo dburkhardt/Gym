@@ -169,3 +169,89 @@ def test_preparation_incomplete_documents_refuse_before_publication(tmp_path, ki
             tmp_path / "out",
         )
     assert not (tmp_path / "out").exists()
+
+
+def test_occurrence_preparation_preserves_raw_rows_and_strict_rankings(tmp_path):
+    docs = [
+        {"document_id": "a", "text": "first", "labels": [1]},
+        {"document_id": "b", "text": "negative", "labels": [0]},
+        {"document_id": "a", "text": "second", "labels": [1]},
+    ]
+    body = {
+        "dataset_details": {
+            "title": "fixture title",
+            "abstract": "fixture abstract",
+            "criteria": {"include": "fixture criteria"},
+            "search_strategy": {},
+        },
+        "data": {"train": docs},
+    }
+    source = tmp_path / "eval.json"
+    source.write_text(json.dumps({"EVAL": {"review": body}}))
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="unique"):
+        prepare(SOURCE / "csmed_cochrane_retrieval.py", source, digest, tmp_path / "strict")
+    out = prepare(SOURCE / "csmed_cochrane_retrieval.py", source, digest, tmp_path / "raw", True)
+    collection = read_json(out / "review-inputs.json")["review"]["collection"]
+    assert collection == [{"id": x["document_id"], "text": x["text"]} for x in docs]
+    assert read_json(out / "qrels.json") == {"review": {"a": 1, "b": 0}}
+    occurrences = read_json(out / "corpus-occurrences.json")["review"]
+    assert [x["occurrence_id"] for x in occurrences] == [0, 1, 2]
+    assert [x["document_id"] for x in occurrences] == ["a", "b", "a"]
+    assert occurrences[2]["text_sha256"] == hashlib.sha256(b"second").hexdigest()
+    with pytest.raises(ValueError, match="unique"):
+        validate_rankings({"review": [["a", 3], ["b", 2], ["a", 1]]}, {"review": {"a": 1, "b": 0}})
+    # Opt-in cannot replace unavailable review metadata.
+    del body["dataset_details"]["abstract"]
+    source.write_text(json.dumps({"EVAL": {"review": body}}))
+    with pytest.raises(ValueError, match="Incomplete"):
+        prepare(
+            SOURCE / "csmed_cochrane_retrieval.py",
+            source,
+            hashlib.sha256(source.read_bytes()).hexdigest(),
+            tmp_path / "missing",
+            True,
+        )
+    assert not (tmp_path / "missing").exists()
+
+
+@pytest.mark.parametrize("labels", [[0], [True], ["1"], [], [1, 0], None])
+def test_occurrence_conflicting_or_malformed_labels_refuse(labels):
+    from benchmarks.csmed.prepare import corpus_occurrences
+
+    with pytest.raises(ValueError):
+        corpus_occurrences([{"id": "a", "text": "x"}, {"id": "a", "text": "x"}], [{"labels": [1]}, {"labels": labels}])
+
+
+@pytest.mark.parametrize("preserve", [False, True])
+def test_missing_criteria_refuses_both_modes(tmp_path, preserve):
+    body = {
+        "dataset_details": {"title": "fixture", "abstract": "fixture", "search_strategy": {}},
+        "data": {
+            "train": [
+                {"document_id": "a", "text": "a", "labels": [1]},
+                {"document_id": "b", "text": "b", "labels": [0]},
+            ]
+        },
+    }
+    path = tmp_path / "input.json"
+    path.write_text(json.dumps({"EVAL": {"review": body}}))
+    with pytest.raises(ValueError, match="Incomplete"):
+        prepare(
+            SOURCE / "csmed_cochrane_retrieval.py",
+            path,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+            tmp_path / "out",
+            preserve,
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_occurrence_ids_are_review_local():
+    from benchmarks.csmed.prepare import corpus_occurrences
+
+    for name in ["review-one-doc", "review-two-doc"]:
+        labels, occurrences = corpus_occurrences([{"id": name, "text": "x"}], [{"labels": [1]}])
+        assert occurrences[0]["occurrence_id"] == 0
+        assert occurrences[0]["document_id"] == name
+        assert labels == {name: 1}

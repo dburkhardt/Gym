@@ -14,7 +14,32 @@ from resources_servers.csmed_ranking.grading import read_json, validate_rankings
 RETRIEVAL_SHA256 = "8fdf75f443528ac5c7dbac62a592969b2d51cc6b89539d8fd5b45b0f971d5ace"
 
 
-def prepare(source, eval_export, expected_sha256, destination):
+def corpus_occurrences(collection, documents):
+    """Validate raw ordered corpus, keeping occurrence identity separate from PMID."""
+    if not isinstance(collection, list) or not collection or len(collection) != len(documents):
+        raise ValueError("Nonempty aligned creator corpus required")
+    labels, occurrences = {}, []
+    for index, (doc, raw) in enumerate(zip(collection, documents)):
+        identifier, text = doc.get("id"), doc.get("text")
+        values = raw.get("labels")
+        if not isinstance(identifier, str) or not identifier or not isinstance(text, str) or not text.strip():
+            raise ValueError("Nonempty document ID and text required")
+        if not isinstance(values, list) or len(values) != 1 or type(values[0]) is not int or values[0] not in (0, 1):
+            raise ValueError("Exactly one binary integer label per document required")
+        if identifier in labels and labels[identifier] != values[0]:
+            raise ValueError("Conflicting labels for repeated document ID")
+        labels[identifier] = values[0]
+        occurrences.append(
+            {
+                "occurrence_id": index,
+                "document_id": identifier,
+                "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+            }
+        )
+    return labels, occurrences
+
+
+def prepare(source, eval_export, expected_sha256, destination, preserve_occurrences=False):
     source, eval_export = Path(source), Path(eval_export)
     if hashlib.sha256(source.read_bytes()).hexdigest() != RETRIEVAL_SHA256:
         raise ValueError("Creator retrieval source changed")
@@ -34,7 +59,7 @@ def prepare(source, eval_export, expected_sha256, destination):
         raise ValueError("Creator preparation functions missing")
     namespace = {}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), namespace)
-    inputs, qrels = {}, {}
+    inputs, qrels, occurrence_maps = {}, {}, {}
     for review, body in reviews.items():
         try:
             queries = namespace["extract_review_details"](body)
@@ -47,23 +72,19 @@ def prepare(source, eval_export, expected_sha256, destination):
             or any(not isinstance(v, str) or not v.strip() for v in queries.values())
         ):
             raise ValueError("Complete creator query text required")
-        ids = [doc["id"] for doc in collection]
-        if len(ids) != len(set(ids)) or any(
-            not isinstance(doc["text"], str) or not doc["text"].strip() for doc in collection
-        ):
+        checked_labels, occurrences = corpus_occurrences(collection, body["data"]["train"])
+        if labels != checked_labels:
+            raise ValueError("Creator qrels projection differs from validated labels")
+        if not preserve_occurrences and len(collection) != len(labels):
             raise ValueError("Complete unique document IDs/text required")
-        # Validate raw labels before creator int coercion can hide malformed input.
-        if any(
-            len(doc["labels"]) != 1 or type(doc["labels"][0]) is not int or doc["labels"][0] not in (0, 1)
-            for doc in body["data"]["train"]
-        ):
-            raise ValueError("Exactly one binary integer label per document required")
-        validate_rankings({review: [[doc, 0] for doc in ids]}, {review: labels})
+        # Ranking remains one score per distinct PMID. Raw rows are never deduplicated.
+        validate_rankings({review: [[doc, 0] for doc in labels]}, {review: labels})
+        occurrence_maps[review] = occurrences
         inputs[review] = {"queries": queries, "collection": collection}
         qrels[review] = labels
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
-    for name, value in {
+    artifacts = {
         "review-inputs.json": inputs,
         "qrels.json": qrels,
         "preparation.json": {
@@ -71,9 +92,14 @@ def prepare(source, eval_export, expected_sha256, destination):
             "eval_export_sha256": expected_sha256,
             "review_ids": list(inputs),
             "document_counts": {q: len(v) for q, v in qrels.items()},
+            "preserve_occurrences": preserve_occurrences,
+            "occurrence_counts": {q: len(v) for q, v in occurrence_maps.items()},
             "qualification": "caller-supplied complete EVAL export; no authoritative corpus provenance or solver qualification",
         },
-    }.items():
+    }
+    if preserve_occurrences:
+        artifacts["corpus-occurrences.json"] = occurrence_maps
+    for name, value in artifacts.items():
         (destination / name).write_text(json.dumps(value, indent=2) + "\n")
     return destination
 
@@ -83,4 +109,5 @@ if __name__ == "__main__":
     for name in ("source", "eval-export", "destination"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--expected-sha256", required=True)
+    parser.add_argument("--preserve-occurrences", action="store_true")
     print(prepare(**vars(parser.parse_args())))

@@ -36,3 +36,23 @@ The verifier calls the unchanged creator `evaluate_runs`, retaining its21 ranx m
 Tests: `tests/unit_tests/test_csmed_ranking.py`. Set `CSMED_TEST_PYTHON` to an existing qualified ranx0.3.18 interpreter to run the full creator parity subprocess; otherwise that dependency-specific test skips explicitly. The other controls validate missing/duplicate/unknown documents, missing reviews, nonfinite/ascending scores, boolean scores, degenerate labels, source-bound preparation and separate qrels. No installs or provider calls occur in tests.
 
 A future native resource endpoint must bind the exact complete review population and request lineage, preserve distinct query/run strata and report metric eligibility without inventing an accuracy reward. No discovery manifest is added until that route and an explicitly selected solver protocol are qualified.
+
+## Explicit raw-occurrence preparation
+
+`--preserve-occurrences` retains repeated document IDs in the original ordered
+`review-inputs.json` collection. It emits `corpus-occurrences.json`, mapping each
+review-local zero-based occurrence ID to its separate PMID/document scoring ID
+and text SHA256. Qrels remain keyed by distinct document IDs. Conflicting labels
+for repeated IDs refuse publication; no last-label repair is performed. Missing
+review metadata and all existing text/label checks still fail. Default preparation
+continues to require unique document IDs.
+
+This option prepares a creator corpus for a future qualified retrieval integration;
+it does not qualify a solver or change the ranking verifier. The verifier still
+requires one score per distinct document ID. Do not replace the collection with
+the occurrence map or deduplicate before indexing: retriv0.2.3 indexes each row,
+then projects ranked occurrences through `dict(zip(document_ids, scores))`.
+This preserves the last encountered score and initial insertion order per ID.
+The creator dependency is `retriv~=0.2.3`, so this inspected version is not proof
+of the original resolved environment. Full retrieval and missing EVAL metadata
+remain separate qualification gates.
