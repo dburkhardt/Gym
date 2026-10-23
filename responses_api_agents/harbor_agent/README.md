@@ -671,3 +671,17 @@ the solver merely because it shares the rollout.
 This does not reconstruct the full ATIF tool conversation or infer invocation
 success. Original Harbor trajectories remain the source for those details.
 Optional observation failures never replace the native scientific score.
+
+### Explicit Docker exec-readiness compatibility
+
+For a prebuilt task image with `HEALTHCHECK NONE`, some Compose versions reject
+`up --wait` even though the task container is running. An operator can explicitly
+select `responses_api_agents.harbor_agent.compose_readiness:ExecReadyDockerEnvironment`
+with `harbor_environment_import_path`. This uses Harbor's existing native fallback:
+start the egress sidecar, wait for its policy-ready file, start task services, then
+wait for successful container exec. It does not change the image, scientific
+commands, network policy, resources, or time limits. Default Docker behavior is
+unchanged. Do not select this variant for a task that requires a custom application
+healthcheck: exec readiness is not an application-health guarantee. Qualify the
+actual native task execution and verifier path with a no-model control before a
+new live attempt; host-service health alone does not exercise Compose startup.
