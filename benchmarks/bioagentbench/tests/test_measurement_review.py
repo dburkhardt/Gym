@@ -6,6 +6,7 @@ import pytest
 
 from benchmarks.bioagentbench import measurement_review
 from nemo_gym.result_disposition import summarize_dispositions
+from responses_api_agents.bioagent_native.app import VerifyResponse
 
 
 @pytest.mark.parametrize("reward", [0.0, 1.0])
@@ -17,7 +18,29 @@ def test_deseq_raw_score_retained_but_not_scientific_quality(tmp_path, monkeypat
     if known:
         monkeypatch.setattr(measurement_review, "DESEQ_SCORER_SHA256", hashlib.sha256(source.read_bytes()).hexdigest())
     fields = measurement_review.result_fields("deseq", reward, tmp_path)
-    record = {"reward": reward, **fields}
+    record = VerifyResponse.model_validate(
+        {
+            "responses_create_params": {"input": []},
+            "verifier_metadata": {"id": "deseq"},
+            "_ng_task_index": 7,
+            "_ng_rollout_index": 0,
+            "reward": reward,
+            "native_metrics": {},
+            "artifact_dir": "fixture",
+            "response": {
+                "id": "fixture",
+                "object": "response",
+                "created_at": 0,
+                "model": "fixture",
+                "output": [],
+                "parallel_tool_calls": False,
+                "tool_choice": "auto",
+                "tools": [],
+            },
+            **fields,
+        }
+    ).model_dump(mode="json")
+    assert record["_ng_task_index"] == 7
     report = summarize_dispositions([record], expected_count=1)
     assert record["reward"] == reward
     assert record["metadata"]["verifier_result"]["rewards"]["reward"] == reward
