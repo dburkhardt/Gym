@@ -204,15 +204,25 @@ def run(
     allow_transport_tail=False,
     client_factory=None,
     replay_loader=None,
+    public_task=None,
 ):
     repo, out = Path(repo).resolve(), Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     pins = json.loads(Path(__file__).with_name("source-sha256.json").read_text())
     for relative, expected in pins.items():
+        if public_task is not None and relative in {"Data/chem_research_2024.xlsx", "Method/evaluate.py"}:
+            continue
         assert hashlib.sha256((repo / relative).read_bytes()).hexdigest() == expected, relative
     sys.path.insert(0, str(repo))
-    names = ["inspiration_screening", "hypothesis_generation", "evaluate"]
+    names = ["inspiration_screening", "hypothesis_generation"]
+    if public_task is None:
+        names.append("evaluate")
     modules = [importlib.import_module("Method." + name) for name in names]
+    if public_task is not None:
+        for name in (*names, "utils", "logging_utils"):
+            module = importlib.import_module("Method." + name)
+            if Path(module.__file__).resolve() != (repo / "Method" / f"{name}.py").resolve():
+                raise ValueError("Public creator import interception")
     trace = out / "model-traces.jsonl"
     if trace.exists() or (out / "dispatch-intents.jsonl").exists():
         raise RuntimeError("Existing model trace or dispatch intent; reconcile explicitly before rerunning")
@@ -251,7 +261,22 @@ def run(
         if_select_based_on_similarity=0,
         output_dir=str(out / "screening.json"),
     )
-    screening = modules[0].Screening(args[0])
+    custom = {}
+    if public_task is not None:
+        custom = {"custom_rq": public_task["question"], "custom_bs": public_task["survey"]}
+        for arg in args:
+            arg.background_question_id = 0
+        task_id = 0  # Creator custom-input map; original ID stays in public_task and execution lineage.
+    screening = modules[0].Screening(args[0], **custom)
+    if public_task is not None:
+        original_round = screening.one_round_screening
+
+        def capture_round(question, candidates):
+            value = original_round(question, candidates)
+            append_durable(out / "raw-screening.jsonl", {"question": question, "windows": value[0]})
+            return value
+
+        screening.one_round_screening = capture_round
     screening.run()
     if screening_only:
         return {
@@ -280,11 +305,18 @@ def run(
         self_explore_num_beam_size=5,
         max_inspiration_search_steps=3,
     )
-    generation = modules[1].HypothesisGenerationEA(args[1])
+    generation = modules[1].HypothesisGenerationEA(args[1], **custom)
     modules[1].hyp_gene_ea = generation  # creator __main__ binds this global used by later stages
     generation.hypothesis_generation_for_one_background_question(
         background_question_id=task_id, inspiration_ids=args[1].inspiration_ids, final_data_collection={}
     )
+    if public_task is not None:
+        return {
+            "scope": "creator_public_input_solver_only",
+            "original_task_id": public_task["original_task_id"],
+            "internal_task_id": 0,
+            "output_token_budget": output_token_budget,
+        }
     vars(args[2]).update(
         hypothesis_dir=str(out / "hypotheses.json"),
         output_dir=str(out / "evaluation.json"),
