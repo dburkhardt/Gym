@@ -12,8 +12,7 @@ pytest.importorskip("harbor")
 from responses_api_agents.harbor_agent.custom_verifiers.researchclaw import verifier as module
 
 
-def setup(tmp_path, monkeypatch):
-    monkeypatch.setattr(module, "get_global_config_dict", lambda: {"provider_dispatch_guard": True})
+def setup(tmp_path, monkeypatch, *, guard=True):
     submitted = tmp_path / "original"
     submitted.mkdir()
     (submitted / "INSTRUCTIONS.md").write_text("frozen prompt")
@@ -49,6 +48,7 @@ def setup(tmp_path, monkeypatch):
         gym_model_api_base="http://localhost/ng-rollout/task/v1",
         gym_model_name="nvidia/nvidia/nemotron-3.5-super-vl",
         controller_python="python",
+        **({} if guard == "omitted" else {"gym_provider_dispatch_guard": guard}),
         task=SimpleNamespace(
             paths=SimpleNamespace(task_dir=tmp_path / "Life_002"),
             config=SimpleNamespace(verifier=SimpleNamespace(timeout_sec=10)),
@@ -207,3 +207,26 @@ async def test_genuine_zero_and_failed_judge_not_conflated(tmp_path, monkeypatch
             await verifier.verify()
     else:
         assert (await verifier.verify()).rewards == {"researchclaw_native_checklist": 0.0}
+
+
+def test_ray_worker_uses_injected_guard_without_global_cli_parse(tmp_path, monkeypatch):
+    import sys
+
+    from nemo_gym import global_config
+
+    monkeypatch.setattr(sys, "argv", ["default_worker.py", "--node-ip-address=127.0.0.1", "--worker-id=ray-worker"])
+    monkeypatch.setattr(global_config, "_GLOBAL_CONFIG_DICT", None)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Ray verifier must not parse or retrieve global CLI configuration")
+
+    monkeypatch.setattr(global_config, "get_global_config_dict", forbidden)
+    monkeypatch.setattr(global_config, "set_global_config_dict", forbidden)
+    verifier, _ = setup(tmp_path, monkeypatch)
+    assert verifier.endpoint == "http://localhost/ng-rollout/task/v1"
+
+
+@pytest.mark.parametrize("guard", [False, None, 1, "true", "omitted"])
+def test_injected_guard_must_be_explicit_true(tmp_path, monkeypatch, guard):
+    with pytest.raises(ValueError, match="provider_dispatch_guard enabled"):
+        setup(tmp_path, monkeypatch, guard=guard)

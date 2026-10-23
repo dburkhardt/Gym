@@ -14,7 +14,6 @@ from pathlib import Path
 from harbor.models.verifier.result import VerifierResult
 from harbor.verifier.base import BaseVerifier
 
-from nemo_gym.global_config import get_global_config_dict
 from nemo_gym.sandbox.lifecycle import _publish
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
@@ -85,6 +84,7 @@ class ResearchClawVerifier(BaseVerifier):
         gym_model_api_base: str,
         gym_model_name: str,
         controller_python: str,
+        gym_provider_dispatch_guard: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -92,7 +92,9 @@ class ResearchClawVerifier(BaseVerifier):
             raise ValueError("ResearchClaw campaign requires exact Nemotron model")
         if "/ng-rollout/" not in gym_model_api_base or not gym_model_api_base.endswith("/v1"):
             raise ValueError("ResearchClaw requires guarded Gym capture endpoint")
-        if not get_global_config_dict().get("provider_dispatch_guard"):
+        # Harbor injects this from the resolved server config before Ray dispatch.
+        # A Ray worker must never initialize global config from its own CLI argv.
+        if gym_provider_dispatch_guard is not True:
             raise ValueError("ResearchClaw requires provider_dispatch_guard enabled")
         self.controller_python = controller_python
         self.source = Path(source_root).resolve()
