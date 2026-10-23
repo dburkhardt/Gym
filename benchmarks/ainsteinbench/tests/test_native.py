@@ -619,7 +619,7 @@ async def test_response_history_roundtrip_through_shared_chat_dispatch(annotatio
     expected = {key: value for key, value in original.items() if key != "annotations"}
     assert calls[1]["messages"][2] == expected
     assert calls[1]["messages"][3] == {"role": "tool", "tool_call_id": "fixture-tool", "content": "file content"}
-    assert calls[1]["max_tokens"] == 16384 and "temperature" not in calls[1]
+    assert "max_tokens" not in calls[1] and "temperature" not in calls[1]
 
 
 def test_history_conversion_does_not_mutate_or_silently_drop_unknown_fields():
@@ -644,7 +644,7 @@ def test_history_conversion_does_not_mutate_or_silently_drop_unknown_fields():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("phase", ["cooldown", "response_read"])
 async def test_agent_logical_deadline_covers_entire_shared_call(tmp_path, monkeypatch, phase):
-    """Scale time only; retain the production 600-second boundary and one HTTP call."""
+    """Scale time only; retain the configured 750-second boundary and one HTTP call."""
     import asyncio
     from unittest.mock import AsyncMock
 
@@ -694,9 +694,11 @@ async def test_agent_logical_deadline_covers_entire_shared_call(tmp_path, monkey
     agent.source = SOURCE
     agent.logs_dir = tmp_path
     agent.endpoint = "http://127.0.0.1/ng-rollout/0-0"
+    agent.max_tokens = None
+    agent.request_timeout_seconds = 750
     with pytest.raises(TimeoutError):
         await agent.run("MSB_pyscf_pyscf_pr2373", None, AgentContext())
-    assert requested_deadlines == [600]
+    assert requested_deadlines == [750]
     assert len(requests) == 1
     assert requests[0]["_max_num_tries"] == 1
     assert requests[0]["_max_connection_retries"] == 0
@@ -853,3 +855,91 @@ def test_dataset_alias_does_not_override_task_specific_workdir():
     config = yaml.safe_load((Path(__file__).parents[1] / "config.yaml").read_text())
     alias = config["harbor_agent"]["responses_api_agents"]["harbor_agent"]["harbor_datasets"]["ainsteinbench"]
     assert "workdir" not in alias
+
+
+def test_creator_token_omission_and_explicit_historical_cap():
+    from benchmarks.ainsteinbench.harbor_native import completion_payload
+
+    assert "max_tokens" not in completion_payload([], [])
+    assert completion_payload([], [], max_tokens=16384)["max_tokens"] == 16384
+    for invalid in [0, -1, True, 1.5]:
+        with pytest.raises(ValueError):
+            completion_payload([], [], max_tokens=invalid)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True])
+def test_invalid_client_timeout_rejected(tmp_path, timeout):
+    from benchmarks.ainsteinbench.harbor_native import AInsteinAgent
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        AInsteinAgent(
+            source=SOURCE,
+            logs_dir=tmp_path,
+            api_base="http://127.0.0.1:9/ng-rollout/test/v1",
+            model_name="nvidia/nvidia/nemotron-3.5-super-vl",
+            gym_provider_dispatch_guard=True,
+            request_timeout_seconds=timeout,
+        )
+
+
+@pytest.mark.asyncio
+async def test_actual_native_request_uses_declared_timeout_and_creator_payload(tmp_path, monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from benchmarks.ainsteinbench import harbor_native as native
+    from benchmarks.ainsteinbench.et_native import DESITTER
+
+    observed = {}
+
+    @asynccontextmanager
+    async def timeout(seconds):
+        observed["timeout"] = seconds
+        yield
+
+    async def isolate(*args):
+        pass
+
+    async def loop(**kwargs):
+        await kwargs["completion"](0, [], [])
+        return "fixture submission"
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        async def json(self):
+            return {"choices": [{"message": {"role": "assistant", "content": "fixture"}}]}
+
+        def release(self):
+            pass
+
+    async def request(*args, **kwargs):
+        observed["payload"] = kwargs["json"]
+        assert kwargs["_max_num_tries"] == 1 and kwargs["_resend_after_disconnect"] is False
+        return Response()
+
+    class Environment:
+        async def exec(self, *args, **kwargs):
+            return SimpleNamespace(return_code=0)
+
+        async def upload_file(self, *args):
+            pass
+
+    monkeypatch.setattr(native.asyncio, "timeout", timeout)
+    monkeypatch.setattr(native, "isolate_et", isolate)
+    monkeypatch.setattr(native, "creator_loop", loop)
+    monkeypatch.setattr(native, "request", request)
+    monkeypatch.setattr(native, "publish_trajectory", lambda *args: None)
+    agent = native.AInsteinAgent(
+        source=SOURCE,
+        logs_dir=tmp_path,
+        api_base="http://127.0.0.1:9/ng-rollout/test/v1",
+        model_name=native.MODEL,
+        gym_provider_dispatch_guard=True,
+        request_timeout_seconds=750,
+    )
+    await agent.run(DESITTER, Environment(), None)
+    assert observed["timeout"] == 750
+    assert "max_tokens" not in observed["payload"]
+    assert "temperature" not in observed["payload"]

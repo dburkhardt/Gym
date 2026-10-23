@@ -5,6 +5,7 @@
 import asyncio
 import hashlib
 import json
+import math
 import shlex
 import uuid
 from pathlib import Path
@@ -69,7 +70,7 @@ async def _execute_tool(environment, name, arguments):
     return f"Unknown tool: {name}"
 
 
-def completion_payload(messages, tools):
+def completion_payload(messages, tools, *, max_tokens: int | None = None):
     """Convert response history to the shared request contract without changing the trace.
 
     The creator appends message.to_dict() verbatim. Gym's response serializer
@@ -87,8 +88,11 @@ def completion_payload(messages, tools):
         "messages": history,
         "tools": tools,
         "tool_choice": "auto",
-        "max_tokens": 16384,
     }
+    if max_tokens is not None:
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0:
+            raise ValueError("max_tokens must be a positive integer or None for creator omission")
+        payload["max_tokens"] = max_tokens
     # Validate with the existing endpoint contract, not an expanding field allowlist.
     # Return the original supported values so reasoning/tool arguments are unchanged.
     NeMoGymChatCompletionCreateParamsNonStreaming.model_validate(payload)
@@ -165,10 +169,32 @@ async def isolate(environment, raw, output):
 
 
 class AInsteinAgent(BaseAgent):
-    def __init__(self, *, source, api_base, gym_provider_dispatch_guard: bool = False, **kwargs):
+    def __init__(
+        self,
+        *,
+        source,
+        api_base,
+        gym_provider_dispatch_guard: bool = False,
+        max_tokens: int | None = None,
+        request_timeout_seconds: float = 750,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.source = Path(source)
         self.endpoint = api_base
+        if max_tokens is not None and (
+            isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens <= 0
+        ):
+            raise ValueError("max_tokens must be a positive integer or None for creator omission")
+        if (
+            isinstance(request_timeout_seconds, bool)
+            or not isinstance(request_timeout_seconds, (int, float))
+            or not math.isfinite(request_timeout_seconds)
+            or request_timeout_seconds <= 0
+        ):
+            raise ValueError("request_timeout_seconds must be finite and positive")
+        self.max_tokens = max_tokens
+        self.request_timeout_seconds = request_timeout_seconds
         if self.model_name != MODEL or "/ng-rollout/" not in api_base or gym_provider_dispatch_guard is not True:
             raise ValueError("AInstein requires guarded native exact-model endpoint")
 
@@ -195,7 +221,9 @@ class AInsteinAgent(BaseAgent):
                 "source": hashes,
                 "task": raw,
                 "model": MODEL,
-                "max_tokens": 16384,
+                "max_tokens": self.max_tokens,
+                "max_tokens_omitted": self.max_tokens is None,
+                "request_timeout_seconds": self.request_timeout_seconds,
                 "iterations": 30,
                 "adapter_sha256": {
                     name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
@@ -226,14 +254,14 @@ class AInsteinAgent(BaseAgent):
             await isolate_et(environment, raw, output)
 
         async def completion(ordinal, messages, tools):
-            payload = completion_payload(messages, tools)
+            payload = completion_payload(messages, tools, max_tokens=self.max_tokens)
             headers = {
                 "x-nemo-gym-logical-call-id": f"ainstein:{lineage}:{ordinal}",
                 "x-nemo-gym-call-config-sha256": digest,
             }
             _publish(output / f"call-{ordinal}.intent.json", {"headers": headers, "payload": payload})
             publish_trajectory(output, messages, context)
-            async with asyncio.timeout(600):
+            async with asyncio.timeout(self.request_timeout_seconds):
                 response = await request(
                     "POST",
                     self.endpoint.rstrip("/") + "/chat/completions",
