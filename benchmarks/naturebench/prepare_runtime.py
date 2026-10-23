@@ -4,6 +4,9 @@ Never run against the immutable downloaded task package. Scientific grading,
 judge prompts and verdict parsing remain unchanged.
 """
 
+from pathlib import Path
+
+
 MODEL = "nvidia/nvidia/nemotron-3.5-super-vl"
 
 
@@ -33,12 +36,19 @@ def patch_judge(source: str) -> str:
     return source.replace(old, new)
 
 
-def materialize_archive(archive, destination, *, expected_sha256, restore_molecular_evaluator_data=False):
-    """Extract a pinned release with judge routing and an optional explicit public-input mount repair."""
+def materialize_archive(
+    archive: str | Path,
+    destination: str | Path,
+    *,
+    expected_sha256: str,
+    restore_molecular_evaluator_data: bool = False,
+    snapshot_evaluation_inputs: bool = False,
+    snapshot_capture_timeout_seconds: float | None = None,
+) -> Path:
+    """Extract a pinned release with judge routing and an optional public-input mount/snapshot variants."""
     import hashlib
     import json
     import tarfile
-    from pathlib import Path
     from tempfile import TemporaryDirectory
 
     from nemo_gym.dataset_staging import stage_file
@@ -50,6 +60,10 @@ def materialize_archive(archive, destination, *, expected_sha256, restore_molecu
                 digest.update(chunk)
         return digest.hexdigest()
 
+    if snapshot_evaluation_inputs and snapshot_capture_timeout_seconds is None:
+        raise ValueError("Snapshot variant requires an explicit operational capture allowance")
+    if not snapshot_evaluation_inputs and snapshot_capture_timeout_seconds is not None:
+        raise ValueError("Capture allowance requires snapshot variant")
     archive, destination = Path(archive), Path(destination)
     if file_digest(archive) != expected_sha256:
         raise ValueError("NatureBench archive checksum mismatch")
@@ -82,12 +96,18 @@ def materialize_archive(archive, destination, *, expected_sha256, restore_molecu
 
             compose = task / "environment/docker-compose.yaml"
             compose.write_text(restore_public_input_mount(compose.read_text(), task_id=task.name))
+        if snapshot_evaluation_inputs:
+            from benchmarks.naturebench.snapshot_packaging import install_snapshot_variant
+
+            install_snapshot_variant(task, capture_timeout_seconds=snapshot_capture_timeout_seconds)
         receipt = {
             "archive_sha256": expected_sha256,
             "source_files": hashes,
             "prepared_files": {str(p.relative_to(task)): file_digest(p) for p in task.rglob("*") if p.is_file()},
             "variant": "exact Nemotron judge; creator prompt/parser/evaluator retained",
             "molecular_evaluator_public_input_mount_restored": restore_molecular_evaluator_data,
+            "evaluation_input_snapshot_variant": snapshot_evaluation_inputs,
+            "snapshot_capture_timeout_seconds": snapshot_capture_timeout_seconds,
         }
         # Directory publication is a single same-filesystem rename; no partial task is visible.
         task.rename(destination)

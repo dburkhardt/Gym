@@ -140,6 +140,8 @@ def test_materialize_pinned_archive_preserves_science(monkeypatch, tmp_path):
     assert (target / "tests/scorer.py").read_bytes() == (source / "tests/scorer.py").read_bytes()
     assert (target / "task.toml").read_bytes() == (source / "task.toml").read_bytes()
     receipt = json.loads((target.parent / "paper.source.json").read_text())
+    assert receipt["evaluation_input_snapshot_variant"] is False
+    assert receipt["snapshot_capture_timeout_seconds"] is None
     assert receipt["source_files"]["tests/scorer.py"] == receipt["prepared_files"]["tests/scorer.py"]
     with pytest.raises(FileExistsError):
         prepare_runtime.materialize_archive(archive, target, expected_sha256=expected)

@@ -77,3 +77,27 @@ GPU execution has been performed for this maintained integration.
 the native config does not use them or their fixed-port proxy. Before live use,
 validate creator task assets and native multi-service lifecycle on an admitted
 GPU worker, verify pinned images and CPU/RAM, and test capture/scorer cleanup.
+
+### Opt-in evaluation input snapshots
+
+`materialize_archive(..., snapshot_evaluation_inputs=True,
+snapshot_capture_timeout_seconds=60)` enables a source-bound
+molecular-task operational variant. The default remains creator-original. Each
+concurrent evaluation gets its own captured output directory and SHA256 manifest;
+`/state/evaluation_inputs` is added to the existing Harbor artifact export list.
+Detected changes during copying, links, insufficient disk, and exhausted capture
+budgets refuse scoring and retain structured operational failures. Capture has a separately declared cooperative operational allowance that must
+fit inside the existing collection allowance alongside the full unchanged
+3,600-second scientific timeout, with positive overhead. It is recorded in the
+materialization receipt and must be included in outer-lease admission;
+blocking filesystem calls still depend on the enclosing supervisor's cleanup
+bound. No scientific values, prompts, predictive models, or scorer formulas change.
+The original molecular scorer only reads output files; its intermediate work stays
+outside the read-only snapshot. Rebuild and qualify the sidecar from this prepared
+context: a previously built image does not acquire this variant automatically.
+
+Snapshots preserve the bytes actually scored, including after timeouts/errors.
+They detect ordinary concurrent mutation; they do not claim atomic multi-file
+publication against adversarial writers. Local fixture controls cover controller
+records and the task export declaration, not a deployed Harbor export or live
+scientific acceptance. Existing runs and historical scores are never rewritten.
