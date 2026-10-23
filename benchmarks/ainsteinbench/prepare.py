@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Register all four released frozen tasks, retaining explicit ET blockers."""
+"""Register frozen tasks with task-specific protocol and isolation readiness."""
 
 import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from benchmarks.ainsteinbench.et_native import DESITTER
+from benchmarks.ainsteinbench.et_native import IMAGE as ET_IMAGE
 from benchmarks.ainsteinbench.native import IMAGES
 from benchmarks.ainsteinbench.source import checked_source
 from nemo_gym.dataset_staging import stage_file
@@ -19,23 +21,26 @@ def stage(source: Path, destination: Path):
         previous = [json.loads(line) for line in existing.read_text().splitlines() if line.strip()]
         if any(row.get("instance_id") != f"ainsteinbench::{row.get('task_id')}" for row in previous):
             raise ValueError("Legacy AInstein routing artifact: prepare into a fresh versioned destination")
+    provenance_path = destination / "provenance.json"
+    if existing.exists() and (
+        not provenance_path.exists()
+        or json.loads(provenance_path.read_text()).get("preparation_version") != "et-native-desitter-v1"
+    ):
+        raise ValueError("Changed protocol preparation requires a fresh versioned destination")
     records = []
     with TemporaryDirectory() as temporary:
         temp = Path(temporary)
         for task_id, raw in rows.items():
-            supported = raw["question_type"] == "multi_swe_bench"
-            image = (
-                IMAGES[int(raw["content"]["pr_number"])]
-                if supported
-                else "sha256:44e33aeed3ba691bcff99846141ffd329edf6b32060841b0f151d3867adc9df0"
-            )
-            # ET remains registered against its actual preserved image, but blocked.
+            msb = raw["question_type"] == "multi_swe_bench"
+            supported = msb or task_id == DESITTER
+            image = IMAGES[int(raw["content"]["pr_number"])] if msb else ET_IMAGE
+            # GRHydro remains registered but blocked: this image only qualifies deSitter isolation.
             blocker = (
                 None
                 if supported
-                else "ET gold native build timeout; reference/cache isolation and perturbation validity unresolved"
+                else "No task-specific isolated runtime qualification; GRHydro source remains visible"
             )
-            workdir = "/home/pyscf" if supported else raw["environment"]["working_directory"]
+            workdir = "/home/pyscf" if msb else raw["environment"]["working_directory"]
             records.append(
                 {
                     "task_id": task_id,
@@ -62,7 +67,7 @@ environment_mode = "separate"
 [environment]
 docker_image = "{image}"
 workdir = "{workdir}"
-cpus = 1
+cpus = {1 if msb else 2}
 memory_mb = 4096
 storage_mb = 10240
 network_mode = "no-network"
@@ -82,10 +87,16 @@ network_mode = "no-network"
             json.dumps(
                 {
                     "source_commit": "d9b1383e86c2ae43dcb3ddbcaf34c21ceb786cca",
+                    "preparation_version": "et-native-desitter-v1",
                     "source_hashes": hashes,
                     "task_ids": list(rows),
-                    "supported_native_tasks": list(rows)[:2],
-                    "blocked_tasks": list(rows)[2:],
+                    "supported_native_tasks": [
+                        r["task_id"] for r in records if r["verifier_metadata"]["blocked_reason"] is None
+                    ],
+                    "blocked_tasks": [
+                        r["task_id"] for r in records if r["verifier_metadata"]["blocked_reason"] is not None
+                    ],
+                    "et_resource_variant": "Explicit 2 CPU / 4 GiB placement; creator specifies no caps; original command timeouts unchanged",
                     "qualification": "Terminus-independent creator four-tool async port; actual runtime gate required",
                 },
                 indent=2,

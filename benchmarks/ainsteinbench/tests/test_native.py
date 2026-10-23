@@ -18,13 +18,13 @@ SOURCE = Path(os.environ.get("AINSTEIN_SOURCE", Path(__file__).resolve().parents
 pytestmark = pytest.mark.skipif(not SOURCE.is_dir(), reason="Pinned public creator source required")
 
 
-def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
+def test_all_frozen_tasks_preserved_with_explicit_readiness(tmp_path):
     rows, _ = checked_source(SOURCE)
     output = stage(SOURCE, tmp_path)
     staged = [json.loads(x) for x in output.read_text().splitlines()]
     assert [r["task_id"] for r in staged] == list(rows)
     assert len(staged) == 4
-    assert sum(bool(r["verifier_metadata"]["blocked_reason"]) for r in staged) == 2
+    assert sum(bool(r["verifier_metadata"]["blocked_reason"]) for r in staged) == 1
     import tomllib
 
     from harbor.models.task.config import TaskConfig
@@ -39,7 +39,7 @@ def test_all_frozen_tasks_preserved_and_et_blocked(tmp_path):
         if row["verifier_metadata"]["blocked_reason"]:
             assert (
                 config.environment.docker_image
-                == "sha256:44e33aeed3ba691bcff99846141ffd329edf6b32060841b0f151d3867adc9df0"
+                == "sha256:c4884e5e26ca6ba2f0123d9869e4b36ca07a2bcbe7c56ee2b7b9c46fc698ab52"
             )
             assert config.environment.workdir == "/opt/Cactus"
 
@@ -704,3 +704,144 @@ async def test_agent_logical_deadline_covers_entire_shared_call(tmp_path, monkey
     assert cancelled == [phase]
     assert released == ([True] if phase == "response_read" else [])
     assert not (tmp_path / "native/call-0.response.json").exists()
+
+
+def test_et_prompt_uses_exact_creator_et_body_and_environment():
+    from benchmarks.ainsteinbench.et_native import DESITTER
+    from benchmarks.ainsteinbench.source import prompt
+
+    rows, _ = checked_source(SOURCE)
+    raw = rows[DESITTER]
+    expected = creator_methods(SOURCE)["_build_et_prompt"](None, SimpleNamespace(**raw))
+    assert prompt(SOURCE, raw) == expected
+    assert "/opt/Cactus" in expected and "Thorn Name" in expected
+    assert "PySCF" not in expected
+    with pytest.raises(ValueError, match="Unsupported"):
+        prompt(SOURCE, {**raw, "question_type": "unknown"})
+
+
+def test_desitter_preparation_pins_qualified_image_and_explicit_placement(tmp_path):
+    import tomllib
+
+    from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE
+
+    rows = [json.loads(x) for x in stage(SOURCE, tmp_path).read_text().splitlines()]
+    row = next(r for r in rows if r["task_id"] == DESITTER)
+    assert row["verifier_metadata"]["blocked_reason"] is None
+    config = tomllib.loads((tmp_path / "tasks" / DESITTER / "task.toml").read_text())
+    assert config["environment"]["docker_image"] == IMAGE
+    assert config["environment"]["cpus"] == 2
+    assert config["environment"]["memory_mb"] == 4096
+    assert config["verifier"]["environment_mode"] == "separate"
+    provenance = json.loads((tmp_path / "provenance.json").read_text())
+    assert DESITTER in provenance["supported_native_tasks"]
+    assert len(provenance["blocked_tasks"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_et_original_build_failure_preserves_creator_score_and_command_bound(tmp_path):
+    from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE, score_et
+
+    rows, _ = checked_source(SOURCE)
+    commands = []
+    uploads = []
+
+    class Environment:
+        task_env_config = SimpleNamespace(docker_image=IMAGE)
+
+        async def upload_file(self, source, target):
+            uploads.append(target)
+
+        async def download_dir(self, source, target):
+            target.mkdir(parents=True, exist_ok=True)
+
+        async def exec(self, command, timeout_sec):
+            commands.append((command, timeout_sec))
+            return SimpleNamespace(
+                return_code=1 if "simfactory/bin/sim build" in command else 0,
+                stdout="compile failure" if "simfactory" in command else "",
+                stderr="",
+            )
+
+    result = await score_et(SOURCE, Environment(), rows[DESITTER], "bad source", tmp_path)
+    assert result["build"]["success"] is False
+    assert result["native_score"]["overall_score"] == 0
+    assert next(t for c, t in commands if "simfactory/bin/sim build" in c) == 300
+    assert "/opt/Cactus/configs/sim/ThornList" in uploads
+    assert "/opt/Cactus/arrangements/EinsteinInitialData/Exact/src/metrics/de_Sitter.F" in uploads
+    assert not any("cactus_sim " in c for c, _ in commands)
+    with pytest.raises(ValueError, match="not qualified"):
+        other = Environment()
+        other.task_env_config = SimpleNamespace(docker_image="old-image")
+        await score_et(SOURCE, other, rows[DESITTER], "bad source", tmp_path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, 137, TimeoutError("transport timeout")])
+async def test_et_transport_failure_never_becomes_creator_zero(tmp_path, failure):
+    from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE, score_et
+
+    rows, _ = checked_source(SOURCE)
+
+    class Environment:
+        task_env_config = SimpleNamespace(docker_image=IMAGE)
+
+        async def upload_file(self, source, target):
+            pass
+
+        async def download_dir(self, source, target):
+            target.mkdir(parents=True, exist_ok=True)
+
+        async def exec(self, command, timeout_sec):
+            if "simfactory/bin/sim build" in command:
+                if isinstance(failure, Exception):
+                    raise failure
+                return SimpleNamespace(return_code=failure, stdout="", stderr="")
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+    with pytest.raises((RuntimeError, TimeoutError)):
+        await score_et(SOURCE, Environment(), rows[DESITTER], "source", tmp_path)
+    assert not (tmp_path / "score.json").exists()
+    assert json.loads((tmp_path / "transport-status.json").read_text())["failures"]
+
+
+@pytest.mark.asyncio
+async def test_et_cancellation_settles_active_exec_before_return(tmp_path):
+    import asyncio
+
+    from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE, score_et
+
+    rows, _ = checked_source(SOURCE)
+    started, release, settled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Environment:
+        task_env_config = SimpleNamespace(docker_image=IMAGE)
+
+        async def upload_file(self, source, target):
+            pass
+
+        async def download_dir(self, source, target):
+            target.mkdir(parents=True, exist_ok=True)
+
+        async def exec(self, command, timeout_sec):
+            if "simfactory/bin/sim build" in command:
+                assert timeout_sec == 300
+                started.set()
+                await release.wait()
+                settled.set()
+                return SimpleNamespace(return_code=1, stdout="compile failure", stderr="")
+            return SimpleNamespace(return_code=0, stdout="", stderr="")
+
+    task = asyncio.create_task(score_et(SOURCE, Environment(), rows[DESITTER], "source", tmp_path))
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()
+    await asyncio.sleep(0.01)
+    task.cancel()
+    await asyncio.sleep(0.01)
+    assert not task.done()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, 5)
+    assert settled.is_set()
+    assert json.loads((tmp_path / "transport-status.json").read_text())["worker_settled"]
+    assert not (tmp_path / "score.json").exists()

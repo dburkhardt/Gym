@@ -45,10 +45,16 @@ def creator_methods(root: Path):
     return namespace
 
 
-def prompt(root: Path, raw: dict):
+def prompt(root: Path, raw: dict) -> str:
     methods = creator_methods(root)
-    question = SimpleNamespace(**{**raw, "environment": {**raw["environment"], "working_directory": "/home/pyscf"}})
-    return methods["_build_msb_prompt"](None, question)
+    if raw["question_type"] == "multi_swe_bench":
+        question = SimpleNamespace(
+            **{**raw, "environment": {**raw["environment"], "working_directory": "/home/pyscf"}}
+        )
+        return methods["_build_msb_prompt"](None, question)
+    if raw["question_type"] == "einstein_toolkit":
+        return methods["_build_et_prompt"](None, SimpleNamespace(**raw))
+    raise ValueError("Unsupported AInstein question type")
 
 
 def parse_log(root: Path, text: str):

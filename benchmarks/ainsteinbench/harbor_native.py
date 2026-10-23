@@ -14,6 +14,7 @@ from harbor.agents.base import BaseAgent
 from harbor.models.verifier.result import VerifierResult
 from harbor.verifier.base import BaseVerifier
 
+from benchmarks.ainsteinbench.et_native import DESITTER, isolate_et, score_et
 from benchmarks.ainsteinbench.native import MODEL
 from benchmarks.ainsteinbench.scoring import qualification
 from benchmarks.ainsteinbench.source import checked_source, creator_methods, parse_log, prompt
@@ -184,8 +185,8 @@ class AInsteinAgent(BaseAgent):
     async def run(self, instruction, environment, context):
         rows, hashes = checked_source(self.source)
         raw = rows[instruction.strip()]
-        if raw["question_type"] != "multi_swe_bench":
-            raise RuntimeError("ET source/runtime qualification blocked; no model dispatch permitted")
+        if raw["question_type"] != "multi_swe_bench" and raw["question_id"] != DESITTER:
+            raise RuntimeError("Task source/runtime qualification blocked; no model dispatch permitted")
         output = self.logs_dir / "native"
         output.mkdir(parents=True, exist_ok=False)
         lineage = uuid.uuid4().hex
@@ -198,7 +199,15 @@ class AInsteinAgent(BaseAgent):
                 "iterations": 30,
                 "adapter_sha256": {
                     name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
-                    for name in ("harbor_native.py", "source.py", "native.py", "trajectory.py", "scoring.py")
+                    for name in (
+                        "harbor_native.py",
+                        "source.py",
+                        "native.py",
+                        "trajectory.py",
+                        "scoring.py",
+                        "et_native.py",
+                        "et-source-sha256.json",
+                    )
                 },
             }
         )
@@ -211,7 +220,10 @@ class AInsteinAgent(BaseAgent):
                 "resume": "full shell continuation unsupported; existing attempt fails closed",
             },
         )
-        await isolate(environment, raw, output)
+        if raw["question_type"] == "multi_swe_bench":
+            await isolate(environment, raw, output)
+        else:
+            await isolate_et(environment, raw, output)
 
         async def completion(ordinal, messages, tools):
             payload = completion_payload(messages, tools)
@@ -294,7 +306,7 @@ class AInsteinVerifier(BaseVerifier):
             raise ValueError("Separate evaluator required")
         rows, hashes = checked_source(self.source)
         raw = rows[self.task.paths.task_dir.name]
-        if raw["question_type"] != "multi_swe_bench":
+        if raw["question_type"] != "multi_swe_bench" and raw["question_id"] != DESITTER:
             raise RuntimeError("ET native scorer blocked")
         output = self.trial_paths.verifier_dir / "native"
         output.mkdir(parents=True, exist_ok=False)
@@ -313,6 +325,9 @@ class AInsteinVerifier(BaseVerifier):
             or hashlib.sha256(patch.read_bytes()).hexdigest() != status.get("patch_sha256")
         ):
             raise ValueError("Incomplete or wrong-task submitted artifact")
+        if raw["question_type"] == "einstein_toolkit":
+            result = await score_et(self.source, self.environment, raw, patch.read_text(), output)
+            return VerifierResult(rewards={"score": result["native_score"]["overall_score"]})
         await self.environment.upload_file(patch, "/home/fix.patch")
         result = await self.environment.exec("bash /home/fix-run.sh", timeout_sec=3500)
         _publish(
