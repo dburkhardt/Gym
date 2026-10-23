@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import ConfigDict, Field, PrivateAttr, model_validator
 
 from nemo_gym.base_resources_server import BaseRunRequest, BaseVerifyResponse
@@ -24,6 +25,7 @@ from responses_api_agents.promptbio_bench.managed_runtime import (
     solve_managed,
     validate_image,
 )
+from responses_api_agents.promptbio_bench.outcomes import JudgeBudgetFailure
 
 
 class PromptBioConfig(BaseResponsesAPIAgentConfig):
@@ -113,7 +115,11 @@ class PromptBioAgent(SimpleResponsesAPIAgent):
         server = get_first_server_config_dict(global_config, self.config.model_server.name)
         endpoint = f"http://{server['host']}:{server['port']}" + rollout_path_prefix(rollout_id) + "/v1"
         async with self._semaphore:
-            score, path = await self._evaluate(body.verifier_metadata["task_id"], endpoint, rollout_id)
+            try:
+                score, path = await self._evaluate(body.verifier_metadata["task_id"], endpoint, rollout_id)
+            except JudgeBudgetFailure as error:
+                # HTTP 200 carries the collector's typed terminal sidecar record, not a score.
+                return JSONResponse(error.record(body.model_dump(), rollout_id))
         response = NeMoGymResponse.model_validate(
             {
                 "id": "resp_" + uuid4().hex,

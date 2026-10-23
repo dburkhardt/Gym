@@ -11,14 +11,15 @@ from pathlib import Path
 import httpx
 
 from nemo_gym.sandbox.guarded_chat_transport import GuardedSyncChatTransport, publish
-from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL, validate_result
+from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL, JudgeOutputBudgetExhausted, validate_result
 from responses_api_agents.promptbio_bench.runtime import SCORER_REVISION
 
 
 class ValidatedJudgeTransport(httpx.BaseTransport):
     """Keep the existing judge completion qualification over the shared guard."""
 
-    def __init__(self, guarded):
+    def __init__(self, guarded, failure_path=None):
+        self.failure_path = failure_path
         self.guarded = guarded
         self.failed = False
 
@@ -27,7 +28,16 @@ class ValidatedJudgeTransport(httpx.BaseTransport):
             raise RuntimeError("Prior judge failure; no further evaluator dispatch")
         self.failed = True
         response = self.guarded.handle_request(request)
-        validate_result(response.json())
+        try:
+            validate_result(response.json())
+        except JudgeOutputBudgetExhausted:
+            if self.failure_path is not None:
+                publish(self.failure_path, {
+                    "disposition": "judge_output_budget_exhausted",
+                    "response_sha256": hashlib.sha256(response.content).hexdigest(),
+                    "model": MODEL,
+                })
+            raise
         self.failed = False
         return response
 
@@ -88,7 +98,7 @@ def main():
         model=MODEL,
         output=output / "calls",
     )
-    validated = ValidatedJudgeTransport(guarded)
+    validated = ValidatedJudgeTransport(guarded, output / "judge-failure.json")
     with httpx.Client(transport=validated) as client:
         import langchain.chat_models
 

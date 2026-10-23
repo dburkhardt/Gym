@@ -1,0 +1,34 @@
+{
+  "source_sha256": "7d971b566e6a09c8bde1fac4de7b2022fd903ec18391404103057aaa34329f3e",
+  "source_path": "outputs/broad-eval-campaign/foundation/promptbio-managed/next-native-review-20261023/terminal-evidence/runs/b-2-7/grading-d5339f2beb3e4f94ac903594c1753ced/calls/000006.response.json",
+  "status": 200,
+  "response": {
+    "model": "nvidia/nvidia/nemotron-3.5-super-vl",
+    "usage": {
+      "completion_tokens": 16384,
+      "prompt_tokens": 6967,
+      "total_tokens": 23351,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 4861,
+        "rejected_prediction_tokens": null
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cached_tokens": 0
+      }
+    },
+    "choices": [
+      {
+        "finish_reason": "length",
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": null
+        }
+      }
+    ]
+  },
+  "projection": "Completion qualification fields only; private reasoning omitted."
+}

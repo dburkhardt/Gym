@@ -10,10 +10,16 @@ MODEL = 'nvidia/nvidia/nemotron-3.5-super-vl'
 GATEWAY = 'http://127.0.0.1:49180/v1'
 
 
+class JudgeOutputBudgetExhausted(ValueError):
+    """A completed judge HTTP response exhausted its generation budget."""
+
+
 def validate_result(result):
     if result.get('model') != MODEL:
         raise ValueError('Unexpected returned judge model')
     choices = result.get('choices', [])
+    if choices and all(x.get('finish_reason') in ('stop', 'tool_calls', 'length') for x in choices) and any(x.get('finish_reason') == 'length' for x in choices):
+        raise JudgeOutputBudgetExhausted('Judge output token budget exhausted')
     if not choices or any(x.get('finish_reason') not in ('stop', 'tool_calls') for x in choices):
         raise ValueError('Judge incomplete or malformed')
     if not all(((x.get('message', {}).get('content') or '').strip() or x.get('message', {}).get('tool_calls')) for x in choices):

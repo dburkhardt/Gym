@@ -19,9 +19,8 @@ from pathlib import Path
 import httpx
 from pydantic import TypeAdapter
 
-from nemo_gym.openai_utils import NeMoGymChatCompletionAssistantMessageParam
-
 from nemo_gym.guarded_chat_transport import GuardedChatTransport
+from nemo_gym.openai_utils import NeMoGymChatCompletionAssistantMessageParam
 from nemo_gym.provider_dispatch import configuration_digest
 from nemo_gym.sandbox import AsyncSandbox
 from nemo_gym.sandbox.lifecycle import _owned_sandbox, _publish
@@ -30,6 +29,7 @@ from nemo_gym.sandbox.providers.base import SandboxResources, SandboxSpec
 from nemo_gym.sandbox.providers.local.provider import LocalProvider
 from nemo_gym.sandbox.scoring_workspace import scoring_workspace
 from responses_api_agents.promptbio_bench.nemotron_proxy import MODEL
+from responses_api_agents.promptbio_bench.outcomes import JudgeBudgetFailure
 from responses_api_agents.promptbio_bench.runtime import (
     DATA_REVISION,
     SCORER_REVISION,
@@ -503,6 +503,8 @@ async def grade_managed(
                     },
                 )
                 if execution.return_code != 0 or execution.error_type:
+                    if (output / "judge-failure.json").is_file():
+                        raise JudgeBudgetFailure(output, runs)
                     raise RuntimeError("PromptBio creator evaluator failed; raw metrics retained, no reward")
     finally:
         remove_socket_directory(socket_dir)
