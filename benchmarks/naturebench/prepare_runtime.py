@@ -34,7 +34,7 @@ def patch_judge(source: str) -> str:
 
 
 def materialize_archive(archive, destination, *, expected_sha256, restore_molecular_evaluator_data=False):
-    """Extract a pinned release into a fresh directory, preserving task bytes except judge routing."""
+    """Extract a pinned release with judge routing and an optional explicit public-input mount repair."""
     import hashlib
     import json
     import tarfile
