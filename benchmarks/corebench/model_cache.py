@@ -35,6 +35,7 @@ def recipe(row: dict[str, object]) -> str:
         + target
         + "/\n"
         + "".join(f"RUN echo '{sha}  {target}/{name}' | sha256sum -c -\n" for name, sha in FILES.items())
+        + f"RUN chmod 0755 /model-cache && find {target} -type d -exec chmod 0755 {{}} + && find {target} -type f -exec chmod 0644 {{}} +\n"
         + "ENV SENTENCE_TRANSFORMERS_HOME=/model-cache HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1\n"
     )
 

@@ -79,3 +79,13 @@ def test_existing_destination_and_late_bad_file_unchanged(tmp_path, monkeypatch)
     with pytest.raises(Exception):
         model_cache.stage(source, dest)
     assert not existing.exists()
+
+
+def test_public_cache_permission_contract_is_scoped():
+    text = model_cache.recipe(row())
+    root = "/model-cache/sentence-transformers_all-MiniLM-L6-v2"
+    assert f"find {root} -type d -exec chmod 0755 {{}} +" in text
+    assert f"find {root} -type f -exec chmod 0644 {{}} +" in text
+    assert "chmod -R" not in text
+    assert "chmod 0644 /workspace" not in text
+    assert text.index("sha256sum -c") < text.index("chmod 0755")
