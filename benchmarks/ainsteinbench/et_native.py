@@ -13,7 +13,9 @@ import os
 import shlex
 import shutil
 import threading
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 
@@ -23,6 +25,46 @@ if TYPE_CHECKING:
 
 DESITTER = "ET_EinsteinInitialData_Exact_metrics_de_Sitter_F"
 IMAGE = "sha256:c4884e5e26ca6ba2f0123d9869e4b36ca07a2bcbe7c56ee2b7b9c46fc698ab52"
+
+
+@dataclass(frozen=True)
+class ETRuntime:
+    image: str
+    thorn: str
+    source_filename: str
+    references: str
+    forbidden: tuple[str, ...]
+
+
+# Add another task only after its separate image and creator controls qualify.
+# The existing de Sitter image contains GRHydro's target and cannot qualify it.
+ET_RUNTIMES = MappingProxyType(
+    {
+        DESITTER: ETRuntime(
+            image=IMAGE,
+            thorn="EinsteinInitialData/Exact",
+            source_filename="metrics/de_Sitter.F",
+            references="EinsteinInitialData/Exact/test",
+            forbidden=(
+                "/opt/Cactus/arrangements/EinsteinInitialData/Exact/src/metrics/de_Sitter.F",
+                "/opt/Cactus/configs/sim/build/Exact",
+                "/opt/Cactus/configs/sim/build/GRHydro",
+                "/opt/Cactus/configs/sim/lib/libthorn_Exact.a",
+                "/opt/Cactus/configs/sim/lib/libthorn_GRHydro.a",
+                "/opt/Cactus/exe/cactus_sim",
+            ),
+        ),
+    }
+)
+
+
+def checked_et_runtime(raw: dict, image: str) -> ETRuntime:
+    runtime = ET_RUNTIMES.get(raw["question_id"])
+    if runtime is None or image != runtime.image:
+        raise ValueError("ET task runtime is not qualified for this isolated image")
+    if raw["content"]["thorn_name"] != runtime.thorn or raw["content"]["src_filename"] != runtime.source_filename:
+        raise ValueError("ET task source identity differs from qualified runtime")
+    return runtime
 
 
 def checked_et_source(source: Path) -> dict:
@@ -35,27 +77,18 @@ def checked_et_source(source: Path) -> dict:
 
 async def isolate_et(environment: "BaseEnvironment", raw: dict, output: Path) -> None:
     """Require the separately qualified exact isolated image, never delete unknown source."""
-    if raw["question_id"] != DESITTER or environment.task_env_config.docker_image != IMAGE:
-        raise ValueError("ET task has no qualified isolated image")
-    forbidden = [
-        "/opt/Cactus/arrangements/EinsteinInitialData/Exact/src/metrics/de_Sitter.F",
-        "/opt/Cactus/configs/sim/build/Exact",
-        "/opt/Cactus/configs/sim/build/GRHydro",
-        "/opt/Cactus/configs/sim/lib/libthorn_Exact.a",
-        "/opt/Cactus/configs/sim/lib/libthorn_GRHydro.a",
-        "/opt/Cactus/exe/cactus_sim",
-    ]
+    runtime = checked_et_runtime(raw, environment.task_env_config.docker_image)
+    forbidden = runtime.forbidden
     result = await environment.exec(" && ".join("test ! -e " + shlex.quote(p) for p in forbidden), timeout_sec=30)
     if result.return_code:
         raise RuntimeError("ET reference isolation failed")
-    (output / "isolation.json").write_text(json.dumps({"absent": forbidden, "qualified_image": IMAGE}))
+    (output / "isolation.json").write_text(json.dumps({"absent": forbidden, "qualified_image": runtime.image}))
 
 
 async def score_et(source: Path, environment: "BaseEnvironment", raw: dict, code: str, output: Path) -> dict:
     """Run original ET build/tests/scoring through the existing Harbor environment."""
     hashes = checked_et_source(source)
-    if raw["question_id"] != DESITTER or environment.task_env_config.docker_image != IMAGE:
-        raise ValueError("ET task runtime is not qualified")
+    runtime = checked_et_runtime(raw, environment.task_env_config.docker_image)
     et = source / "curation/et"
     spec = importlib.util.spec_from_file_location("ainstein_pinned_comparison", et / "smart_diff_comparison.py")
     comparison = importlib.util.module_from_spec(spec)
@@ -99,9 +132,9 @@ async def score_et(source: Path, environment: "BaseEnvironment", raw: dict, code
     )
     if setup.return_code:
         raise RuntimeError("ET evaluator setup failed")
-    references = output / "references/EinsteinInitialData/Exact/test"
+    references = output / "references" / runtime.references
     references.parent.mkdir(parents=True, exist_ok=True)
-    await environment.download_dir("/opt/Cactus/arrangements/EinsteinInitialData/Exact/test", references)
+    await environment.download_dir("/opt/Cactus/arrangements/" + runtime.references, references)
     loop = asyncio.get_running_loop()
     cancelled = threading.Event()
     transport_failures = []

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from benchmarks.ainsteinbench.et_native import DESITTER
+from benchmarks.ainsteinbench.et_native import ET_RUNTIMES
 from benchmarks.ainsteinbench.et_native import IMAGE as ET_IMAGE
 from benchmarks.ainsteinbench.native import IMAGES
 from benchmarks.ainsteinbench.source import checked_source
@@ -32,8 +32,14 @@ def stage(source: Path, destination: Path):
         temp = Path(temporary)
         for task_id, raw in rows.items():
             msb = raw["question_type"] == "multi_swe_bench"
-            supported = msb or task_id == DESITTER
-            image = IMAGES[int(raw["content"]["pr_number"])] if msb else ET_IMAGE
+            supported = msb or task_id in ET_RUNTIMES
+            image = (
+                IMAGES[int(raw["content"]["pr_number"])]
+                if msb
+                else ET_RUNTIMES[task_id].image
+                if task_id in ET_RUNTIMES
+                else ET_IMAGE
+            )
             # GRHydro remains registered but blocked: this image only qualifies deSitter isolation.
             blocker = (
                 None

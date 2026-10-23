@@ -747,6 +747,7 @@ async def test_et_original_build_failure_preserves_creator_score_and_command_bou
     rows, _ = checked_source(SOURCE)
     commands = []
     uploads = []
+    downloads = []
 
     class Environment:
         task_env_config = SimpleNamespace(docker_image=IMAGE)
@@ -755,6 +756,7 @@ async def test_et_original_build_failure_preserves_creator_score_and_command_bou
             uploads.append(target)
 
         async def download_dir(self, source, target):
+            downloads.append((source, target))
             target.mkdir(parents=True, exist_ok=True)
 
         async def exec(self, command, timeout_sec):
@@ -771,6 +773,12 @@ async def test_et_original_build_failure_preserves_creator_score_and_command_bou
     assert next(t for c, t in commands if "simfactory/bin/sim build" in c) == 300
     assert "/opt/Cactus/configs/sim/ThornList" in uploads
     assert "/opt/Cactus/arrangements/EinsteinInitialData/Exact/src/metrics/de_Sitter.F" in uploads
+    assert downloads == [
+        (
+            "/opt/Cactus/arrangements/EinsteinInitialData/Exact/test",
+            tmp_path / "references/EinsteinInitialData/Exact/test",
+        )
+    ]
     assert not any("cactus_sim " in c for c, _ in commands)
     with pytest.raises(ValueError, match="not qualified"):
         other = Environment()
@@ -943,3 +951,44 @@ async def test_actual_native_request_uses_declared_timeout_and_creator_payload(t
     assert observed["timeout"] == 750
     assert "max_tokens" not in observed["payload"]
     assert "temperature" not in observed["payload"]
+
+
+@pytest.mark.parametrize("mutation", ["image", "task", "thorn", "filename"])
+def test_et_runtime_rejects_cross_task_or_source_identity(mutation):
+    from benchmarks.ainsteinbench.et_native import DESITTER, IMAGE, checked_et_runtime
+
+    rows, _ = checked_source(SOURCE)
+    raw = copy.deepcopy(rows[DESITTER])
+    image = IMAGE
+    if mutation == "image":
+        image = "sha256:unqualified"
+    elif mutation == "task":
+        raw = rows["ET_EinsteinEvolve_GRHydro_GRHydro_Source_cc"]
+    elif mutation == "thorn":
+        raw["content"]["thorn_name"] = "EinsteinEvolve/GRHydro"
+    else:
+        raw["content"]["src_filename"] = "GRHydro_Source.cc"
+    with pytest.raises(ValueError):
+        checked_et_runtime(raw, image)
+
+
+def test_et_runtime_metadata_preserves_original_isolation_and_reference_root():
+    from dataclasses import FrozenInstanceError
+
+    from benchmarks.ainsteinbench.et_native import DESITTER, ET_RUNTIMES, IMAGE, checked_et_runtime
+
+    rows, _ = checked_source(SOURCE)
+    runtime = checked_et_runtime(rows[DESITTER], IMAGE)
+    assert runtime.references == "EinsteinInitialData/Exact/test"
+    assert runtime.forbidden == (
+        "/opt/Cactus/arrangements/EinsteinInitialData/Exact/src/metrics/de_Sitter.F",
+        "/opt/Cactus/configs/sim/build/Exact",
+        "/opt/Cactus/configs/sim/build/GRHydro",
+        "/opt/Cactus/configs/sim/lib/libthorn_Exact.a",
+        "/opt/Cactus/configs/sim/lib/libthorn_GRHydro.a",
+        "/opt/Cactus/exe/cactus_sim",
+    )
+    with pytest.raises(FrozenInstanceError):
+        runtime.references = "EinsteinEvolve/GRHydro/test"
+    with pytest.raises(TypeError):
+        ET_RUNTIMES["unqualified"] = runtime
