@@ -406,7 +406,7 @@ def _usage(output_tokens, input_tokens=10, cached_tokens=2, reasoning_tokens=3):
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
-        "input_tokens_details": {"cached_tokens": cached_tokens},
+        "input_tokens_details": {"cached_tokens": cached_tokens, "cache_write_tokens": None},
         "output_tokens_details": {"reasoning_tokens": reasoning_tokens},
     }
 
@@ -448,6 +448,15 @@ class TestTokenAccounting:
             {"step_number": "1.2", "status": "generated", "usage": _usage(300, input_tokens=20)},
         ]
         assert row["response"]["output"][0]["content"][0]["text"] == "```python\nx = 1\n```"
+
+    @pytest.mark.asyncio
+    async def test_step_usage_preserves_reported_cache_write_tokens(self):
+        usage = _usage(100)
+        usage["input_tokens_details"]["cache_write_tokens"] = 7
+        row = await _collect_usage([usage])
+        assert row["step_usage"][0]["usage"] == usage
+        assert row["response"]["usage"]["input_tokens"] == 10
+        assert row["response"]["usage"]["output_tokens"] == 100
 
     @pytest.mark.asyncio
     async def test_unequal_step_counts_and_repeats_are_pooled(self):
