@@ -1,3 +1,5 @@
 The two fixtures preserve the creator evaluator response and selected best-score artifact from the molecular task `s42256-024-00916-5`, original archive SHA256 `8c1d68ae4daafb24bb0873afbf0396498c8dda8a9793cc487df6921a52f3bc26`.
 
 `evaluator-missing-input.json` was extracted from an actual `/evaluate` tool observation. `evaluator-best-score.json` is the collected `artifacts/state/best_score.json` from trial `s42256-024-00916-5__juD5uUV`; its SHA256 is `3b801a6442a7211853f0cba5c6edd0a8b768ac2b7adbbe2d1112826a59f3828c`. It was finalized after cancellation with 18 evaluator submissions. Both contain nested missing-input errors despite numeric aggregate -1. These fixtures are infrastructure-failure evidence, not model-performance labels. No answer normalization or score replacement was performed.
+
+`molecular-creator-compose.yaml` is the exact creator Compose file from molecular archive SHA256 `8c1d68ae4daafb24bb0873afbf0396498c8dda8a9793cc487df6921a52f3bc26`. Its SHA256 is `4380d6ee13b61b6774fb42b099eb272b7ff84e1e76e13a7057f3e12c23803700`. It omits the evaluator public-input mount; the opt-in packaging test asserts that only this read-only mount is added.

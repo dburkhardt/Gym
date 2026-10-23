@@ -33,7 +33,7 @@ def patch_judge(source: str) -> str:
     return source.replace(old, new)
 
 
-def materialize_archive(archive, destination, *, expected_sha256):
+def materialize_archive(archive, destination, *, expected_sha256, restore_molecular_evaluator_data=False):
     """Extract a pinned release into a fresh directory, preserving task bytes except judge routing."""
     import hashlib
     import json
@@ -77,11 +77,17 @@ def materialize_archive(archive, destination, *, expected_sha256):
         hashes = {str(p.relative_to(task)): file_digest(p) for p in task.rglob("*") if p.is_file()}
         judge = task / "tests/judge_readme.py"
         judge.write_text(patch_judge(judge.read_text()))
+        if restore_molecular_evaluator_data:
+            from benchmarks.naturebench.packaging import restore_public_input_mount
+
+            compose = task / "environment/docker-compose.yaml"
+            compose.write_text(restore_public_input_mount(compose.read_text(), task_id=task.name))
         receipt = {
             "archive_sha256": expected_sha256,
             "source_files": hashes,
             "prepared_files": {str(p.relative_to(task)): file_digest(p) for p in task.rglob("*") if p.is_file()},
             "variant": "exact Nemotron judge; creator prompt/parser/evaluator retained",
+            "molecular_evaluator_public_input_mount_restored": restore_molecular_evaluator_data,
         }
         # Directory publication is a single same-filesystem rename; no partial task is visible.
         task.rename(destination)

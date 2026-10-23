@@ -1,0 +1,38 @@
+services:
+  main:
+    depends_on:
+      naturebench-eval:
+        condition: service_healthy
+    environment:
+      DATA_DIR: /task/problem/data
+      OUTPUT_DIR: /workspace/output
+      EVAL_SERVICE_URL: http://naturebench-eval:8000
+    volumes:
+      - ./input:/task/problem:ro
+      - naturebench-workspace:/workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  naturebench-eval:
+    build:
+      context: ./sidecar
+    environment:
+      NATUREBENCH_TASK_ID: "s42256-024-00916-5"
+    expose:
+      - "8000"
+    volumes:
+      - naturebench-workspace:/workspace:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+
+volumes:
+  naturebench-workspace:
