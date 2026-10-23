@@ -67,6 +67,14 @@ def dockerfile(row):
                 "@sha256:6cd58626442882ecd11c347dc77de4267499891837841b548b57ad7ac1e7caa5"
             )
         )
+        admitted_capsule = admitted_capsule or (
+            row["id"] == "capsule-4600160"
+            and row["published_image"]
+            == (
+                "registry.codeocean.com/published/7e09306f-e019-480c-a09c-db23c6047085"
+                "@sha256:1e861ca208612175f7571297690bf77eaea33f9ad5e72b1d2a7c3caa40741903"
+            )
+        )
         if variant != "ubuntu-bionic-isolated-v1" or not admitted_capsule:
             raise ValueError("Unsupported capsule-specific harness variant")
         from pathlib import Path
