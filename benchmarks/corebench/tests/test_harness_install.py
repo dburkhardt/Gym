@@ -101,7 +101,7 @@ def test_1683542_exact_variant_and_observed_sources():
     assert "harness_install_variant" not in original
 
 
-@pytest.mark.parametrize("capsule", ["capsule-3137115", "capsule-4600160", "capsule-5286757"])
+@pytest.mark.parametrize("capsule", ["capsule-3137115", "capsule-4600160", "capsule-5286757", "capsule-4884085"])
 def test_exact_signed_variant(capsule):
     import json
     from pathlib import Path
