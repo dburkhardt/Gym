@@ -15,6 +15,7 @@ harbor_agent:
       harbor_agent_import_path: benchmarks.ainsteinbench.harbor_native:AInsteinAgent
       harbor_agent_kwargs:
         source: ${oc.env:AINSTEIN_SOURCE}
+      harbor_measurement_review_import_path: benchmarks.ainsteinbench.measurement_review:review
       harbor_verifier_import_path: benchmarks.ainsteinbench.harbor_native:AInsteinVerifier
       harbor_verifier_kwargs:
         source: ${oc.env:AINSTEIN_SOURCE}
