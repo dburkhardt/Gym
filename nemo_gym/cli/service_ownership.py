@@ -11,6 +11,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -236,6 +237,83 @@ def owned_members(token, created_after):
                 continue
             raise
     return members
+
+
+def inspect_service_ownership(directory, binding):
+    """Read recorded service identities without acquiring a lease or signaling.
+
+    This is a point-in-time native-service check, not a port, Docker, or detached
+    process census. Process mode cannot establish descendant absence without the
+    global scan deliberately excluded here.
+    """
+    result = {
+        "version": 1,
+        "status": "unknown",
+        "scope": "native_services_only",
+        "external_containers_checked": False,
+        "observed_at_unix_s": time.time(),
+        "records": [],
+    }
+    try:
+        directory = Path(directory).absolute()
+        if any(p.is_symlink() for p in (directory, *directory.parents)):
+            raise RuntimeError("Ownership directory traverses symlinks")
+        if not directory.is_dir() or directory.stat().st_uid != os.getuid():
+            raise RuntimeError("Ownership directory missing or owner mismatch")
+        paths = sorted(directory.glob("*.json"))
+        if not paths:
+            raise RuntimeError("No service ownership records")
+        for path in paths:
+            entry = {"receipt": path.name, "status": "unknown"}
+            result["records"].append(entry)
+            try:
+                if path.is_symlink() or path.stat().st_uid != os.getuid():
+                    raise RuntimeError("Ownership receipt symlink or owner mismatch")
+                value = json.loads(path.read_text())
+                if (
+                    type(value.get("version")) is not int
+                    or value["version"] != 1
+                    or value.get("binding") != binding
+                    or value.get("host") != host_identity()
+                ):
+                    raise RuntimeError("Ownership source/config/host binding mismatch")
+                token = value.get("token")
+                if not isinstance(token, str) or uuid.UUID(token).hex != token:
+                    raise RuntimeError("Invalid ownership token")
+                coordinator = matching(value.get("coordinator"))
+                root = matching(value["root"]) if value.get("root") else None
+                entry.update(coordinator_alive=coordinator is not None, root_alive=root is not None)
+                mode = value.get("mode", "process")
+                entry["mode"] = mode
+                if mode == "systemd":
+                    actual = _scope_identity(value)
+                    group = actual or value.get("systemd")
+                    populated = bool(group and _scope_populated(group["control_group"]))
+                    entry["cgroup_populated"] = populated
+                    if root is not None or populated:
+                        entry["status"] = "live"
+                    elif value.get("root") is None or value.get("systemd") is None:
+                        entry["reason"] = (
+                            "Incomplete launch identity; never-started state not independently established"
+                        )
+                    elif actual is not None:
+                        entry["reason"] = "Dedicated scope still exists"
+                    elif value.get("cleanup_confirmed") is not True:
+                        entry["reason"] = "Cleanup was not confirmed by the owner"
+                    else:
+                        entry["status"] = "clean"
+                elif mode == "process":
+                    entry["status"] = "live" if root is not None else "unknown"
+                    entry["reason"] = "Detached descendant absence requires separate process-mode evidence"
+                else:
+                    raise RuntimeError("Unsupported ownership mode")
+            except Exception as error:
+                entry.update(status="unknown", error_type=type(error).__name__, reason=str(error))
+        states = {entry["status"] for entry in result["records"]}
+        result["status"] = "live" if "live" in states else "clean" if states == {"clean"} else "unknown"
+    except Exception as error:
+        result.update(error_type=type(error).__name__, reason=str(error))
+    return result
 
 
 class ServiceOwnership:

@@ -161,3 +161,21 @@ Native reverify records service ownership under `<declared-output-stem>/native_s
 Use the **actual** materialized-input filename from the run, not an assumed reconstruction. Reverification preserves saved generation requests when present while taking task/reference fields from supplied inputs; inspect provenance differences. Every new reverification records a versioned scorer-lineage binding beside its output, including hashes of the supplied inputs and saved rollouts, resolved scientific configuration, and locally resolved component/shared Python sources. Resume and append check that binding before skipping cached rows or changing result files; old outputs without this binding require a distinct output path. Placement and reporting options such as ports, output paths, concurrency and aggregation do not change this binding. The binding is conservative local cache protection, not proof of external asset, dependency-package, remote-service or runtime-import identity. Changes to those external dependencies still require separate qualification and a new output. It does not regenerate solver answers, but an LLM judge can make new paid calls. A zero-inference regrade requires a deterministic/resource-only configuration or a qualified saved-judge replay. Keep historical raw results unchanged and compare by exact task/draw identity, not row order.
 
 Command syntax was checked against the current CLI's `--help` for all seven command families above. Configuration-dependent templates were not executed as inference or claimed as runtime qualification.
+
+### Native service cleanup receipt
+
+Guarded native `gym eval run` writes `native-service-cleanup.json` next to its
+`native_services/` ownership directory after shutdown. This read-only inspection
+reports `clean`, `live`, or `unknown` at `observed_at_unix_s`, using only recorded
+service roots and dedicated systemd identities/cgroups. A live coordinator can
+be the CLI writing this receipt; it does not by itself mean a service survived.
+Missing or incomplete identities, inaccessible checks, and process-mode detached
+descendants remain `unknown`. No global process scan or signal is performed by
+the inspector. It does not certify port availability, external Harbor container
+cleanup, or scientific success. Original execution errors remain primary if
+shutdown or receipt publication also fails.
+
+For a fresh read-only check, call
+`nemo_gym.cli.service_ownership.inspect_service_ownership(directory, binding)`
+with the expected original run binding. Do not construct `ServiceOwnership` just
+to inspect an old run: its constructor owns a lease and reconciles old services.

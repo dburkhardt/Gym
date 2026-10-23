@@ -627,6 +627,36 @@ def _ensure_guarded_batch_manifest(config, collector, planned_rows, output_fpath
     collector.batch_manifest_fpath = str(path)
 
 
+def _publish_native_cleanup(ownership):
+    if ownership is None:
+        return
+    from nemo_gym.cli.service_ownership import inspect_service_ownership
+    from nemo_gym.sandbox.lifecycle import _publish
+
+    try:
+        receipt = inspect_service_ownership(ownership.directory, ownership.binding)
+        _publish(ownership.directory.parent / "native-service-cleanup.json", receipt)
+        if receipt["status"] != "clean":
+            logger.warning("Native service cleanup inspection: %s", receipt["status"])
+    except Exception:
+        logger.exception("Could not publish native service cleanup inspection")
+
+
+def _shutdown_native_services(rh):
+    # RunHelper clears ownership while closing it. Retain the identity for the
+    # read-only check, and never replace an original collection error with it.
+    ownership = getattr(rh, "_service_ownership", None)
+    primary_error = sys.exc_info()[0] is not None
+    try:
+        rh.shutdown()
+    except BaseException:
+        if not primary_error:
+            raise
+        logger.exception("Native shutdown failed while preserving the original execution error")
+    finally:
+        _publish_native_cleanup(ownership)
+
+
 @exit_cleanly_on_config_error
 def e2e_rollout_collection():  # pragma: no cover
     from nemo_gym.rollout_collection import (
@@ -844,7 +874,7 @@ def e2e_rollout_collection():  # pragma: no cover
                 ) from None
             pass
         finally:
-            rh.shutdown()
+            _shutdown_native_services(rh)
 
     if health_check_enabled and collection_completed:
         from nemo_gym.rollout_health import format_health_report, run_health_checks
