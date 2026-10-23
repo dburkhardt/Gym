@@ -309,6 +309,12 @@ def main() -> int:
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--stop-file", type=Path)
     parser.add_argument(
+        "--require-harness-success",
+        action="store_true",
+        help="Return nonzero for a failed, timed-out or unstarted harness as well as failed cleanup; "
+        "default exit status reports cleanup only. The receipt always preserves the harness return code.",
+    )
+    parser.add_argument(
         "--collector-cleanup-reserve",
         type=_positive_seconds,
         help="Opt in to same-host collector admission deadline, reserving these seconds before supervisor stop",
@@ -329,7 +335,11 @@ def main() -> int:
     temporary = args.receipt.with_suffix(".tmp")
     temporary.write_text(json.dumps(receipt))
     temporary.replace(args.receipt)
-    return 0 if receipt["cleanup_confirmed"] and receipt["error"] is None else 1
+    if not receipt["cleanup_confirmed"] or receipt["error"] is not None:
+        return 1
+    if args.require_harness_success and (receipt["timed_out"] or receipt["return_code"] != 0):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -756,3 +756,37 @@ def test_explicit_grace_allows_owned_detached_cleanup(tmp_path: Path, grace: flo
                 os.kill(int(child.read_text()), signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "child_code,timed_out,cleanup,error",
+    [
+        (0, False, True, None),
+        (7, False, True, None),
+        (0, True, True, None),
+        (None, False, True, None),
+        (0, False, False, None),
+        (0, False, True, "cleanup failure"),
+    ],
+)
+def test_cli_harness_success_policy_preserves_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    strict: bool,
+    child_code: int | None,
+    timed_out: bool,
+    cleanup: bool,
+    error: str | None,
+) -> None:
+    main = runpy.run_path(str(SUPERVISOR))["main"]
+    receipt_path = tmp_path / "receipt.json"
+    receipt = {"return_code": child_code, "timed_out": timed_out, "cleanup_confirmed": cleanup, "error": error}
+    monkeypatch.setitem(main.__globals__, "_supervise", lambda *args, **kwargs: receipt)
+    argv = [str(SUPERVISOR), "--timeout", "1", "--receipt", str(receipt_path)]
+    if strict:
+        argv.append("--require-harness-success")
+    monkeypatch.setattr(sys, "argv", argv + ["--", "worker"])
+    expected_failure = not cleanup or error is not None or (strict and (timed_out or child_code != 0))
+    assert main() == int(expected_failure)
+    assert json.loads(receipt_path.read_text()) == receipt
