@@ -126,6 +126,9 @@ class HarborAgentConfig(HarborShutdownConfig, BaseResponsesAPIAgentConfig):
     # Optional independent judge transport; absent preserves the solver model route.
     judge_model_server: ModelServerRef | None = None
     harbor_verifier_kwargs: Optional[dict[str, Any]] = None
+    # Forward upstream artifact declarations; collected before verifier construction.
+    # JobConfig validates structured entries with Harbor ArtifactConfig.
+    harbor_artifacts: list[str | dict[str, Any]] = Field(default_factory=list)
     # Required single-step captures; optional diagnostic artifacts remain best-effort.
     harbor_required_artifact_sources: list[str] = Field(default_factory=list)
     harbor_measurement_review_import_path: str | None = None
@@ -974,6 +977,7 @@ class HarborAgent(SimpleResponsesAPIAgent):
             verifier=verifier_config,
             agents=[agent_config],
             datasets=[dataset_config],
+            artifacts=self.config.harbor_artifacts,
         )
 
         return job_config.model_dump(mode="json")

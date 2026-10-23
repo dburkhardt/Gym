@@ -5,6 +5,8 @@ config_paths:
 harbor_agent:
   responses_api_agents:
     harbor_agent:
+      harbor_artifacts: [/workspace]
+      harbor_required_artifact_sources: [/workspace]
       harbor_verifier_import_path: responses_api_agents.harbor_agent.custom_verifiers.researchclaw.verifier:ResearchClawVerifier
       harbor_verifier_kwargs:
         controller_python: ${oc.env:RESEARCHCLAW_CONTROLLER_PYTHON}
