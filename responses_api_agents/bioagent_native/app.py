@@ -250,8 +250,10 @@ class Agent(SimpleResponsesAPIAgent):
             model_ref=self.config.model_server,
         )
         response.usage = usage
+        from benchmarks.bioagentbench.measurement_review import result_fields
+
         return VerifyResponse(
-            **body.model_dump(),
+            **{**body.model_dump(), **result_fields(task_id, reward, self.config.creator_root)},
             response=response,
             reward=reward,
             artifact_dir=str(out),
